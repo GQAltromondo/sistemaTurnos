@@ -1,0 +1,73 @@
+/* Color textos  */
+.sapMText {
+  color: #3a668b;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.textColor {
+  color: #3a668b;
+}
+
+.counts {
+  font-size: 16px;
+}
+
+.text-bold {
+  font-weight: bold;
+  font-size: 15px;
+}
+
+.textWhite {
+  color: #fff
+}
+
+/* Contenedor Botones */
+.btnContainer {
+  border-top: solid 1px #8eb9dc;
+  padding-top: 2px;
+}
+
+.sapMBtnInner {
+  background-color: #3a668b;
+  color: #fff;
+}
+
+/* Iconos Botones */
+.sapMBtnInner .sapUiIcon {
+  color: #fff;
+}
+
+/* Header fragment */
+.sapMPopup-CTX .sapMIBar.sapMHeader-CTX {
+  background-color: #255780 !important;
+}
+
+.sapMDialog>header .sapMDialogTitleGroup .sapMTitle {
+  color: #fff;
+}
+
+/* Header Tabla ui */
+.sapUiTableHeaderCell {
+  background-color: #255780;
+  border: none;
+  height: 30px;
+}
+
+.sapUiTableHeaderCell .sapMLabel {
+  color: #fff;
+}
+
+.sapUiTableCell .sapMObjStatus {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.sapMBtnInner {
+  background-color: #3a668b;
+  color: #fff;
+}
+
+html.sap-desktop .sapMIBar.sapMFooter-CTX {
+  background-color: #3a668b;
+}

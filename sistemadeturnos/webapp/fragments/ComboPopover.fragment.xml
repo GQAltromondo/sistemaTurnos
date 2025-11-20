@@ -1,0 +1,16 @@
+<!-- fragments/ComboPopover.fragment.xml -->
+<core:FragmentDefinition xmlns="sap.m" xmlns:core="sap.ui.core">
+    <Popover title="Seleccione una o varias opciones">
+        <content>
+            <VBox>
+                <CheckBox id="checkboxSOL_COC" text="SOL COC" select=".onCheckBoxSelect" />
+                <CheckBox id="checkboxSOL_TEC" text="SOL TEC" select=".onCheckBoxSelect" />
+                <CheckBox id="checkboxAUT_COC" text="AUT COC" select=".onCheckBoxSelect" />
+                <!-- Agrega más CheckBox según sea necesario -->
+            </VBox>
+        </content>
+        <endButton>
+            <Button text="Cerrar" press="onClosePopover" />
+        </endButton>
+    </Popover>
+</core:FragmentDefinition>

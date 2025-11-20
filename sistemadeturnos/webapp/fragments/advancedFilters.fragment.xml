@@ -1,0 +1,266 @@
+<core:FragmentDefinition xmlns:core="sap.ui.core" xmlns="sap.m" xmlns:layout="sap.ui.layout.form">
+	<VBox>
+		<layout:Form editable="true">
+			<layout:layout>
+				<layout:ResponsiveGridLayout labelSpanL="4" labelSpanM="4" columnsL="2" columnsM="2"/>
+			</layout:layout>
+			<layout:formContainers>
+				<!-- First Form Container -->
+				<layout:FormContainer>
+					<layout:formElements>
+						<!-- Puesto de trabajo -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Puesto de trabajo"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Arbpl/value}" items="{ path: 'WorkPlacesJsonModel>/WorkPlaces', templateShareable: true }">
+									<items>
+										<core:Item key="{WorkPlacesJsonModel>Arbpl}" text="{WorkPlacesJsonModel>Ktext}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Solicitante -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Solicitante"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Solicitante/value}"
+									items="{ path: 'PersonalHabilitadoModel>/Solicitante', templateShareable: true }">
+									<items>
+										<core:Item key="{PersonalHabilitadoModel>Legajo}" text="{PersonalHabilitadoModel>Legajo} {PersonalHabilitadoModel>Nombre}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Requiere calle de 500kV abierta -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Requiere calle de 500kV abierta"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/R500kv/value}" items="{ path: 'HardCodeModel>/R500KV', templateShareable: true }">
+									<items>
+										<core:Item key="{HardCodeModel>key}" text="{HardCodeModel>value}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Requiere alguna Barra F/S -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Requiere alguna Barra F/S"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Barrafs/value}">
+									<items>
+										<core:Item key="X" text="SI"/>
+										<core:Item key="N" text="NO"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Tiempo de Reposición -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Tiempo de Reposición"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Tiemporep/value}" items="{ path: 'RepositionTimes>/RepositionTimes', templateShareable: true }">
+									<items>
+										<core:Item key="{RepositionTimes>Valkey}" text="{RepositionTimes>Valtext}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Solicitante Suplente -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Solicitante Suplente"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/SolSuplente/value}"
+									items="{ path: 'PersonalHabilitadoModel>/Solicitante', templateShareable: true }">
+									<items>
+										<core:Item key="{PersonalHabilitadoModel>Legajo}" text="{PersonalHabilitadoModel>Legajo} {PersonalHabilitadoModel>Nombre}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Jefe de Trabajo -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Jefe de Trabajo"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Jefe/value}" items="{ path: 'PersonalHabilitadoModel>/JefeDeTrabajo', templateShareable: true }">
+									<items>
+										<core:Item key="{PersonalHabilitadoModel>Legajo}" text="{PersonalHabilitadoModel>Legajo} {PersonalHabilitadoModel>Nombre}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Jefe de Trabajo Suplente -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Jefe de Trabajo Suplente"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/JefeSuplente/value}"
+									items="{ path: 'PersonalHabilitadoModel>/JefeDeTrabajo', templateShareable: true }">
+									<items>
+										<core:Item key="{PersonalHabilitadoModel>Legajo}" text="{PersonalHabilitadoModel>Legajo} {PersonalHabilitadoModel>Nombre}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Estado Equipo a intervenir -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Estado Equipo/s a intervenir"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Equstatnocam/value}" items="{ path: 'HardCodeModel>/Equstatnocam', templateShareable: true }">
+									<items>
+										<core:Item key="{HardCodeModel>key}" text="{HardCodeModel>value}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+					</layout:formElements>
+				</layout:FormContainer>
+				<layout:FormContainer>
+					<layout:formElements>
+						<!-- Diario/Continuo -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Diario / Continuo"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Period/value}">
+									<items>
+										<core:Item key="D" text="Diaria"/>
+										<core:Item key="C" text="Continua"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Tipo de Equipo -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Tipo de Equipo"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Tipoequipo/values}" items="{ path: 'TipoEquipoJsonModel>/TipoEquipo', templateShareable: true }">
+									<items>
+										<core:Item key="{TipoEquipoJsonModel>Tipo}" text="{TipoEquipoJsonModel>Descripcion}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Tipo de intervencion -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Tipo de intervencion"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Tipinterv/value}"
+									items="{ path: 'TiposIntervencion>/TiposIntervencion', templateShareable: true }">
+									<items>
+										<core:Item key="{TiposIntervencion>Clave}" text="{TiposIntervencion>Descripcion}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Senales Afectadas -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Señales Afectadas"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/SenalesC/value}">
+									<items>
+										<core:Item key="0" text="Estados"/>
+										<core:Item key="1" text="Alarmas"/>
+										<core:Item key="2" text="Mediciones"/>
+										<core:Item key="4" text="Ninguna"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Tipo de Licencia -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Tipo de licencia"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Tipolicencia/value}" items="{ path: 'TipoLicFiltersModel>/TipoLic', templateShareable: true }">
+									<items>
+										<core:Item key="{TipoLicFiltersModel>key}" text="{TipoLicFiltersModel>descripcion}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Condiciones de trabajo -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Condiciones de trabajo"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Jobcond/value}">
+									<items>
+										<core:Item key="01" text="Consignacion"/>
+										<core:Item key="04" text="Trabajo con Tensión (Tct)"/>
+										<core:Item key="05" text="Trabajo Especiales (TcT)"/>
+										<core:Item key="06" text="Condiciones Especiales"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Coordinado ARO -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Coordinado ARO"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Aro/value}" items="{ path: 'HardCodeModel>/Aro', templateShareable: true }">
+									<items>
+										<core:Item key="{HardCodeModel>key}" text="{HardCodeModel>value}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Bloqueo de Recierre -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Bloqueo de Recierre"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Bloqueo/value}" items="{ path: 'HardCodeModel>/Bloqueo', templateShareable: true }">
+									<items>
+										<core:Item key="{HardCodeModel>key}" text="{HardCodeModel>value}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+						<!-- Riesgo de Disparo -->
+						<layout:FormElement>
+							<layout:label>
+								<Label text="Riesgo de disparo"></Label>
+							</layout:label>
+							<layout:fields>
+								<ComboBox selectedKey="{FiltersJsonModel>/Rdisparo/value}" items="{ path: 'HardCodeModel>/Rdisparo', templateShareable: true }">
+									<items>
+										<core:Item key="{HardCodeModel>key}" text="{HardCodeModel>value}"/>
+									</items>
+								</ComboBox>
+							</layout:fields>
+						</layout:FormElement>
+					</layout:formElements>
+				</layout:FormContainer>
+			</layout:formContainers>
+		</layout:Form>
+	</VBox>
+</core:FragmentDefinition>

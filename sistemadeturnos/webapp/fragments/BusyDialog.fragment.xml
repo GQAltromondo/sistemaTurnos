@@ -1,0 +1,14 @@
+<core:FragmentDefinition xmlns="sap.m"
+        xmlns:core="sap.ui.core">
+
+        <Dialog id="busyDialog" showHeader="false" type="Message" draggable="false" resizable="false">
+
+                <VBox class="sapUiSmallMargin" justifyContent="Center" alignItems="Center">
+                        <BusyIndicator size="1.6rem" />
+                        <Text id="busyLabel" text="" class="sapUiSmallMarginTop"/>
+                </VBox>
+
+        </Dialog>
+
+</core:FragmentDefinition>
+                                                                                                
