@@ -38,8 +38,12 @@ sap.ui.define([
             ModelHelper.getModel("ColorModel", oView).setProperty("/Color", "white");
             ModelHelper.getModel("consolasModel", oView).loadData("model/ConsolasModel.json", "", false);
             ModelHelper.getModel("enabledModel", oView).loadData("model/EnabledModel.json", "", false);
+            ModelHelper.getModel("tabsControl", oView).setData({ activeTab: "LIC" });
         },
-
+        onTabSelect: function (oEvent) {
+            const key = oEvent.getParameter("key");
+            this.getView().getModel("tabsControl").setProperty("/activeTab", key);
+        },
         getVersion: function () {
             const oComponent = this.getOwnerComponent();
             let jsonModel = sap.ui.getCore().getModel("appVersion");
