@@ -102,7 +102,6 @@ sap.ui.define([
             oDataService.read(sEntity, {
                 filters: aFilters,
                 success: (oData) => {
-                    console.log(oData);
 
                     this.successSelectTurno(oData)
                         .catch((err) => {
@@ -157,62 +156,112 @@ sap.ui.define([
 
             this.closeDialog();
         },
-
-
-        successSelectTurno: async function (data) {
-            const oView = this.getView()
+        successSelectTurno: function (data) {
+            const oView = this.getView();
             const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
             const oDataModel = this.getView().getModel();
 
-            try {
-                const aResults = Array.isArray(data?.results) ? data.results : [];
+            const aResults = Array.isArray(data?.results) ? data.results : [];
 
-                if (!aResults.length) {
-                    oLicencesModel.setData([]);
-                    this.onCountItems([]);
-                    return;
-                }
-
-                // Buscar una licencia por vez (sin Promise.all)
-                const results = [];
-                for (const licencia of aResults) {
-                    try {
-                        const licData = await LicenseService.FIND(licencia, oDataModel);
-                        results.push(licData);
-                    } catch (err) {
-                        // Si querés seguir aunque falle una licencia:
-                        console.error("Error en FIND para licencia", licencia, err);
-                        // Si en vez de seguir querés cortar, podés hacer: throw err;
-                    }
-                }
-
-                if (!results.length) {
-                    oLicencesModel.setData([]);
-                    this.onCountItems([]);
-                    return;
-                }
-
-                // Procesar lógica de negocio
-                const arrayOrdenado = TurnosService.encontrarGrupo(
-                    TurnosService.ordenarPorEqunr(results), this.getView()
-                );
-
-                TurnosService.assignShiftsToLicences(arrayOrdenado);
-
-                console.log(oLicencesModel)
-                // Actualizar modelo
-                oLicencesModel.setData(arrayOrdenado);
-
-                // Contador
-                this.onCountItems(arrayOrdenado);
-
-            } catch (error) {
-                console.error("Error en successSelectTurno:", error);
+            if (!aResults.length) {
                 oLicencesModel.setData([]);
                 this.onCountItems([]);
-                // OJO: acá ya no llamamos hideGlobalBusy
+                return Promise.resolve();   // <- para permitir .then/.catch
             }
+
+            const aPromises = aResults.map((licencia) => {
+                return LicenseService.FIND(licencia, oDataModel)
+                    .then(result => result)
+                    .catch(err => {
+                        console.error("Error en FIND para licencia", licencia, err);
+                        return null;
+                    });
+            });
+
+            // 🔥 AGREGAR RETURN AQUÍ
+            return Promise.all(aPromises)
+                .then((licenciasProcesadas) => {
+                    const results = licenciasProcesadas.filter(x => x);
+
+                    if (!results.length) {
+                        oLicencesModel.setData([]);
+                        this.onCountItems([]);
+                        return;
+                    }
+
+                    const arrayOrdenado = TurnosService.encontrarGrupo(
+                        TurnosService.ordenarPorEqunr(results),
+                        oView
+                    );
+
+                    TurnosService.assignShiftsToLicences(arrayOrdenado);
+
+                    oLicencesModel.setData(arrayOrdenado);
+                    this.onCountItems(arrayOrdenado);
+                })
+                .catch((error) => {
+                    console.error("Error inesperado en Promise.all:", error);
+                    oLicencesModel.setData([]);
+                    this.onCountItems([]);
+                });
         },
+
+
+
+        // successSelectTurno: async function (data) {
+        //     const oView = this.getView()
+        //     const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
+        //     const oDataModel = this.getView().getModel();
+
+        //     try {
+        //         const aResults = Array.isArray(data?.results) ? data.results : [];
+
+        //         if (!aResults.length) {
+        //             oLicencesModel.setData([]);
+        //             this.onCountItems([]);
+        //             return;
+        //         }
+
+        //         // Buscar una licencia por vez (sin Promise.all)
+        //         const results = [];
+        //         for (const licencia of aResults) {
+        //             try {
+        //                 const licData = await LicenseService.FIND(licencia, oDataModel);
+        //                 results.push(licData);
+        //             } catch (err) {
+        //                 // Si querés seguir aunque falle una licencia:
+        //                 console.error("Error en FIND para licencia", licencia, err);
+        //                 // Si en vez de seguir querés cortar, podés hacer: throw err;
+        //             }
+        //         }
+
+        //         if (!results.length) {
+        //             oLicencesModel.setData([]);
+        //             this.onCountItems([]);
+        //             return;
+        //         }
+
+        //         // Procesar lógica de negocio
+        //         const arrayOrdenado = TurnosService.encontrarGrupo(
+        //             TurnosService.ordenarPorEqunr(results), this.getView()
+        //         );
+
+        //         TurnosService.assignShiftsToLicences(arrayOrdenado);
+
+        //         console.log(oLicencesModel)
+
+        //         oLicencesModel.setData(arrayOrdenado);
+
+
+        //         this.onCountItems(arrayOrdenado);
+
+        //     } catch (error) {
+        //         console.error("Error en successSelectTurno:", error);
+        //         oLicencesModel.setData([]);
+        //         this.onCountItems([]);
+
+        //     }
+        // },
 
 
         onCountItems: function (data) {
@@ -239,34 +288,34 @@ sap.ui.define([
                 TCT: countTCT,
                 Total: totalCount
             };
-            console.log(counts)
+
             // Asignar el modelo al View
             const oModel = new sap.ui.model.json.JSONModel(counts);
             this.getView().setModel(oModel, "countsModel");
         },
         onChangeHour: function (oEvent) {
-            // Obtener el contexto de la fila seleccionada
+
             var oSource = oEvent.getSource();
             var sPath = oSource.getBindingContext("LicencesJsonModel").getPath();
-            var iLicenseIndex = parseInt(sPath.split("/")[1], 10); // Índice de la fila seleccionada
+            var iLicenseIndex = parseInt(sPath.split("/")[1], 10);
 
-            // Obtener el modelo y los datos actuales
+
             var oModel = this.getView().getModel("LicencesJsonModel");
             var aLicences = oModel.getProperty("/");
 
-            // Obtener el nuevo horario del TimePicker
+
             var sNewTime = oEvent.getParameter("value");
 
-            // Obtener los datos de la fila seleccionada
+
             var oSelectedLicence = aLicences[iLicenseIndex];
 
-            // Actualizar solo las filas del mismo Grupo y Consola
+
             this._updateSameGroupAndConsoleShifts(aLicences, oSelectedLicence, sNewTime);
 
-            // Reordenar las filas por Consola, luego por Grupo y finalmente por TurnoAsignado
+
             this._sortLicences(aLicences);
 
-            // Actualizar el modelo con los cambios
+
             oModel.setProperty("/", aLicences);
             oModel.refresh(true);
         },
@@ -284,21 +333,21 @@ sap.ui.define([
                 const aHasTurno = !!a.TurnoAsignado;
                 const bHasTurno = !!b.TurnoAsignado;
 
-             
+
                 if (!aHasTurno && !bHasTurno) return 0;
 
-             
+
                 if (!aHasTurno) return 1;
 
-                
+
                 if (!bHasTurno) return -1;
 
-               
+
                 return this._convertShiftToMinutes(a.TurnoAsignado) -
                     this._convertShiftToMinutes(b.TurnoAsignado);
             });
 
-         
+
             aLicences.sort((a, b) => {
                 if (a.Consola !== b.Consola) {
                     return a.Consola.localeCompare(b.Consola);
@@ -313,7 +362,7 @@ sap.ui.define([
         },
         onDeletePress: function () {
             const oTable = this.getView().byId("turnosTable");
-            const aSelectedIndices = oTable.getSelectedIndices(); // Índices seleccionados
+            const aSelectedIndices = oTable.getSelectedIndices();
 
             if (aSelectedIndices.length === 0) {
                 MessageToast.show("Por favor, seleccione al menos una fila para eliminar.");
@@ -357,7 +406,8 @@ sap.ui.define([
 
             MessageToast.show("Se ha eliminado la(s) licencia(s) seleccionada(s).");
 
-            // Enviar al backend
+            //TODO BackEnd para eliminar en base hoy solo elimina local tabla
+
             this.deleteTurno(aDataToDelete);
         },
         onDetachLicense: function () {

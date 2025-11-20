@@ -159,9 +159,7 @@ sap.ui.define([
                 return 0;
             });
 
-            console.log(licencias);
-
-            return licencias;
+                return licencias;
         }, ordenarPorEqunr: function (data) {
             // Ordenar los elementos por el campo 'Equnr'
             data.sort((a, b) => {

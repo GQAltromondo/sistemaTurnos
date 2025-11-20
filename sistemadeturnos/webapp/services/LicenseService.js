@@ -24,7 +24,7 @@ sap.ui.define([], function () {
                 oModel.read(key, {
                     urlParameters: urlParameters,
                     success: function (data) {
-                        console.log("FIND Success:", data);
+                  
                         resolve(data);
                     },
                     error: function (error) {
