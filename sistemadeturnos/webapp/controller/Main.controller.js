@@ -172,7 +172,7 @@ sap.ui.define([
 
             if (!aResults.length) {
                 oLicencesModel.setData([]);
-                Utils.onCountItems(oView , []);
+                Utils.onCountItems(oView, []);
                 return Promise.resolve();
             }
 
@@ -426,7 +426,8 @@ sap.ui.define([
             // Get the last license in the group to calculate the new time
             var oLastLicenseInGroup = aLicences[groupLastIndex];
             var currentTime = this._convertShiftToMinutes(oLastLicenseInGroup.TurnoAsignado);
-            var shiftDuration = oDetachedLicense.Jobcond === "04" ? 30 : 15;
+            const shiftInfo = Utils.getShiftInfo(oDetachedLicense);
+            const shiftDuration = shiftInfo.duration;
 
             currentTime += shiftDuration;
             oDetachedLicense.TurnoAsignado = this._formatTime(currentTime);

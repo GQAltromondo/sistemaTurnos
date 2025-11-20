@@ -5,7 +5,44 @@ sap.ui.define([
 
     const tiposLinea = ["L1", "L2", "L3", "L4", "L5", "L6"];
 
+    // 🔹 Regla única de negocio: categoría + duración según licencia
+    function getShiftInfo(license) {
+        const job = license.Jobcond;
+        const tipo = license.Tipoequipo;
+        const patAdic = license.PatAdic;
+
+        let category = "Otro";
+        let duration = 15; // default
+
+        if (job === "01") { // Consignación
+            if (tiposLinea.includes(tipo)) {
+                category = "ConsignacionLinea";   // L1…L6
+                duration = 45;
+            } else {
+                category = "ConsignacionEquipo";
+                duration = 30;
+            }
+        } else if (job === "06") {
+            const hasPatAdic = patAdic != null && String(patAdic).trim() !== "";
+            if (hasPatAdic) {
+                category = "ManiobrasSinConsignacion";
+                duration = 20;
+            } else {
+                category = "SinManiobras";
+                duration = 10;
+            }
+        } else if (job === "04" || job === "05") {
+            category = "TCT";
+            duration = 15;
+        }
+
+        return { category, duration };
+    }
+
     return {
+
+        // Exportamos para que TurnosService lo use en assignShiftsToLicences
+        getShiftInfo: getShiftInfo,
 
         onCountItems: function (oView, data) {
 
@@ -15,32 +52,26 @@ sap.ui.define([
             let sinManiobras = 0;
             let countTCT = 0;
 
-            data.forEach(item => {
-                const job = item.Jobcond;
-                const tipo = item.Tipoequipo;
-                const patAdic = item.PatAdic;
+            (data || []).forEach(item => {
+                const info = getShiftInfo(item);
 
-                switch (job) {
-                    case "01": // Consignación
-                        if (tiposLinea.includes(tipo)) {
-                            consignacionLinea++;
-                        } else {
-                            consignacionEquipo++;
-                        }
+                switch (info.category) {
+                    case "ConsignacionLinea":
+                        consignacionLinea++;
                         break;
-
-                    case "06": // Maniobras o Sin Maniobras
-                        if (patAdic != null && String(patAdic).trim() !== "") {
-                            maniobrasSinConsignacion++;
-                        } else {
-                            sinManiobras++;
-                        }
+                    case "ConsignacionEquipo":
+                        consignacionEquipo++;
                         break;
-
-                    case "04":
-                    case "05": // TCT
+                    case "ManiobrasSinConsignacion":
+                        maniobrasSinConsignacion++;
+                        break;
+                    case "SinManiobras":
+                        sinManiobras++;
+                        break;
+                    case "TCT":
                         countTCT++;
                         break;
+                    // "Otro" no suma en estos KPIs
                 }
             });
 
@@ -63,7 +94,6 @@ sap.ui.define([
                 Total: totalCount
             };
 
-            // Setear modelo countsModel en la vista
             const oModel = new JSONModel(counts);
             oView.setModel(oModel, "countsModel");
 

@@ -206,7 +206,7 @@ sap.ui.define([
                     }
 
                     // 2) Obtener info de duración según reglas nuevas
-                    const shiftInfo = this._getShiftInfo(license);
+                    const shiftInfo = Utils.getShiftInfo(license);
                     const shiftDuration = shiftInfo.duration;
 
                     // 3) Licencias desacopladas (Grupo que empieza con "_Desacoplado_...")
@@ -245,68 +245,7 @@ sap.ui.define([
         },
 
 
-        // assignShiftsToLicences: function (licences) {
-        //     let initialTime = 7 * 60; // 7:00 AM en minutos
-        //     let currentTime = initialTime;
-        //     let previousConsola = "";
-        //     let previousGrupo = "";
-        //     let firstShiftInGroup = "";
-
-        //     licences.forEach((license) => {
-        //         if (!license.Grupo) {
-        //             license.Grupo = license.Equnr;
-        //         }
-        //     });
-
-        //     let groupedByConsola = {};
-
-        //     licences.forEach((license) => {
-        //         if (!groupedByConsola[license.Consola]) {
-        //             groupedByConsola[license.Consola] = [];
-        //         }
-        //         groupedByConsola[license.Consola].push(license);
-        //     });
-
-        //     Object.keys(groupedByConsola).forEach((consola) => {
-        //         let currentTime = initialTime;
-        //         let previousGrupo = "";
-        //         let firstShiftInGroup = "";
-
-        //         groupedByConsola[consola].forEach((license) => {
-        //             // Si tiene TurnosLicencias_nav con datos, tomar el Turno directamente
-        //             if (Array.isArray(license.TurnosLicencias_nav?.results) && license.TurnosLicencias_nav.results.length > 0) {
-        //                 license.TurnoAsignado = license.TurnosLicencias_nav.results[0].Turno;
-        //                 return;
-        //             }
-
-        //             if (license.Grupo.startsWith("_")) {
-        //                 license.TurnoAsignado = this._formatTime(currentTime);
-        //                 currentTime += 15; // Duración estándar
-        //                 return;
-        //             }
-
-        //             if (license.Grupo !== previousGrupo) {
-        //                 previousGrupo = license.Grupo;
-        //                 let shiftDuration = license.Jobcond === "04" ? 30 : 15;
-        //                 firstShiftInGroup = this._formatTime(currentTime);
-        //                 license.TurnoAsignado = firstShiftInGroup;
-        //                 currentTime += shiftDuration;
-        //             } else {
-        //                 license.TurnoAsignado = firstShiftInGroup;
-        //             }
-        //         });
-
-        //         // Ordenar solo dentro de la consola por TurnoAsignado
-        //         groupedByConsola[consola].sort((a, b) => this._convertTimeToMinutes(a.TurnoAsignado) - this._convertTimeToMinutes(b.TurnoAsignado));
-        //     });
-
-        //     // Reconstruir el array manteniendo el orden de las consolas originales
-        //     licences.length = 0;
-        //     Object.keys(groupedByConsola).forEach((consola) => {
-        //         licences.push(...groupedByConsola[consola]);
-        //     });
-        // }
-        // ,
+    
         _formatTime: function (iMinutes) {
             // Convertir los minutos de nuevo a formato HH:mm
             var iHours = Math.floor(iMinutes / 60);
@@ -365,40 +304,7 @@ sap.ui.define([
 
             oLicencesModel.refresh(true);
         },
-        _getShiftInfo: function (license) {
-            const job = license.Jobcond;
-            const tipo = license.Tipoequipo;
-            const patAdic = license.PatAdic;
-            const tiposLinea = ["L1", "L2", "L3", "L4", "L5", "L6"];
-
-            // Default
-            let category = "Otro";
-            let duration = 15;
-
-            if (job === "01") { // Consignación
-                if (tiposLinea.includes(tipo)) {
-                    category = "ConsignacionLinea";
-                    duration = 45;
-                } else {
-                    category = "ConsignacionEquipo";
-                    duration = 30;
-                }
-            } else if (job === "06") {
-                const hasPatAdic = patAdic != null && String(patAdic).trim() !== "";
-                if (hasPatAdic) {
-                    category = "ManiobrasSinConsignacion";
-                    duration = 20;
-                } else {
-                    category = "SinManiobras";
-                    duration = 10;
-                }
-            } else if (job === "04" || job === "05") {
-                category = "TCT";
-                duration = 15;
-            }
-
-            return { category, duration };
-        },
+       
 
 
 
