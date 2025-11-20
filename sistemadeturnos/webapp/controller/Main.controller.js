@@ -7,13 +7,14 @@ sap.ui.define([
     "sap/ui/core/Fragment",
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/FormatHelper",
+    "transener/sistemadeturnos/utils/Utils",
     "transener/sistemadeturnos/services/LicenseService",
     "transener/sistemadeturnos/services/TurnosService",
 
 
 ], function (Controller, MessageToast, MessageBox, Filter, FilterOperator, Fragment,
     //utils
-    ModelHelper, FormatHelper,
+    ModelHelper, FormatHelper, Utils,
     //services
     LicenseService, TurnosService
 ) {
@@ -23,11 +24,11 @@ sap.ui.define([
         formatter: FormatHelper,
 
         onInit: function () {
-            const oView = this.getView()
-            this._pBusyDialog = null; // promesa del fragment
+
+            this._pBusyDialog = null;
             this.getVersion();
             this.getBaseURL();
-            ModelHelper.getModel("LicencesJsonModel", oView)
+
             this.cargarModelos()
         },
         cargarModelos: function () {
@@ -39,11 +40,9 @@ sap.ui.define([
             ModelHelper.getModel("consolasModel", oView).loadData("model/ConsolasModel.json", "", false);
             ModelHelper.getModel("enabledModel", oView).loadData("model/EnabledModel.json", "", false);
             ModelHelper.getModel("tabsControl", oView).setData({ activeTab: "LIC" });
+            ModelHelper.getModel("LicencesJsonModel", oView)
         },
-        onTabSelect: function (oEvent) {
-            const key = oEvent.getParameter("key");
-            this.getView().getModel("tabsControl").setProperty("/activeTab", key);
-        },
+
         getVersion: function () {
             const oComponent = this.getOwnerComponent();
             let jsonModel = sap.ui.getCore().getModel("appVersion");
@@ -78,8 +77,12 @@ sap.ui.define([
 
             return appModulePath;
         },
+        onTabSelect: function (oEvent) {
+            const key = oEvent.getParameter("key");
+            this.getView().getModel("tabsControl").setProperty("/activeTab", key);
+        },
         onSelectTurno: function (oEvent) {
-            // Mostrar Busy global
+
             this.showGlobalBusy("Buscando turnos creados…");
             const oView = this.getView()
             const oDataService = this.getView().getModel();
@@ -120,7 +123,7 @@ sap.ui.define([
 
                     const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
                     oLicencesModel.setData([]);
-                    this.onCountItems([]);
+                    Util.onCountItems([]);
                     this.hideGlobalBusy();
                 }
             });
@@ -149,7 +152,7 @@ sap.ui.define([
                     oLicencesModel.setData(data);
                     oLicencesModel.refresh();
                     oTable.setBusy(false);
-                    this.onCountItems(data);
+                    Utils.onCountItems(this.getView(), data);
                 })
                 .catch((error) => {
                     console.error("Error en la búsqueda:", error);
@@ -169,8 +172,8 @@ sap.ui.define([
 
             if (!aResults.length) {
                 oLicencesModel.setData([]);
-                this.onCountItems([]);
-                return Promise.resolve();   // <- para permitir .then/.catch
+                Utils.onCountItems(oView , []);
+                return Promise.resolve();
             }
 
             const aPromises = aResults.map((licencia) => {
@@ -182,14 +185,14 @@ sap.ui.define([
                     });
             });
 
-            // 🔥 AGREGAR RETURN AQUÍ
+
             return Promise.all(aPromises)
                 .then((licenciasProcesadas) => {
                     const results = licenciasProcesadas.filter(x => x);
 
                     if (!results.length) {
                         oLicencesModel.setData([]);
-                        this.onCountItems([]);
+                        Utils.onCountItems(oView, []);
                         return;
                     }
 
@@ -201,17 +204,16 @@ sap.ui.define([
                     TurnosService.assignShiftsToLicences(arrayOrdenado);
 
                     oLicencesModel.setData(arrayOrdenado);
-                    this.onCountItems(arrayOrdenado);
+                    Utils.onCountItems(oView, arrayOrdenado);
                 })
                 .catch((error) => {
                     console.error("Error inesperado en Promise.all:", error);
                     oLicencesModel.setData([]);
-                    this.onCountItems([]);
                 });
         },
 
 
-
+        // POR SI FALLA ESTE BUSCARIA EN SERIE NO EN PARALELO COMO EL PROMISE.ALL
         // successSelectTurno: async function (data) {
         //     const oView = this.getView()
         //     const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
@@ -222,7 +224,7 @@ sap.ui.define([
 
         //         if (!aResults.length) {
         //             oLicencesModel.setData([]);
-        //             this.onCountItems([]);
+        //             Utils.onCountItems(this,[]);
         //             return;
         //         }
 
@@ -241,7 +243,7 @@ sap.ui.define([
 
         //         if (!results.length) {
         //             oLicencesModel.setData([]);
-        //             this.onCountItems([]);
+        //             Utils.onCountItems(this,[]);
         //             return;
         //         }
 
@@ -257,46 +259,88 @@ sap.ui.define([
         //         oLicencesModel.setData(arrayOrdenado);
 
 
-        //         this.onCountItems(arrayOrdenado);
+        //         Utils.onCountItems(this,arrayOrdenado);
 
         //     } catch (error) {
         //         console.error("Error en successSelectTurno:", error);
         //         oLicencesModel.setData([]);
-        //         this.onCountItems([]);
+        //         Utils.onCountItems(this,[]);
 
         //     }
         // },
 
+        // onCountItems: function (data) {
 
-        onCountItems: function (data) {
-            let countLTWithManouvers = 0;
-            let countLTWithoutManouvers = 0;
-            let countTCT = 0;
+        //     let consignacionLinea = 0;
+        //     let consignacionEquipo = 0;
+        //     let maniobrasSinConsignacion = 0;
+        //     let sinManiobras = 0;
+        //     let countTCT = 0;
 
-            data.forEach(item => {
-                if (item.Jobcond === "01" || item.Jobcond === "02" || item.Jobcond === "04") {
-                    countLTWithManouvers++;
-                } else if (item.Jobcond === "05") {
-                    countLTWithoutManouvers++;
-                } else if (item.Jobcond === "03" || item.Jobcond === "06") {
-                    countTCT++;
-                }
-            });
+        //     const tiposLinea = ["L1", "L2", "L3", "L4", "L5", "L6"];
 
-            const totalCount = countLTWithManouvers + countLTWithoutManouvers + countTCT;
+        //     data.forEach(item => {
+        //         const job = item.Jobcond;
+        //         const tipo = item.Tipoequipo;
+        //         const patAdic = item.PatAdic;
 
-            // Crear un modelo con los resultados
-            const counts = {
-                LTWithManouvers: countLTWithManouvers,
-                LTWithoutManouvers: countLTWithoutManouvers,
-                TCT: countTCT,
-                Total: totalCount
-            };
+        //         switch (job) {
+        //             case "01": // Consignación
+        //                 if (tiposLinea.includes(tipo)) {
+        //                     consignacionLinea++;
+        //                 } else {
+        //                     consignacionEquipo++;
+        //                 }
+        //                 break;
 
-            // Asignar el modelo al View
-            const oModel = new sap.ui.model.json.JSONModel(counts);
-            this.getView().setModel(oModel, "countsModel");
-        },
+        //             case "06":
+        //                 // PatAdic NO vacío => Maniobras sin consignación
+        //                 if (patAdic != null && String(patAdic).trim() !== "") {
+        //                     maniobrasSinConsignacion++;
+        //                 } else {
+        //                     // PatAdic vacío => Sin maniobras
+        //                     sinManiobras++;
+        //                 }
+        //                 break;
+
+        //             case "04":
+        //             case "05":
+        //                 // TCT
+        //                 countTCT++;
+        //                 break;
+
+
+        //             default:
+        //                 break;
+        //         }
+        //     });
+
+
+        //     const LTWithManouvers =
+        //         consignacionLinea + consignacionEquipo + maniobrasSinConsignacion;
+
+        //     const LTWithoutManouvers = sinManiobras;
+        //     const TCT = countTCT;
+        //     const totalCount = LTWithManouvers + LTWithoutManouvers + TCT;
+
+        //     const counts = {
+
+        //         ConsignacionLinea: consignacionLinea,
+        //         ConsignacionEquipo: consignacionEquipo,
+        //         ManiobrasSinConsignacion: maniobrasSinConsignacion,
+        //         SinManiobras: sinManiobras,
+
+
+        //         LTWithManouvers,
+        //         LTWithoutManouvers,
+        //         TCT,
+        //         Total: totalCount
+        //     };
+
+        //     const oModel = new sap.ui.model.json.JSONModel(counts);
+        //     this.getView().setModel(oModel, "countsModel");
+        // },
+
         onChangeHour: function (oEvent) {
 
             var oSource = oEvent.getSource();
@@ -519,7 +563,7 @@ sap.ui.define([
                     oSearchModel.setData(aNuevas);
                     oSearchModel.refresh();
 
-                    this.onCountItems(aNuevas);
+
                 })
                 .catch((error) => {
                     console.error("Error en la búsqueda:", error);

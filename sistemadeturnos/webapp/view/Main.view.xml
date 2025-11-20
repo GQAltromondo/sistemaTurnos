@@ -196,7 +196,7 @@
 
 
 						<IconTabFilter text="Listado Cronologico" key="OTRA">
-							<t:Table id="cronoTable" selectionMode="MultiToggle" selectionBehavior="Row" rows="{cronoModel>/}">
+							<t:Table id="cronoTable" rows="{cronoModel>/}">
 
 								<t:columns>
 									<t:Column hAlign="Center" width="150px" sortProperty="Campo1" filterProperty="Campo1">
