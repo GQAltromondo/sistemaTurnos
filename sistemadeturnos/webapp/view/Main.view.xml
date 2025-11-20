@@ -174,7 +174,7 @@
 										</t:template>
 									</t:Column>
 
-									<t:Column hAlign="Center" width="140px" filterProperty="TurnoAsignado">
+									<t:Column hAlign="Center" width="140px" sortProperty="TurnoAsignado" filterProperty="TurnoAsignado">
 										<Label text="{i18n>shift}" textAlign="Center"/>
 										<t:template>
 											<HBox alignItems="Center" justifyContent="SpaceBetween">
