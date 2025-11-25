@@ -4,13 +4,26 @@ sap.ui.define([
     "use strict";
 
     return {
-        getModel: function (sModelName, oView) {
-            let oModel = oView.getModel(sModelName);
+        // getModel: function (sModelName, oView) {
+        //     let oModel = oView.getModel(sModelName);
 
-            if (!oModel) {
-                oModel = new JSONModel();
+        //     if (!oModel) {
+        //         oModel = new JSONModel();
+        //         oModel.setSizeLimit(999999);
+        //         oView.setModel(oModel, sModelName);
+        //     }
+
+        //     return oModel;
+        // }
+        getModel: function (sModelName, oView = null) {
+            const oTarget = oView || sap.ui.getCore();
+
+            let oModel = oTarget.getModel(sModelName);
+
+            if (!(oModel instanceof sap.ui.model.json.JSONModel)) {
+                oModel = new sap.ui.model.json.JSONModel();
                 oModel.setSizeLimit(999999);
-                oView.setModel(oModel, sModelName);
+                oTarget.setModel(oModel, sModelName);
             }
 
             return oModel;

@@ -25,6 +25,19 @@
           "odataVersion": "2.0"
         }
       }
+    },
+    "crossNavigation": {
+      "inbounds": {
+        "sistemadeturnos-view": {
+          "semanticObject": "sistemadeturnos",
+          "action": "view",
+          "title": "{{flpTitle}}",
+          "signature": {
+            "parameters": {},
+            "additionalParameters": "allowed"
+          }
+        }
+      }
     }
   },
   "sap.ui": {
@@ -60,7 +73,11 @@
       "i18n": {
         "type": "sap.ui.model.resource.ResourceModel",
         "settings": {
-          "bundleName": "transener.sistemadeturnos.i18n.i18n"
+          "bundleName": "transener.sistemadeturnos.i18n.i18n",
+          "supportedLocales": [
+            ""
+          ],
+          "fallbackLocale": ""
         }
       },
       "": {
@@ -119,6 +136,6 @@
     "_version": "1.1.0"
   },
   "sap.cloud": {
-    "service": "transenersistemadeturnos"
+    "service": "sistemaTurnos"
   }
 }

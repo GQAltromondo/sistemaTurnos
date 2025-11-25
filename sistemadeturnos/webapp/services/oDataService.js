@@ -1,6 +1,6 @@
 sap.ui.define([
-
-], function () {
+ "transener/sistemadeturnos/utils/ModelHelper"
+], function (ModelHelper) {
     "use strict";
 
     return {
@@ -36,7 +36,7 @@ sap.ui.define([
 
         getModel: function (name) {
             if (!this._models[name]) {
-           
+
                 var baseurl = sap.ui.getCore().getModel("appCurrentInfo")
 
                 var url = baseurl.appUrl + this._services[name];
@@ -59,8 +59,11 @@ sap.ui.define([
                 });
             }
             this._models[name].setSizeLimit(99999);
-          
+
             return this._models[name];
+        },
+        getModel: function () {
+            ModelHelper.getModel("", oView)
         }
     };
 });

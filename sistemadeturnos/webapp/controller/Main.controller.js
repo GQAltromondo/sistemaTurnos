@@ -2,6 +2,7 @@ sap.ui.define([
     "sap/ui/core/mvc/Controller",
     "sap/m/MessageToast",
     "sap/m/MessageBox",
+    "sap/ui/core/library",
     "sap/ui/model/Filter",
     "sap/ui/model/FilterOperator",
     "sap/ui/core/Fragment",
@@ -10,13 +11,15 @@ sap.ui.define([
     "transener/sistemadeturnos/utils/Utils",
     "transener/sistemadeturnos/services/LicenseService",
     "transener/sistemadeturnos/services/TurnosService",
+    "transener/sistemadeturnos/services/TipoEquipoService",
+    "transener/sistemadeturnos/services/InterventionTypesService",
 
 
-], function (Controller, MessageToast, MessageBox, Filter, FilterOperator, Fragment,
+], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, Fragment,
     //utils
     ModelHelper, FormatHelper, Utils,
     //services
-    LicenseService, TurnosService
+    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService
 ) {
     "use strict";
     var oDialog = null
@@ -37,10 +40,16 @@ sap.ui.define([
             ModelHelper.getModel("consolasModel", oView)
             ModelHelper.getModel("LocalFilterJsonModel", oView);
             ModelHelper.getModel("ColorModel", oView).setProperty("/Color", "white");
-            ModelHelper.getModel("consolasModel", oView).loadData("model/ConsolasModel.json", "", false);
-            ModelHelper.getModel("enabledModel", oView).loadData("model/EnabledModel.json", "", false);
+
             ModelHelper.getModel("tabsControl", oView).setData({ activeTab: "LIC" });
             ModelHelper.getModel("LicencesJsonModel", oView)
+
+            const sConsolasUrl = sap.ui.require.toUrl("transener/sistemadeturnos/model/ConsolasModel.json");
+            ModelHelper.getModel("consolasModel", oView).loadData(sConsolasUrl);
+
+            const sEnabledUrl = sap.ui.require.toUrl("transener/sistemadeturnos/model/EnabledModel.json");
+            ModelHelper.getModel("enabledModel", oView).loadData(sEnabledUrl);
+
         },
 
         getVersion: function () {
@@ -123,7 +132,7 @@ sap.ui.define([
 
                     const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
                     oLicencesModel.setData([]);
-                    Util.onCountItems([]);
+                    Utils.onCountItems([]);
                     this.hideGlobalBusy();
                 }
             });
@@ -271,30 +280,33 @@ sap.ui.define([
 
         onChangeHour: function (oEvent) {
 
-            var oSource = oEvent.getSource();
+            var oSource = oEvent.getSource(); // TimePicker
             var sPath = oSource.getBindingContext("LicencesJsonModel").getPath();
             var iLicenseIndex = parseInt(sPath.split("/")[1], 10);
-
 
             var oModel = this.getView().getModel("LicencesJsonModel");
             var aLicences = oModel.getProperty("/");
 
-
             var sNewTime = oEvent.getParameter("value");
-
-
             var oSelectedLicence = aLicences[iLicenseIndex];
-
 
             this._updateSameGroupAndConsoleShifts(aLicences, oSelectedLicence, sNewTime);
 
-
             this._sortLicences(aLicences);
 
+            // buscar nuevo índice después del sort
+            var iNewIndex = aLicences.findIndex(function (lic) {
+                return lic === oSelectedLicence;
+            });
+
+            // 👉 ahora le pasamos el timepicker también
+            this._cascadeGroupsDown(aLicences, iNewIndex, oSource);
 
             oModel.setProperty("/", aLicences);
             oModel.refresh(true);
         },
+
+
         _updateSameGroupAndConsoleShifts: function (aLicences, oSelectedLicence, sNewTime) {
             // Recorre las licencias y actualiza el horario solo de aquellas que comparten el mismo Grupo y Consola
             aLicences.forEach(function (oLicence) {
@@ -305,32 +317,79 @@ sap.ui.define([
         },
         _sortLicences: function (aLicences) {
 
-            aLicences.sort((a, b) => {
-                const aHasTurno = !!a.TurnoAsignado;
-                const bHasTurno = !!b.TurnoAsignado;
+            // Agrupamos por Consola + Grupo
+            var groupsByConsola = {};
 
+            aLicences.forEach(function (lic, index) {
+                var consola = lic.Consola || "";
+                var grupo = lic.Grupo || lic.Equnr || "";
 
-                if (!aHasTurno && !bHasTurno) return 0;
-
-
-                if (!aHasTurno) return 1;
-
-
-                if (!bHasTurno) return -1;
-
-
-                return this._convertShiftToMinutes(a.TurnoAsignado) -
-                    this._convertShiftToMinutes(b.TurnoAsignado);
-            });
-
-
-            aLicences.sort((a, b) => {
-                if (a.Consola !== b.Consola) {
-                    return a.Consola.localeCompare(b.Consola);
+                if (!groupsByConsola[consola]) {
+                    groupsByConsola[consola] = {};
                 }
-                return 0;
-            });
+                if (!groupsByConsola[consola][grupo]) {
+                    groupsByConsola[consola][grupo] = {
+                        consola: consola,
+                        grupo: grupo,
+                        items: [],
+                        firstIndex: index
+                    };
+                }
+
+                groupsByConsola[consola][grupo].items.push(lic);
+                if (index < groupsByConsola[consola][grupo].firstIndex) {
+                    groupsByConsola[consola][grupo].firstIndex = index;
+                }
+            }.bind(this));
+
+            var result = [];
+
+            // Ordenamos por Consola y dentro de cada consola por hora de grupo
+            Object.keys(groupsByConsola).sort().forEach(function (consola) {
+                var groupsMap = groupsByConsola[consola];
+                var groups = Object.keys(groupsMap).map(function (k) {
+                    return groupsMap[k];
+                });
+
+                // calcular hora de inicio del grupo
+                groups.forEach(function (g) {
+                    var firstWithTurno = g.items.find(function (it) { return !!it.TurnoAsignado; });
+                    if (firstWithTurno) {
+                        g.hasTurno = true;
+                        g.startMinutes = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
+                    } else {
+                        g.hasTurno = false;
+                        g.startMinutes = Number.MAX_SAFE_INTEGER;
+                    }
+                }.bind(this));
+
+                // primero grupos con turno, ordenados por hora, luego sin turno por orden original
+                groups.sort(function (a, b) {
+                    if (a.hasTurno && !b.hasTurno) return -1;
+                    if (!a.hasTurno && b.hasTurno) return 1;
+                    if (!a.hasTurno && !b.hasTurno) {
+                        return a.firstIndex - b.firstIndex;
+                    }
+
+                    if (a.startMinutes !== b.startMinutes) {
+                        return a.startMinutes - b.startMinutes;
+                    }
+                    return a.firstIndex - b.firstIndex;
+                });
+
+                // aplanar
+                groups.forEach(function (g) {
+                    g.items.forEach(function (lic) {
+                        result.push(lic);
+                    });
+                });
+            }.bind(this));
+
+            // Reemplazamos el contenido del array original
+            aLicences.length = 0;
+            Array.prototype.push.apply(aLicences, result);
         },
+
 
         _convertShiftToMinutes: function (shift) {
             const [hours, minutes] = shift.split(":").map(Number);
@@ -340,52 +399,106 @@ sap.ui.define([
             const oTable = this.getView().byId("turnosTable");
             const aSelectedIndices = oTable.getSelectedIndices();
 
-            if (aSelectedIndices.length === 0) {
+            // 🔹 Validar selección
+            if (!aSelectedIndices || aSelectedIndices.length === 0) {
                 MessageToast.show("Por favor, seleccione al menos una fila para eliminar.");
                 return;
             }
 
-            const oModel = this.getView().getModel("LicencesJsonModel");
-            let aLicenses = oModel.getProperty("/");
+            // 🔹 Tomar fecha del turno (para la key Dateturno)
+            const oDatePicker = this.byId("date");
+            const oFechaTurno = oDatePicker && oDatePicker.getDateValue();
+
+            if (!oFechaTurno) {
+                MessageBox.warning("Debe seleccionar una fecha de turno para poder eliminar.");
+                return;
+            }
+
+            // 🔹 Obtener modelo local
+            const oJsonModel = this.getView().getModel("LicencesJsonModel");
+            let aLicenses = oJsonModel.getProperty("/") || [];
 
             if (!Array.isArray(aLicenses) || aLicenses.length === 0) {
                 MessageToast.show("No hay datos para eliminar.");
                 return;
             }
 
-            let aDataToDelete = [];
+            // 🔹 Ordenar índices de mayor a menor para eliminar sin problemas
+            const aSortedIndices = aSelectedIndices.slice().sort(function (a, b) {
+                return b - a;
+            });
 
-            // Ordenar índices de mayor a menor para evitar errores al eliminar
-            aSelectedIndices.sort((a, b) => b - a);
+            const aDataToDelete = [];
 
-            // Extraer datos de las filas seleccionadas
-            aSelectedIndices.forEach(index => {
+            // 🔹 Armar payload para backend y eliminar del modelo local
+            aSortedIndices.forEach(function (index) {
                 if (index >= 0 && index < aLicenses.length) {
-                    let oRowData = aLicenses[index];
+                    const oRowData = aLicenses[index];
 
+                    // Armo objeto clave para el OData
                     aDataToDelete.push({
                         Id: oRowData.Id,
                         Empresa: oRowData.Empresa,
                         Tipo: oRowData.Tipo || "L",
                         Anio: oRowData.Anio,
-                        Dateturno: new Date(oRowData.Fecha),
+                        Dateturno: oFechaTurno     // JS Date usado como key
                     });
 
-                    aLicenses.splice(index, 1); // Eliminar del modelo local
+                    // Eliminar del array local
+                    aLicenses.splice(index, 1);
                 }
             });
 
-            // Actualizar modelo en la vista
-            oModel.setProperty("/", aLicenses);
-            oModel.refresh(true);
+            if (aDataToDelete.length === 0) {
+                MessageToast.show("No se encontraron filas válidas para eliminar.");
+                return;
+            }
+
+            // 🔹 Actualizar modelo local y limpiar selección
+            oJsonModel.setProperty("/", aLicenses);
+            oJsonModel.refresh(true);
             oTable.clearSelection();
 
-            MessageToast.show("Se ha eliminado la(s) licencia(s) seleccionada(s).");
+            // 🔹 Borrado en backend
+            const oDataModel = this.getView().getModel(); // ODataModel v2
 
-            //TODO BackEnd para eliminar en base hoy solo elimina local tabla
+            const aPromises = aDataToDelete.map(function (oItem) {
+                return new Promise(function (resolve, reject) {
+                    // Armar path de la entidad con la key
+                    const sPath = oDataModel.createKey("/TurnosLicenciasSet", {
+                        Id: oItem.Id,
+                        Empresa: oItem.Empresa,
+                        Tipo: oItem.Tipo,
+                        Anio: oItem.Anio,
+                        Dateturno: oItem.Dateturno
+                    });
 
-            this.deleteTurno(aDataToDelete);
+                    oDataModel.remove(sPath, {
+                        success: function () {
+                            resolve();
+                        },
+                        error: function (oError) {
+                            reject(oError);
+                        }
+                    });
+                });
+            });
+
+            Promise.all(aPromises)
+                .then(function () {
+                    const iCount = aDataToDelete.length;
+                    const sMsg = iCount === 1
+                        ? "La licencia seleccionada ha sido eliminada."
+                        : "Se han eliminado " + iCount + " licencias.";
+                    MessageToast.show(sMsg);
+                })
+                .catch(function (oError) {
+                    MessageBox.error("Ocurrió un error al eliminar en backend.");
+                    // console.error(oError); // si querés loguear
+                });
         },
+
+
         onDetachLicense: function () {
             var oTable = this.byId("turnosTable");
 
@@ -702,7 +815,8 @@ sap.ui.define([
 
             // Actualizar el modelo con el nuevo array
             oModel.setProperty(sPath + "/accionesEntregas", aAccionesEntregas);
-        }, onSaveTurnoPress: function () {
+        },
+        onSaveTurnoPress: function () {
 
             //  const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel",this.getView()).getProperty("/FechaTurno")
             const Fecha = this.getView().byId('date').getDateValue()
@@ -723,7 +837,8 @@ sap.ui.define([
                         Tipo: oRowData.Tipo,
                         Anio: oRowData.Anio,
                         Fecha: Fecha,
-                        Turno: oRowData.TurnoAsignado
+                        Turno: oRowData.TurnoAsignado,
+                        Comentarios: oRowData.Comentarios
 
                     }
 
@@ -749,34 +864,36 @@ sap.ui.define([
                     "Tipo": licencia.Tipo || "L",
                     "Anio": licencia.Anio,
                     "Dateturno": new Date(licencia.Fecha),
-                    "Turno": licencia.Turno
+                    "Turno": licencia.Turno,
+                    "Comentarios": licencia.Comentarios
                 };
 
                 oDataService.create(entity, license);
             });
-        }
-        , openAdvancedFilters: function () {
-            var oFiltersModel = AppManagementHelper.getModel("FiltersJsonModel");
-            var oHardCodeModel = AppManagementHelper.getModel("HardCodeModel");
-            var PersonalHabilitadoModel = AppManagementHelper.getModel("PersonalHabilitadoModel");
-            var oRepModel = AppManagementHelper.getModel("RepositionTimes");
-            var oSelectModel = AppManagementHelper.getModel("SelectModel");
-            var society = this.society;
+        },
+        openAdvancedFilters: function () {
+            const oView = this.getView();
+            const oFiltersModel = ModelHelper.getModel("FiltersJsonModel", oView);
+            const oHardCodeModel = ModelHelper.getModel("HardCodeModel", oView);
+            const PersonalHabilitadoModel = ModelHelper.getModel("PersonalHabilitadoModel", oView);
+            const oRepModel = ModelHelper.getModel("RepositionTimes", oView);
+            const oSelectModel = ModelHelper.getModel("SelectModel", oView);
+            const society = this.society;
 
-            // Carga los servicios necesarios
-            TipoEquipoService.loadTipoEquipo(society);
-            InterventionTypesService.getPromise();
+            // Carga servicios
+            TipoEquipoService.loadTipoEquipo(society, oView);
+            InterventionTypesService.getPromise(oView);
 
-            // Verifica si ya existe el diálogo
+            // Si el diálogo no existe
             if (!this.advancedFilters) {
-                // Carga el fragmento y lo inserta en el diálogo
-                var oView = this.getView();
+
                 Fragment.load({
                     id: oView.getId(),
                     name: "transener.sistemadeturnos.fragments.advancedFilters",
                     controller: this
-                }).then(function (oDialogContent) {
-                    var oDialog = new sap.m.Dialog({
+                }).then((oDialogContent) => {
+
+                    const oDialog = new sap.m.Dialog({
                         title: "Filtros Avanzados",
                         contentWidth: "60%",
                         modal: true,
@@ -785,56 +902,189 @@ sap.ui.define([
                             new sap.m.Button({
                                 text: "Cancelar",
                                 icon: "sap-icon://decline",
-                                press: this.closeAdvancedFilters.bind(this)
+                                press: () => this.closeAdvancedFilters()
                             }).addStyleClass("buttonInverted floatLeft"),
+
                             new sap.m.Button({
                                 text: "Limpiar",
                                 icon: "sap-icon://document",
-                                press: this.clearAdvancedFilters.bind(this)
+                                press: () => this.clearAdvancedFilters()
                             }).addStyleClass("buttonInverted floatLeft"),
+
                             new sap.m.Button({
                                 text: "Aplicar",
                                 icon: "sap-icon://search",
-                                press: this.makeFilters.bind(this)
+                                press: () => this.makeFilters()
                             }).addStyleClass("buttonInverted floatRight")
                         ]
                     }).addStyleClass("customDialog");
 
-                    // Asignar los modelos al diálogo
-                    oDialog.setModel(AppManagementHelper.getModel("WorkPlacesJsonModel"), "WorkPlacesJsonModel");
+                    // Set models
+                    oDialog.setModel(ModelHelper.getModel("WorkPlacesJsonModel", oView), "WorkPlacesJsonModel");
                     oDialog.setModel(oView.getModel("GrupoPlanificador"), "GrupoPlanificador");
-                    oDialog.setModel(AppManagementHelper.getModel("TiposIntervencion"), "TiposIntervencion");
-                    oDialog.setModel(AppManagementHelper.getModel("TipoEquipoJsonModel"), "TipoEquipoJsonModel");
+                    oDialog.setModel(ModelHelper.getModel("TiposIntervencion", oView), "TiposIntervencion");
+                    oDialog.setModel(ModelHelper.getModel("TipoEquipoJsonModel", oView), "TipoEquipoJsonModel");
                     oDialog.setModel(oSelectModel, "SelectModel");
                     oDialog.setModel(oFiltersModel, "FiltersJsonModel");
                     oDialog.setModel(oHardCodeModel, "HardCodeModel");
                     oDialog.setModel(PersonalHabilitadoModel, "PersonalHabilitadoModel");
                     oDialog.setModel(oRepModel, "RepositionTimes");
-                    oDialog.setModel(oView.getModel("RepositionTimes"), "RepositionTimes");
-                    oDialog.setModel(AppManagementHelper.getModel("TipoLicFiltersModel"), "TipoLicFiltersModel");
-                    oDialog.setModel(AppManagementHelper.getModel("CheckAdvancedFiltersModel"), "CheckAdvancedFiltersModel");
+                    oDialog.setModel(ModelHelper.getModel("TipoLicFiltersModel", oView), "TipoLicFiltersModel");
+                    oDialog.setModel(ModelHelper.getModel("CheckAdvancedFiltersModel", oView), "CheckAdvancedFiltersModel");
 
                     this.advancedFilters = oDialog;
                     this.advancedFilters.open();
-                }.bind(this));
+                });
+
             } else {
-                // Si ya existe el diálogo, actualiza los modelos y ábrelo
+                // Si ya existe
                 this.advancedFilters.setModel(PersonalHabilitadoModel, "PersonalHabilitadoModel");
                 this.advancedFilters.setModel(oSelectModel, "SelectModel");
                 this.advancedFilters.setModel(oHardCodeModel, "HardCodeModel");
                 this.advancedFilters.setModel(oFiltersModel, "FiltersJsonModel");
                 this.advancedFilters.setModel(oRepModel, "RepositionTimes");
-                this.advancedFilters.setModel(this.getView().getModel("RepositionTimes"), "RepositionTimes");
-                this.advancedFilters.setModel(AppManagementHelper.getModel("WorkPlacesJsonModel"), "WorkPlacesJsonModel");
-                this.advancedFilters.setModel(this.getView().getModel("GrupoPlanificador"), "GrupoPlanificador");
-                this.advancedFilters.setModel(AppManagementHelper.getModel("TipoLicFiltersModel"), "TipoLicFiltersModel");
-                this.advancedFilters.setModel(AppManagementHelper.getModel("CheckAdvancedFiltersModel"), "CheckAdvancedFiltersModel");
+                this.advancedFilters.setModel(oView.getModel("RepositionTimes"), "RepositionTimes");
+                this.advancedFilters.setModel(ModelHelper.getModel("WorkPlacesJsonModel", oView), "WorkPlacesJsonModel");
+                this.advancedFilters.setModel(oView.getModel("GrupoPlanificador"), "GrupoPlanificador");
+                this.advancedFilters.setModel(ModelHelper.getModel("TipoLicFiltersModel", oView), "TipoLicFiltersModel");
+                this.advancedFilters.setModel(ModelHelper.getModel("CheckAdvancedFiltersModel", oView), "CheckAdvancedFiltersModel");
                 this.advancedFilters.open();
             }
         },
 
+
         closeAdvancedFilters: function () {
             this.advancedFilters.close();
+        },
+        _cascadeGroupsDown: function (aLicences, startIndex, oTimeControl) {
+
+            var ValueState = CoreLibrary.ValueState;
+
+            if (startIndex < 0 || startIndex >= aLicences.length) {
+                return;
+            }
+
+            var baseLicence = aLicences[startIndex];
+            var consola = baseLicence.Consola;
+
+            if (!consola) {
+                return;
+            }
+
+            // 1) Armamos grupos SOLO de esa consola
+            var groupsMap = {};
+            aLicences.forEach(function (lic, idx) {
+                if (lic.Consola !== consola) return;
+
+                var grupo = lic.Grupo || lic.Equnr || "";
+                if (!groupsMap[grupo]) {
+                    groupsMap[grupo] = {
+                        grupo: grupo,
+                        items: [],
+                        firstIndex: idx
+                    };
+                }
+                groupsMap[grupo].items.push(lic);
+                if (idx < groupsMap[grupo].firstIndex) {
+                    groupsMap[grupo].firstIndex = idx;
+                }
+            });
+
+            var groups = Object.keys(groupsMap).map(function (k) {
+                return groupsMap[k];
+            });
+
+            groups.sort(function (a, b) {
+                return a.firstIndex - b.firstIndex;
+            });
+
+            var editedGroupIndex = groups.findIndex(function (g) {
+                return g.items.indexOf(baseLicence) !== -1;
+            });
+
+            if (editedGroupIndex === -1) {
+                return;
+            }
+
+            var upperWarning = false;
+
+            var prevGroup = groups[editedGroupIndex];
+            var firstWithTurno = prevGroup.items.find(function (it) { return !!it.TurnoAsignado; });
+
+            if (!firstWithTurno) {
+                return;
+            }
+
+            // VALIDAR contra el grupo anterior
+            if (editedGroupIndex > 0) {
+                var upperGroup = groups[editedGroupIndex - 1];
+                var upperFirstWithTurno = upperGroup.items.find(function (it) { return !!it.TurnoAsignado; });
+
+                if (upperFirstWithTurno) {
+                    var upperStart = this._convertShiftToMinutes(upperFirstWithTurno.TurnoAsignado);
+
+                    var upperInfo = Utils.getShiftInfo(upperGroup.items[0]);
+                    var minAllowedStart = upperStart + upperInfo.duration;
+
+                    var newStart = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
+
+                    if (newStart < minAllowedStart) {
+                        upperWarning = true;
+                    }
+                }
+            }
+
+            // CASCADA HACIA ABAJO
+            var prevStart = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
+            var warnings = [];
+
+            for (var i = editedGroupIndex + 1; i < groups.length; i++) {
+                var group = groups[i];
+
+                var gFirstWithTurno = group.items.find(function (it) { return !!it.TurnoAsignado; });
+                if (!gFirstWithTurno) {
+                    continue;
+                }
+
+                var prevInfo = Utils.getShiftInfo(prevGroup.items[0]);
+                var expectedStart = prevStart + prevInfo.duration;
+                var currentStart = this._convertShiftToMinutes(gFirstWithTurno.TurnoAsignado);
+
+                if (expectedStart < currentStart) {
+                    warnings.push(group);
+                    prevGroup = group;
+                    prevStart = currentStart;
+                    continue;
+                }
+
+                var newTimeStr = this._formatTime(expectedStart);
+                group.items.forEach(function (it) {
+                    it.TurnoAsignado = newTimeStr;
+                });
+
+                prevGroup = group;
+                prevStart = expectedStart;
+            }
+
+            // Mensajes
+            if (upperWarning && warnings.length > 0) {
+                MessageToast.show("El turno comienza antes de la separación mínima y algunos grupos no se ajustaron para evitar adelantar turnos.");
+            } else if (upperWarning) {
+                MessageToast.show("El turno comienza antes de la separación mínima con el grupo anterior.");
+            } else if (warnings.length > 0) {
+                MessageToast.show("Algunos grupos no se ajustaron para evitar adelantar turnos.");
+            }
+
+            // VALUE STATE
+            if (oTimeControl) {
+                if (upperWarning) {
+                    oTimeControl.setValueState(ValueState.Error);
+                    oTimeControl.setValueStateText("El turno comienza antes de la separación mínima con el grupo anterior.");
+                } else {
+                    oTimeControl.setValueState(ValueState.None);
+                    oTimeControl.setValueStateText("");
+                }
+            }
         },
 
     });

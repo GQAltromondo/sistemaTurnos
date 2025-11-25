@@ -1,6 +1,6 @@
 _schema-version: "3.2"
 ID: sistemaTurnos
-version: 0.0.1
+version: 0.0.2
 modules:
 - name: sistemaTurnos-destination-content
   type: com.sap.application.content

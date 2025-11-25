@@ -174,7 +174,7 @@
 										</t:template>
 									</t:Column>
 
-									<t:Column hAlign="Center" width="140px" sortProperty="TurnoAsignado" filterProperty="TurnoAsignado">
+									<t:Column hAlign="Center" width="140px" filterProperty="TurnoAsignado">
 										<Label text="{i18n>shift}" textAlign="Center"/>
 										<t:template>
 											<HBox alignItems="Center" justifyContent="SpaceBetween">
@@ -183,10 +183,10 @@
 										</t:template>
 									</t:Column>
 
-									<t:Column id="comment" hAlign="Center" sortProperty="Prgcomments" filterProperty="Prgcomments">
+									<t:Column id="comment" hAlign="Center" sortProperty="Comentarios" filterProperty="Comentarios">
 										<Label text="{i18n>comment}"/>
 										<t:template>
-											<Input value="{LicencesJsonModel>Prgcomments}" />
+											<Input value="{LicencesJsonModel>Comentarios}" />
 										</t:template>
 									</t:Column>
 

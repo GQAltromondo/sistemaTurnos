@@ -1,5 +1,5 @@
 {
-  "xsappname": "sistematurnos",
+  "xsappname": "sistemadeturnos",
   "tenant-mode": "dedicated",
   "description": "Security profile of called application",
   "scopes": [

@@ -202,6 +202,7 @@ sap.ui.define([
                         license.TurnosLicencias_nav.results.length > 0) {
 
                         license.TurnoAsignado = license.TurnosLicencias_nav.results[0].Turno;
+                        license.Comentarios = license.TurnosLicencias_nav.results[0].Comentarios
                         return;
                     }
 
