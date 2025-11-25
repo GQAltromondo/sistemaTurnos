@@ -171,51 +171,83 @@ sap.ui.define([
             });
             return data;
         },
-        assignShiftsToLicences: function (licences, oView) {
-            // Fecha seleccionada en el DatePicker
-            const selectedDate = oView.byId("date").getDateValue(); // Date
+        assignShiftsToLicences: function (licences) {
+    const initialTime = 7 * 60; // 7:00 AM en minutos
 
-            // Función para comparar solo año/mes/día
-            const isSameDay = (d1, d2) => {
-                if (!(d1 instanceof Date) || !(d2 instanceof Date)) {
-                    return false;
-                }
-                return d1.getFullYear() === d2.getFullYear() &&
-                    d1.getMonth() === d2.getMonth() &&
-                    d1.getDate() === d2.getDate();
-            };
+    // Asegurar Grupo por defecto
+    licences.forEach((license) => {
+        if (!license.Grupo) {
+            license.Grupo = license.Equnr;
+        }
+    });
 
-            licences.forEach((license) => {
-                // Por las dudas, limpiamos primero
-                license.TurnoAsignado = null;
-                license.Comentarios = null;
+    // Agrupar por Consola
+    const groupedByConsola = {};
+    licences.forEach((license) => {
+        const consola = license.Consola || "";
+        if (!groupedByConsola[consola]) {
+            groupedByConsola[consola] = [];
+        }
+        groupedByConsola[consola].push(license);
+    });
 
-                const navResults = license.TurnosLicencias_nav?.results;
-                if (!Array.isArray(navResults) || navResults.length === 0) {
-                    return; // no tiene turnos en backend, nada que hacer
-                }
+    Object.keys(groupedByConsola).forEach((consola) => {
+        let currentTime = initialTime;
+        let previousGrupo = "";
+        let firstShiftInGroup = "";
 
-                // Buscar el registro cuyo Dateturno coincida con el día seleccionado
-                const match = navResults.find((r) => {
-                    // Ajustá el nombre del campo si en el nav se llama distinto
-                    const navDate = r.Dateturno || r.DateTurno;
-                    return isSameDay(navDate, selectedDate);
-                });
+        groupedByConsola[consola].forEach((license) => {
 
-                if (match) {
-                    // Usamos el turno y los comentarios del backend para ese día
-                    license.TurnoAsignado = match.Turno;
-                    license.Comentarios = match.Comentarios;
-                }
-            });
+            // 1) Si ya viene con turno desde backend, respetarlo
+            if (Array.isArray(license.TurnosLicencias_nav?.results) &&
+                license.TurnosLicencias_nav.results.length > 0) {
 
-            // Si querés, podés ordenar las licencias por TurnoAsignado:
-            licences.sort((a, b) => {
-                const ta = a.TurnoAsignado || "";
-                const tb = b.TurnoAsignado || "";
-                return ta.localeCompare(tb);
-            });
-        },
+                const nav = license.TurnosLicencias_nav.results[0];
+
+                license.TurnoAsignado = nav.Turno;
+                license.Comentarios   = nav.Comentarios;
+
+                return;
+            }
+
+            // 2) Obtener duración
+            const shiftInfo = Utils.getShiftInfo(license);
+            const shiftDuration = shiftInfo.duration;
+
+            // 3) Desacoplados
+            if (license.Grupo && license.Grupo.startsWith("_")) {
+                license.TurnoAsignado = this._formatTime(currentTime);
+                currentTime += shiftDuration;
+                return;
+            }
+
+            // 4) Grupos normales
+            if (license.Grupo !== previousGrupo) {
+                previousGrupo = license.Grupo;
+
+                firstShiftInGroup = this._formatTime(currentTime);
+                license.TurnoAsignado = firstShiftInGroup;
+
+                currentTime += shiftDuration;
+            } else {
+                license.TurnoAsignado = firstShiftInGroup;
+            }
+        });
+
+        // Ordenar por turno asignado
+        groupedByConsola[consola].sort((a, b) =>
+            this._convertTimeToMinutes(a.TurnoAsignado) -
+            this._convertTimeToMinutes(b.TurnoAsignado)
+        );
+    });
+
+    // Reconstruir array final
+    licences.length = 0;
+    Object.keys(groupedByConsola).forEach((consola) => {
+        licences.push(...groupedByConsola[consola]);
+    });
+}
+,
 
 
         _formatTime: function (iMinutes) {
