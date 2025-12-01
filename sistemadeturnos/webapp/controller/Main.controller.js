@@ -5,6 +5,7 @@ sap.ui.define([
     "sap/ui/core/library",
     "sap/ui/model/Filter",
     "sap/ui/model/FilterOperator",
+    "sap/ui/model/json/JSONModel",
     "sap/ui/core/Fragment",
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/FormatHelper",
@@ -15,7 +16,7 @@ sap.ui.define([
     "transener/sistemadeturnos/services/InterventionTypesService",
 
 
-], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, Fragment,
+], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment,
     //utils
     ModelHelper, FormatHelper, Utils,
     //services
@@ -214,6 +215,28 @@ sap.ui.define([
 
                     oLicencesModel.setData(arrayOrdenado);
                     Utils.onCountItems(oView, arrayOrdenado);
+
+                    //Clonamos la informacion
+                    const arrayClonado = JSON.parse(JSON.stringify(arrayOrdenado));
+
+                    //Ordenamos por turno
+                    arrayClonado.sort(sortByTurnoAsignado);
+
+                    //Modelo que usa la tabla cronologica.
+                    const oListCronoModel = new JSONModel(arrayClonado);
+                    oView.setModel(oListCronoModel, "listCronoModel");
+
+                    //Funcion para orndear por turno
+                    function sortByTurnoAsignado(a, b) {
+                        const toMinutes = (hora) => {
+                            if (!hora) return 0;
+                            const [h, m] = hora.split(":").map(Number);
+                            return h * 60 + m;
+                        };
+
+                        return toMinutes(a.TurnoAsignado) - toMinutes(b.TurnoAsignado);
+                    }
+
                 })
                 .catch((error) => {
                     console.error("Error inesperado en Promise.all:", error);
