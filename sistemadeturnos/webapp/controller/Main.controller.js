@@ -1110,5 +1110,29 @@ sap.ui.define([
             }
         },
 
+        onLicenseSearch: function (oEvent) {
+            const sQuery = oEvent.getParameter("newValue")?.trim() || "";
+            const oTable = this.byId("idLicensesTable");
+            const oBinding = oTable.getBinding("items");
+
+            if (!sQuery) {
+                oBinding.filter([]);  // Quita filtros
+                return;
+            }
+
+            const aFilters = [
+                new sap.ui.model.Filter("Id", sap.ui.model.FilterOperator.Contains, sQuery),
+                new sap.ui.model.Filter("Equnr", sap.ui.model.FilterOperator.Contains, sQuery),
+                new sap.ui.model.Filter("Comments", sap.ui.model.FilterOperator.Contains, sQuery)
+            ];
+
+            const oOrFilter = new sap.ui.model.Filter({
+                filters: aFilters,
+                and: false  // OR
+            });
+
+            oBinding.filter([oOrFilter]);
+        }
+
     });
 });
