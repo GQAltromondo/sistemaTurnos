@@ -226,7 +226,7 @@
 						<Text text="V{appVersion>/version}" class="textWhite"/>
 						<ToolbarSpacer/>
 						<Button icon="sap-icon://save" text="{i18n>saveTurno}" enabled="{enabledModel>/btnGuardar}" press="onSaveTurnoPress"/>
-						<Button icon="sap-icon://create-form" text="{i18n>createTurno}" enabled="{enabledModel>/btnCrear}" press="onSearch"/>
+						<Button icon="sap-icon://create-form" text="{i18n>createTurno}"  press="onSearch"/>
 						<Button icon="sap-icon://email" text="{i18n>sendEmail}" enabled="{enabledModel>/btnEnviar}" press="onSendEmailPress"/>
 					</OverflowToolbar>
 				</footer>

@@ -138,23 +138,137 @@ sap.ui.define([
             });
         },
         onSearch: function () {
-            var dateTurno = this.byId("date");
-            var oTable = this.byId("turnosTable");
+            this._openFechaTurnoPopup();
+        },
 
-            var oDateValue = dateTurno.getDateValue();
+        _checkExistingTurnoAndProceed: function (oDateValue) {
+            const oView = this.getView();
+            const oDataService = oView.getModel();
 
-            if (!oDateValue) {
-                sap.m.MessageToast.show("Seleccione una fecha");
+            const sFormattedDate = FormatHelper.formatDate(oDateValue);
+            ModelHelper.getModel("LicencesTurnoJsonModel", oView).setProperty("/FechaTurno", sFormattedDate);
+
+            this.showGlobalBusy("Buscando turnos creados…");
+
+            const aFilters = [
+                new sap.ui.model.Filter("Dateturno", sap.ui.model.FilterOperator.EQ, oDateValue),
+                new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, "100")
+            ];
+
+            oDataService.read("/TurnosLicenciasSet", {
+                filters: aFilters,
+                success: (oData) => {
+                    const aRes = (oData && oData.results) ? oData.results : [];
+
+                    // ✅ existe -> preguntar editar
+                    if (aRes.length) {
+                        this.hideGlobalBusy();
+                        this._resetDefaultTurnoModel();
+                        sap.m.MessageBox.warning("Ya existe un turno para esta fecha.", {
+                            actions: ["Editar", "Cancelar"],
+                            emphasizedAction: "Editar",
+                            onClose: (sAction) => {
+                                if (sAction === "Editar") {
+                                    this.showGlobalBusy("Cargando turno…");
+                                    this._resetDefaultTurnoModel();
+
+                                    ModelHelper.getModel("enabledModel", oView).setData({
+                                        btnCrear: true,
+                                        btnGuardar: true,
+                                        btnEnviar: true
+                                    });
+
+                                    this.successSelectTurno(oData)
+                                        .catch((err) => console.error("Error en successSelectTurno:", err))
+                                        .finally(() => this.hideGlobalBusy());
+                                }
+                            }
+                        });
+
+                        return;
+                    }
+
+
+                    this.hideGlobalBusy();
+                    this._resetDefaultTurnoModel();
+                    this._doSearchTurnos(oDateValue);
+                },
+                error: (oError) => {
+                    console.error(oError);
+
+                    const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
+                    oLicencesModel.setData([]);
+                    oLicencesModel.refresh();
+                    Utils.onCountItems(this.getView(), []);
+                    this.hideGlobalBusy();
+                }
+            });
+        },
+
+
+        _openFechaTurnoPopup: function () {
+            var oView = this.getView();
+            var that = this;
+
+            if (this._oFechaTurnoDialog) {
+                this._oFechaTurnoPicker.setDateValue(new Date());
+                this._oFechaTurnoDialog.open();
                 return;
             }
 
+            this._oFechaTurnoPicker = new sap.m.DatePicker({
+                width: "100%",
+                dateValue: new Date(),
+                displayFormat: "dd/MM/yyyy",
+                valueFormat: "yyyy-MM-dd",
+                placeholder: "Seleccione una fecha"
+            });
 
-            const FechaTurno = oDateValue;
+            this._oFechaTurnoDialog = new sap.m.Dialog({
+                title: "Seleccionar fecha",
+                contentWidth: "22rem",
+                content: [
+                    new sap.m.VBox({
+                        width: "100%",
+                        alignItems: "Center",
+                        justifyContent: "Center",
+                        items: [
+                            this._oFechaTurnoPicker.addStyleClass("sapUiSmallMarginTop")
+                        ]
+                    })
+                ],
+                beginButton: new sap.m.Button({
+                    text: "Buscar",
+                    type: "Emphasized",
+                    press: function () {
+                        var oDateValue = that._oFechaTurnoPicker.getDateValue();
+                        if (!oDateValue) {
+                            sap.m.MessageToast.show("Seleccione una fecha");
+                            return;
+                        }
+                        that._oFechaTurnoDialog.close();
+                        that._checkExistingTurnoAndProceed(oDateValue);
+                    }
+                }),
+                endButton: new sap.m.Button({
+                    text: "Cancelar",
+                    press: function () {
+                        that._oFechaTurnoDialog.close();
+                    }
+                })
+            });
 
+            oView.addDependent(this._oFechaTurnoDialog);
+            this._oFechaTurnoDialog.open();
+        },
+
+
+        _doSearchTurnos: function (FechaTurno) {
+            var oTable = this.byId("turnosTable");
             var oLicencesModel = ModelHelper.getModel("LicencesJsonModel", this.getView());
+
             oLicencesModel.setData([]);
             oTable.setBusy(true);
-
 
             TurnosService.search({ FechaTurno, oView: this.getView(), isRefresh: false })
                 .then((data) => {
@@ -169,9 +283,56 @@ sap.ui.define([
                     oLicencesModel.refresh();
                     oTable.setBusy(false);
                 });
-
-            this.closeDialog();
         },
+
+
+        // onSearch: function () {
+        //     var dateTurno = this.byId("date");
+        //     var oTable = this.byId("turnosTable");
+
+        //     var oDateValue = dateTurno.getDateValue();
+
+        //     if (!oDateValue) {
+        //         sap.m.MessageToast.show("Seleccione una fecha");
+        //         return;
+        //     }
+
+
+        //     const FechaTurno = oDateValue;
+
+        //     var oLicencesModel = ModelHelper.getModel("LicencesJsonModel", this.getView());
+        //     oLicencesModel.setData([]);
+        //     oTable.setBusy(true);
+
+
+        //     TurnosService.search({ FechaTurno, oView: this.getView(), isRefresh: false })
+        //         .then((data) => {
+        //             oLicencesModel.setData(data);
+        //             oLicencesModel.refresh();
+        //             oTable.setBusy(false);
+        //             Utils.onCountItems(this.getView(), data);
+        //         })
+        //         .catch((error) => {
+        //             console.error("Error en la búsqueda:", error);
+        //             oLicencesModel.setData([]);
+        //             oLicencesModel.refresh();
+        //             oTable.setBusy(false);
+        //         });
+
+        //     this.closeDialog();
+        // },
+        _resetDefaultTurnoModel: function () {
+            const oView = this.getView();
+
+            const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
+            if (oLicencesModel) {
+                oLicencesModel.setData([]);
+                oLicencesModel.refresh(true);
+            }
+
+            Utils.onCountItems(oView, []);
+        },
+
         successSelectTurno: function (data) {
             const oView = this.getView();
             const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
