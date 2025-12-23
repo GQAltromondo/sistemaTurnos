@@ -202,9 +202,9 @@
 													visible="{= !${LicencesJsonModel>AttachmentData} }"
 													class="sapUiTinyMarginEnd"/>
 												<Button 
-													icon="sap-icon://download" 
+													icon="sap-icon://show" 
 													type="Emphasized"
-													tooltip="{i18n>downloadFile}"
+													tooltip="{i18n>viewFile}"
 													press="onDownloadFile"
 													visible="{= !!${LicencesJsonModel>AttachmentData} }"
 													class="sapUiTinyMarginEnd"/>
@@ -218,7 +218,6 @@
 											</HBox>
 										</t:template>
 									</t:Column>
-
 								</t:columns>
 							</t:Table>
 						</IconTabFilter>

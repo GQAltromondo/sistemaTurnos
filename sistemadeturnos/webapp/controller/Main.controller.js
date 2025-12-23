@@ -978,15 +978,19 @@ sap.ui.define([
             oModel.setProperty(sPath + "/accionesEntregas", aAccionesEntregas);
         },
         onSaveTurnoPress: function () {
+
+            //  const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel",this.getView()).getProperty("/FechaTurno")
             const Fecha = this.getView().byId('date').getDateValue()
             const oTable = this.getView().byId('turnosTable');
-            const aRows = oTable.getRows();
-            const aData = [];
-            let hasAttachments = false; // ✨ NUEVO
+            const aRows = oTable.getRows(); // Obtén las filas visibles de la tabla
+            const aData = []; // Array para almacenar los datos de cada fila
+            let hasAttachments = false;
 
             aRows.forEach(function (oRow) {
+                // Accede al contexto de cada fila (a través del modelo asociado)
                 const oContext = oRow.getBindingContext("LicencesJsonModel");
                 if (oContext) {
+                    // Obtén los datos de la fila a través del contexto
                     const oRowData = oContext.getObject();
 
                     const row = {
@@ -999,7 +1003,7 @@ sap.ui.define([
                         Comentarios: oRowData.Comentarios
                     }
 
-                    // ✨ NUEVO: Incluir datos de adjunto si existen
+                    // Incluir datos de adjunto si existen
                     if (oRowData.AttachmentData) {
                         hasAttachments = true;
                         row.AttachmentData = oRowData.AttachmentData;
@@ -1009,12 +1013,13 @@ sap.ui.define([
                     }
 
                     aData.push(row);
+
                 }
             });
 
             console.log("Datos de cada fila:", aData);
 
-            // ✨ NUEVO: Mostrar advertencia si hay archivos adjuntos
+            // Mostrar advertencia si hay archivos adjuntos
             if (hasAttachments) {
                 MessageBox.information(
                     this.getView().getModel("i18n").getResourceBundle().getText("backendNotIntegrated") +
@@ -1266,18 +1271,17 @@ sap.ui.define([
             }
         },
 
+        // ==================== MÉTODOS PARA ADJUNTAR ARCHIVOS PDF ====================
+
         onAttachFile: function (oEvent) {
-            // Guardar el contexto de la fila
             this._currentAttachmentContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
 
-            // Crear un input file oculto para seleccionar el archivo
             if (!this._fileInput) {
                 this._fileInput = document.createElement("input");
                 this._fileInput.type = "file";
                 this._fileInput.accept = "application/pdf";
                 this._fileInput.style.display = "none";
 
-                // Evento cuando se selecciona un archivo
                 this._fileInput.addEventListener("change", function (e) {
                     this._handleFileSelection(e);
                 }.bind(this));
@@ -1285,7 +1289,6 @@ sap.ui.define([
                 document.body.appendChild(this._fileInput);
             }
 
-            // Resetear el input y abrirlo
             this._fileInput.value = null;
             this._fileInput.click();
         },
@@ -1297,30 +1300,27 @@ sap.ui.define([
                 return;
             }
 
-            // Validar que sea PDF
             if (file.type !== "application/pdf") {
                 MessageBox.error(this.getView().getModel("i18n").getResourceBundle().getText("invalidFileType"));
                 return;
             }
 
-            // Validar tamaño (máximo 5MB)
-            const maxSize = 5 * 1024 * 1024; // 5MB en bytes
+            const maxSize = 5 * 1024 * 1024; 
             if (file.size > maxSize) {
                 MessageBox.error(this.getView().getModel("i18n").getResourceBundle().getText("fileTooLarge"));
                 return;
             }
 
-            // Convertir a Base64
             this._convertFileToBase64(file);
         },
 
+        // Convertir a Base64
         _convertFileToBase64: function (file) {
             const reader = new FileReader();
 
             reader.onload = function (e) {
                 const base64String = e.target.result;
 
-                // Guardar en el modelo
                 if (this._currentAttachmentContext) {
                     const oModel = this.getView().getModel("LicencesJsonModel");
                     const sPath = this._currentAttachmentContext.getPath();
@@ -1337,12 +1337,13 @@ sap.ui.define([
             }.bind(this);
 
             reader.onerror = function () {
-                MessageBox.error("Error al leer el archivo. Por favor, intente nuevamente.");
+                MessageBox.error(this.getView().getModel("i18n").getResourceBundle().getText("fileUploadError"));
             };
 
             reader.readAsDataURL(file);
         },
 
+        //Maneja la visualización del archivo adjunto 
         onDownloadFile: function (oEvent) {
             const oContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
 
@@ -1353,20 +1354,73 @@ sap.ui.define([
             const oData = oContext.getObject();
 
             if (!oData.AttachmentData) {
-                MessageToast.show("No hay archivo adjunto para descargar.");
+                MessageToast.show("No hay archivo adjunto para visualizar.");
                 return;
             }
 
-            // Crear un enlace temporal para descargar
-            const link = document.createElement("a");
-            link.href = oData.AttachmentData;
-            link.download = oData.AttachmentName || "archivo.pdf";
+            this._currentPDFData = {
+                data: oData.AttachmentData,
+                name: oData.AttachmentName || "archivo.pdf"
+            };
 
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            this._openPDFViewer(oData.AttachmentData);
+        },
 
-            MessageToast.show("Descargando archivo: " + link.download);
+        _openPDFViewer: function (base64Data) {
+            const oView = this.getView();
+
+            if (!this._pdfViewerDialog) {
+                Fragment.load({
+                    id: oView.getId(),
+                    name: "transener.sistemadeturnos.fragments.PDFViewer",
+                    controller: this
+                }).then(function (oDialog) {
+                    this._pdfViewerDialog = oDialog;
+                    oView.addDependent(oDialog);
+                    this._setPDFContent(base64Data);
+                    oDialog.open();
+                }.bind(this));
+            } else {
+                this._setPDFContent(base64Data);
+                this._pdfViewerDialog.open();
+            }
+        },
+
+        //Contenido del PDF
+        _setPDFContent: function (base64Data) {
+            const oHTMLControl = this.byId("pdfViewerContent");
+            if (oHTMLControl) {
+                const sHTMLContent =
+                    '<iframe src="' + base64Data + '" ' +
+                    'width="100%" height="600px" ' +
+                    'style="border: none;" ' +
+                    'type="application/pdf">' +
+                    '</iframe>';
+                oHTMLControl.setContent(sHTMLContent);
+            }
+        },
+
+        onAcceptPDFViewer: function () {
+            MessageToast.show("PDF visualizado correctamente");
+            this._pdfViewerDialog.close();
+        },
+
+        onClosePDFViewer: function () {
+            this._pdfViewerDialog.close();
+        },
+
+        onDownloadFromViewer: function () {
+            if (this._currentPDFData) {
+                const link = document.createElement("a");
+                link.href = this._currentPDFData.data;
+                link.download = this._currentPDFData.name;
+
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                MessageToast.show("Descargando archivo: " + this._currentPDFData.name);
+            }
         },
 
         onDeleteAttachment: function (oEvent) {
@@ -1383,7 +1437,6 @@ sap.ui.define([
                         const oModel = this.getView().getModel("LicencesJsonModel");
                         const sPath = oContext.getPath();
 
-                        // Eliminar las propiedades del adjunto
                         oModel.setProperty(sPath + "/AttachmentData", null);
                         oModel.setProperty(sPath + "/AttachmentName", null);
                         oModel.setProperty(sPath + "/AttachmentSize", null);
@@ -1396,5 +1449,6 @@ sap.ui.define([
                 }.bind(this)
             });
         },
+
     });
 });
