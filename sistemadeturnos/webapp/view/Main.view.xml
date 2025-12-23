@@ -195,23 +195,103 @@
 						</IconTabFilter>
 
 
-						<IconTabFilter text="Listado Cronologico" key="OTRA">
-							<t:Table id="cronoTable" rows="{cronoModel>/}">
-
+						<IconTabFilter text="Listado Cronologico" key="CRONO">
+							<t:Table id="cronoTable" rows="{listCronoModel>/}">
 								<t:columns>
-									<t:Column hAlign="Center" width="150px" sortProperty="Campo1" filterProperty="Campo1">
-										<Label text="Campo 1"/>
+
+									<t:Column id="equipmentCrono" width="100px" class="customColumnBackground"
+											hAlign="Center" sortProperty="equipment" filterProperty="equipment">
+										<Label text="{i18n>equipment}"/>
 										<t:template>
-											<Text text="{cronoModel>Campo1}"/>
+											<Text text="{listCronoModel>Equnr}"
+												wrapping="false"
+												class="{= ${firstItem} ? 'text-bold' : '' }"/>
 										</t:template>
 									</t:Column>
 
-									<t:Column hAlign="Center" width="200px" sortProperty="Campo2" filterProperty="Campo2">
-										<Label text="Campo 2"/>
+									<t:Column hAlign="Center" width="200px" sortProperty="Id" filterProperty="Id">
+										<Label text="IdLicencia"/>
 										<t:template>
-											<Text text="{cronoModel>Campo2}"/>
+											<Text text="{path: 'listCronoModel>Id', formatter: '.formatter.getJobCond'}"
+												textAlign="Center"
+												wrapping="true"/>
 										</t:template>
 									</t:Column>
+
+									<t:Column id="statusCrono" width="88px" hAlign="Center"
+											sortProperty="Equstat" filterProperty="Equstat">
+										<Label text="{i18n>status}" class="back"/>
+										<t:template>
+											<Text text="{ path: 'listCronoModel>Equstat' ,formatter: '.formatter.getEstado' }"
+												wrapping="false"/>
+										</t:template>
+									</t:Column>
+
+									<t:Column hAlign="Center" width="200px"
+											sortProperty="Jobcond" filterProperty="Jobcond">
+										<Label text="{i18n>conditionWork}"/>
+										<t:template>
+											<Text text="{path: 'listCronoModel>Jobcond', formatter: '.formatter.getJobCond'}"
+												textAlign="Center"
+												wrapping="true"/>
+										</t:template>
+									</t:Column>
+
+									<t:Column id="initHourCrono" hAlign="Center"
+											sortProperty="initHour" filterProperty="initHour">
+										<Label text="{i18n>initHour}" textAlign="Center"/>
+										<t:template>
+											
+											<Text text="{path:'listCronoModel>Gdate', formatter: '.formatter.msTohoursSeconds'}"
+												class="text-bold"
+												wrapping="false"/>
+											
+										</t:template>
+									</t:Column>
+
+									<t:Column id="toDoWorkCrono" width="250px"
+											sortProperty="Comments" filterProperty="Comments">
+										<Label text="{i18n>toDoWork}"/>
+										<t:template>
+											<Text text="{listCronoModel>Comments}" wrapping="false"/>
+										</t:template>
+									</t:Column>
+
+									<t:Column id="regionCrono" width="200px" hAlign="Center"
+											sortProperty="Werks" filterProperty="Werks">
+										<Label text="{i18n>region}"/>
+										<t:template>
+											<Text text="{path: 'listCronoModel>Werks', formatter: '.formatter.getRegiones'}"
+												textAlign="Center"
+												wrapping="true"/>
+										</t:template>
+									</t:Column>
+
+									<t:Column id="consoleCrono" hAlign="Center"
+											sortProperty="Consola" filterProperty="Consola">
+										<Label text="{i18n>console}"/>
+										<t:template>
+											<Text text="{listCronoModel>Consola}" wrapping="false"/>
+										</t:template>
+									</t:Column>
+
+									<t:Column hAlign="Center" width="140px" filterProperty="TurnoAsignado">
+										<Label text="{i18n>shift}" textAlign="Center"/>
+										<t:template>
+											
+											<Text text="{listCronoModel>TurnoAsignado}"
+												wrapping="false"/>
+										</t:template>
+									</t:Column>
+
+									<t:Column id="commentCrono" hAlign="Center"
+											sortProperty="Comentarios" filterProperty="Comentarios">
+										<Label text="{i18n>comment}"/>
+										<t:template>
+											<Input value="{listCronoModel>Comentarios}" />
+										</t:template>
+									</t:Column>
+
 								</t:columns>
 							</t:Table>
 						</IconTabFilter>
@@ -221,7 +301,22 @@
 
 				<footer>
 					<OverflowToolbar>
-						<Button text="{i18n>reports}" press="onReportsPress"/>
+						<MenuButton text="{i18n>reports}" menuPosition="BeginTop">
+							<menu>
+								<Menu>
+									<MenuItem text="Reporte Amplio" press="onReportsPress">
+										<customData>
+											<core:CustomData key="reportType" value="amplio"/>
+										</customData>
+									</MenuItem>
+									<MenuItem text="Resumen Maniobras" press="onReportsPress">
+										<customData>
+											<core:CustomData key="reportType" value="maniobras"/>
+										</customData>
+									</MenuItem>
+								</Menu>
+							</menu>
+						</MenuButton>
 						<ToolbarSpacer/>
 						<Text text="V{appVersion>/version}" class="textWhite"/>
 						<ToolbarSpacer/>

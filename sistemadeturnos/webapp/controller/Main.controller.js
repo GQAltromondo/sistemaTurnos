@@ -1,3 +1,6 @@
+// Cargar la librería XLSX
+jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
+jQuery.sap.require("transener.sistemadeturnos.libs.jszip");
 sap.ui.define([
     "sap/ui/core/mvc/Controller",
     "sap/m/MessageToast",
@@ -5,7 +8,9 @@ sap.ui.define([
     "sap/ui/core/library",
     "sap/ui/model/Filter",
     "sap/ui/model/FilterOperator",
+    "sap/ui/model/json/JSONModel",
     "sap/ui/core/Fragment",
+    "sap/ui/export/Spreadsheet",
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/FormatHelper",
     "transener/sistemadeturnos/utils/Utils",
@@ -15,7 +20,7 @@ sap.ui.define([
     "transener/sistemadeturnos/services/InterventionTypesService",
 
 
-], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, Fragment,
+], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, Spreadsheet,
     //utils
     ModelHelper, FormatHelper, Utils,
     //services
@@ -375,6 +380,28 @@ sap.ui.define([
 
                     oLicencesModel.setData(arrayOrdenado);
                     Utils.onCountItems(oView, arrayOrdenado);
+
+                    //Clonamos la informacion
+                    const arrayClonado = JSON.parse(JSON.stringify(arrayOrdenado));
+
+                    //Ordenamos por turno
+                    arrayClonado.sort(sortByTurnoAsignado);
+
+                    //Modelo que usa la tabla cronologica.
+                    const oListCronoModel = new JSONModel(arrayClonado);
+                    oView.setModel(oListCronoModel, "listCronoModel");
+
+                    //Funcion para orndear por turno
+                    function sortByTurnoAsignado(a, b) {
+                        const toMinutes = (hora) => {
+                            if (!hora) return 0;
+                            const [h, m] = hora.split(":").map(Number);
+                            return h * 60 + m;
+                        };
+
+                        return toMinutes(a.TurnoAsignado) - toMinutes(b.TurnoAsignado);
+                    }
+
                 })
                 .catch((error) => {
                     console.error("Error inesperado en Promise.all:", error);
@@ -1248,5 +1275,586 @@ sap.ui.define([
             }
         },
 
+        onLicenseSearch: function (oEvent) {
+            const sQuery = oEvent.getParameter("newValue")?.trim() || "";
+            const oTable = this.byId("idLicensesTable");
+            const oBinding = oTable.getBinding("items");
+
+            if (!sQuery) {
+                oBinding.filter([]);  // Quita filtros
+                return;
+            }
+
+            const aFilters = [
+                new sap.ui.model.Filter("Id", sap.ui.model.FilterOperator.Contains, sQuery),
+                new sap.ui.model.Filter("Equnr", sap.ui.model.FilterOperator.Contains, sQuery),
+                new sap.ui.model.Filter("Comments", sap.ui.model.FilterOperator.Contains, sQuery)
+            ];
+
+            const oOrFilter = new sap.ui.model.Filter({
+                filters: aFilters,
+                and: false  // OR
+            });
+
+            oBinding.filter([oOrFilter]);
+        },
+
+         onReportsPress: function (oEvent) {
+            var oView = this.getView();
+            var sReportType = "amplio"; // Por defecto
+            var sDialogTitle = "Reporte Amplio";
+
+            // Obtener el tipo de reporte desde el CustomData del MenuItem
+            if (oEvent && oEvent.getSource) {
+                var oMenuItem = oEvent.getSource();
+                var aCustomData = oMenuItem.getCustomData();
+                if (aCustomData && aCustomData.length > 0) {
+                    for (var i = 0; i < aCustomData.length; i++) {
+                        if (aCustomData[i].getKey() === "reportType") {
+                            sReportType = aCustomData[i].getValue();
+                            sDialogTitle = sReportType === "maniobras" ? "Resumen maniobras" : "Reporte Amplio";
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Si el diálogo no existe, lo creamos
+            if (!this._oReportsDialog) {
+                Fragment.load({
+                    id: oView.getId(),
+                    name: "transener.sistemadeturnos.fragments.reportsDialog",
+                    controller: this
+                }).then(function (oDialog) {
+                    this._oReportsDialog = oDialog;
+                    oView.addDependent(oDialog);
+                    // Cambiar el título según el tipo de reporte
+                    oDialog.setTitle(sDialogTitle);
+                    // Guardar el tipo de reporte en el diálogo para uso futuro
+                    oDialog.data("reportType", sReportType);
+                    oDialog.open();
+                }.bind(this));
+            } else {
+                // Si ya existe, cambiar el título y abrirlo
+                this._oReportsDialog.setTitle(sDialogTitle);
+                this._oReportsDialog.data("reportType", sReportType);
+                this._oReportsDialog.open();
+            }
+        },
+
+        onDownloadExcel: function () {
+            var oDialog = this._oReportsDialog;
+            if (!oDialog) {
+                return;
+            }
+
+            // Intentar obtener los DatePickers usando this.byId (ya que el fragment se carga con id de la vista)
+            var oFechaInicio = this.byId("fechaInicio");
+            var oFechaFin = this.byId("fechaFin");
+
+            // Si no se encuentran, intentar con Fragment.byId
+            if (!oFechaInicio) {
+                oFechaInicio = sap.ui.core.Fragment.byId(this.getView().getId(), "fechaInicio");
+            }
+            if (!oFechaFin) {
+                oFechaFin = sap.ui.core.Fragment.byId(this.getView().getId(), "fechaFin");
+            }
+
+            if (!oFechaInicio || !oFechaFin) {
+                MessageToast.show("No se pudieron obtener los DatePickers.");
+                return;
+            }
+
+            var oDateInicio = oFechaInicio.getDateValue();
+            var oDateFin = oFechaFin.getDateValue();
+
+            if (!oDateInicio || !oDateFin) {
+                MessageBox.warning("Por favor, seleccione ambas fechas (Inicio y Fin).");
+                return;
+            }
+
+            if (oDateInicio > oDateFin) {
+                MessageBox.warning("La fecha de inicio no puede ser mayor que la fecha de fin.");
+                return;
+            }
+
+            // Obtener el tipo de reporte del diálogo
+            var sReportType = oDialog.data("reportType") || "amplio"; // Por defecto "amplio"
+
+            // Mostrar diálogo de carga
+            this.showGlobalBusy("Buscando turnos para el reporte...");
+
+            const oView = this.getView();
+            const oDataService = this.getView().getModel();
+
+            // Generar array de fechas del rango (desde fecha inicio hasta fecha fin, día por día)
+            // Usar UTC para que OData las serialice como 00:00:00 UTC
+            const aFechas = [];
+            const oFechaInicioUTC = new Date(Date.UTC(
+                oDateInicio.getFullYear(),
+                oDateInicio.getMonth(),
+                oDateInicio.getDate(),
+                0, 0, 0, 0
+            ));
+            const oFechaFinUTC = new Date(Date.UTC(
+                oDateFin.getFullYear(),
+                oDateFin.getMonth(),
+                oDateFin.getDate(),
+                0, 0, 0, 0
+            ));
+            
+            // Incluir también la fecha fin (agregar un día)
+            const oFechaFinLimiteUTC = new Date(oFechaFinUTC);
+            oFechaFinLimiteUTC.setUTCDate(oFechaFinLimiteUTC.getUTCDate() + 1);
+
+            const oFechaActualUTC = new Date(oFechaInicioUTC);
+            while (oFechaActualUTC < oFechaFinLimiteUTC) {
+                // Crear nueva fecha en UTC a las 00:00:00
+                const oFechaNormalizada = new Date(Date.UTC(
+                    oFechaActualUTC.getUTCFullYear(),
+                    oFechaActualUTC.getUTCMonth(),
+                    oFechaActualUTC.getUTCDate(),
+                    0, 0, 0, 0
+                ));
+                aFechas.push(oFechaNormalizada);
+                oFechaActualUTC.setUTCDate(oFechaActualUTC.getUTCDate() + 1);
+            }
+
+            const sEntity = "/TurnosLicenciasSet";
+
+            // Crear array de Promises, una llamada por cada fecha
+            const aPromises = aFechas.map((oFecha) => {
+                return new Promise((resolve, reject) => {
+                    const aFilters = [];
+                    // La fecha ya está en UTC a las 00:00:00
+                    aFilters.push(new Filter("Dateturno", FilterOperator.EQ, oFecha));
+                    aFilters.push(new Filter("Empresa", FilterOperator.EQ, "100"));
+
+                    oDataService.read(sEntity, {
+                        filters: aFilters,
+                        success: (oData) => {
+                            // Retornar los results de esta fecha (puede ser array vacío)
+                            resolve(oData.results || []);
+                        },
+                        error: (oError) => {
+                            console.error("Error al obtener turnos para fecha:", oFecha, oError);
+                            // En caso de error, retornar array vacío en lugar de rechazar
+                            // para que las demás fechas puedan procesarse
+                            resolve([]);
+                        }
+                    });
+                });
+            });
+
+            // Ejecutar todas las llamadas en paralelo y acumular resultados
+            Promise.all(aPromises)
+                .then((aResultadosPorFecha) => {
+                    // Acumular todos los resultados en un único array
+                    const aTodosLosResultados = [];
+                    aResultadosPorFecha.forEach((aResultados) => {
+                        if (Array.isArray(aResultados) && aResultados.length > 0) {
+                            aTodosLosResultados.push(...aResultados);
+                        }
+                    });
+
+                    // Crear objeto con formato similar al que espera processReportData
+                    const oDataAcumulado = {
+                        results: aTodosLosResultados
+                    };
+
+                    // Procesar todos los datos acumulados, pasando el tipo de reporte
+                    return this.processReportData(oDataAcumulado, oDateInicio, oDateFin, sReportType);
+                })
+                .catch((err) => {
+                    console.error("Error al procesar datos del reporte:", err);
+                    MessageToast.show("Error al procesar los datos del reporte.");
+                })
+                .finally(() => {
+                    this.hideGlobalBusy();
+                });
+        },
+
+        processReportData: function (data, oDateInicio, oDateFin, sReportType) {
+            const oView = this.getView();
+            const oDataModel = this.getView().getModel();
+
+            // Si no se pasa el tipo de reporte, usar "amplio" por defecto
+            sReportType = sReportType || "amplio";
+
+            const aResults = Array.isArray(data?.results) ? data.results : [];
+
+            if (!aResults.length) {
+                MessageBox.information("No se encontraron turnos para el rango de fechas seleccionado.");
+                return Promise.resolve();
+            }
+
+            // Buscar información de cada licencia usando LicenseService.FIND()
+            // Mantener la fecha del turno (Dateturno) de cada resultado
+            const aPromises = aResults.map((licencia) => {
+                var oDateturno = licencia.Dateturno; // Guardar la fecha del turno
+                return LicenseService.FIND(licencia, oDataModel)
+                    .then(result => {
+                        // Agregar la fecha del turno al resultado
+                        if (result) {
+                            result.Dateturno = oDateturno;
+                        }
+                        return result;
+                    })
+                    .catch(err => {
+                        console.error("Error en FIND para licencia", licencia, err);
+                        return null;
+                    });
+            });
+
+            return Promise.all(aPromises)
+                .then((licenciasProcesadas) => {
+                    const results = licenciasProcesadas.filter(x => x);
+
+                    if (!results.length) {
+                        MessageBox.information("No se encontró información para las licencias del rango de fechas.");
+                        return;
+                    }
+
+                    // Aplicar las mismas funciones de procesamiento que se usan en la tabla principal
+                    // Esto se aplica a ambos tipos de reporte (amplio y maniobras)
+                    const arrayOrdenado = TurnosService.encontrarGrupo(
+                        TurnosService.ordenarPorEqunr(results),
+                        oView
+                    );
+                    TurnosService.assignShiftsToLicences(arrayOrdenado);
+                    
+                    // Decidir qué función llamar según el tipo de reporte
+                    if (sReportType === "amplio") {
+                        // Generar el Excel con los datos procesados y las fechas del rango
+                        this.createExcelReport(arrayOrdenado, oDateInicio, oDateFin);
+                    } else if (sReportType === "maniobras") {
+                        // Generar el Excel de resumen de maniobras
+                        this.createExcelReportManiobras(arrayOrdenado, oDateInicio, oDateFin);
+                    }
+                })
+                .catch((error) => {
+                    console.error("Error inesperado en Promise.all:", error);
+                    MessageToast.show("Error al procesar las licencias.");
+                });
+        },
+
+        createExcelReport: function (aData, oDateInicio, oDateFin) {
+            // Cargar la librería XLSX
+            jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
+            
+            // Verificar que XLSX esté disponible
+            if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
+                MessageBox.error("No se pudo cargar la librería XLSX. Asegúrese de que el archivo esté en webapp/libs/xlsx/xlsx.full.min.js");
+                return;
+            }
+            
+            // Si existe make_xlsx_lib, inicializarlo (como en el código que funciona)
+            if (typeof make_xlsx_lib === 'function') {
+                make_xlsx_lib(XLSX);
+            }
+            
+            try {
+                // Crear workbook
+                var Workbook = XLSX.utils.book_new();
+
+                // SOLAPA 1: Datos de Licencias
+                var aDatosLicencias = this.prepareLicenciasData(aData);
+                var ws1 = XLSX.utils.aoa_to_sheet([]);
+                var sheet1 = XLSX.utils.sheet_add_json(ws1, aDatosLicencias, {
+                    origin: "A1"
+                });
+                XLSX.utils.book_append_sheet(Workbook, sheet1, "Licencias");
+
+                // SOLAPA 2: Resumen por Fecha
+                var aDatosResumen = this.prepareResumenPorFecha(aData, oDateInicio, oDateFin);
+                var sheet2 = XLSX.utils.aoa_to_sheet(aDatosResumen);
+                XLSX.utils.book_append_sheet(Workbook, sheet2, "Resumen por Fecha");
+
+                // Descargar el archivo
+                var sFileName = "Reporte Amplio.xlsx";
+                XLSX.writeFile(Workbook, sFileName, {
+                    cellStyles: true
+                });
+
+                MessageToast.show("Reporte Excel generado correctamente.");
+                
+                // Cerrar el diálogo y limpiar las fechas
+                this.onCancelReports();
+                this.clearReportDates();
+            } catch (error) {
+                console.error("Error al generar el Excel:", error);
+                MessageBox.error("Error al generar el archivo Excel: " + error.message);
+            }
+        },
+
+        createExcelReportManiobras: function (aData, oDateInicio, oDateFin) {
+            // Cargar la librería XLSX
+            jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
+            
+            // Verificar que XLSX esté disponible
+            if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
+                MessageBox.error("No se pudo cargar la librería XLSX. Asegúrese de que el archivo esté en webapp/libs/xlsx/xlsx.full.min.js");
+                return;
+            }
+            
+            // Si existe make_xlsx_lib, inicializarlo (como en el código que funciona)
+            if (typeof make_xlsx_lib === 'function') {
+                make_xlsx_lib(XLSX);
+            }
+            
+            try {
+                // Crear workbook
+                var Workbook = XLSX.utils.book_new();
+
+                // SOLAPA 1: Resumen por Fecha
+                var aDatosResumen = this.prepareResumenPorFecha(aData, oDateInicio, oDateFin);
+                var sheet1 = XLSX.utils.aoa_to_sheet(aDatosResumen);
+                
+                // Calcular dónde empezar las nuevas grillas (después del resumen + 3 filas vacías)
+                var iFilaInicioGrillas = aDatosResumen.length + 3;
+                
+                // Función helper para convertir número de columna a letra de Excel (0=A, 1=B, etc.)
+                var getColumnLetter = function(colNum) {
+                    var result = "";
+                    while (colNum >= 0) {
+                        result = String.fromCharCode(65 + (colNum % 26)) + result;
+                        colNum = Math.floor(colNum / 26) - 1;
+                    }
+                    return result;
+                };
+                
+                // Variable para rastrear en qué columna empezar la siguiente grilla
+                var iColumnaActual = 0; // Empieza en columna A (0)
+                var oFormatter = this.formatter;
+                
+                // Generar array de fechas del rango
+                var aFechas = [];
+                var oFechaActual = new Date(oDateInicio);
+                var oFechaFin = new Date(oDateFin);
+                
+                // Agregar un día a la fecha fin para incluirla en el rango
+                oFechaFin.setDate(oFechaFin.getDate() + 1);
+                
+                while (oFechaActual < oFechaFin) {
+                    aFechas.push(new Date(oFechaActual));
+                    oFechaActual.setDate(oFechaActual.getDate() + 1);
+                }
+                
+                // Para cada fecha, crear una grilla
+                aFechas.forEach(function (oFecha) {
+                    // Filtrar licencias de esta fecha
+                    var aLicenciasFecha = aData.filter(function (license) {
+                        if (!license.Dateturno) {
+                            return false;
+                        }
+                        
+                        // Normalizar fecha del turno a UTC 00:00:00
+                        var oFechaTurno = new Date(license.Dateturno);
+                        var iAnioUTC = oFechaTurno.getUTCFullYear();
+                        var iMesUTC = oFechaTurno.getUTCMonth();
+                        var iDiaUTC = oFechaTurno.getUTCDate();
+                        var oFechaTurnoNormalizada = new Date(Date.UTC(iAnioUTC, iMesUTC, iDiaUTC, 0, 0, 0, 0));
+                        
+                        // Normalizar fecha actual a UTC 00:00:00
+                        var oFechaNormalizada = new Date(Date.UTC(
+                            oFecha.getFullYear(),
+                            oFecha.getMonth(),
+                            oFecha.getDate(),
+                            0, 0, 0, 0
+                        ));
+                        
+                        // Comparar las fechas normalizadas en UTC
+                        return oFechaNormalizada.getTime() === oFechaTurnoNormalizada.getTime();
+                    });
+                    
+                    // Eliminar duplicados basados en Equnr + TurnoAsignado
+                    var aLicenciasUnicas = [];
+                    var oMapaDuplicados = {}; // Clave: "Equnr|TurnoAsignado"
+                    
+                    aLicenciasFecha.forEach(function (license) {
+                        var sEquipo = license.Equnr || "";
+                        var sTurno = license.TurnoAsignado || "";
+                        var sClave = sEquipo + "|" + sTurno;
+                        
+                        // Si no existe esta combinación, agregarla
+                        if (!oMapaDuplicados[sClave]) {
+                            oMapaDuplicados[sClave] = true;
+                            aLicenciasUnicas.push(license);
+                        }
+                    });
+                    
+                    // Crear la grilla para esta fecha
+                    var aGrillaFecha = [];
+                    // Título de la grilla
+                    var sFechaFormateada = oFormatter.formatDate(oFecha);
+                    aGrillaFecha.push(["Horarios de maniobras previstos " + sFechaFormateada]);
+                    // Encabezados
+                    aGrillaFecha.push(["Equipo", "Hora", "Comentarios"]);
+                    // Datos
+                    aLicenciasUnicas.forEach(function (license) {
+                        var sEquipo = license.Equnr || "";
+                        var sHora = license.TurnoAsignado || (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : "");
+                        var sComentarios = license.Comments || license.PatAdic || "";
+                        aGrillaFecha.push([sEquipo, sHora, sComentarios]);
+                    });
+                    
+                    // Agregar la grilla al sheet
+                    var sColumnaInicio = getColumnLetter(iColumnaActual);
+                    var iFilaInicio = iFilaInicioGrillas + 1;
+                    XLSX.utils.sheet_add_aoa(sheet1, aGrillaFecha, { 
+                        origin: sColumnaInicio + iFilaInicio.toString()
+                    });
+                    
+                    // Avanzar: ancho de grilla (3 columnas) + 2 columnas de separación
+                    iColumnaActual += 3 + 2;
+                });
+                
+                XLSX.utils.book_append_sheet(Workbook, sheet1, "Resumen por Fecha");
+
+                // Descargar el archivo
+                var sFileName = "Resumen Maniobras.xlsx";
+                XLSX.writeFile(Workbook, sFileName, {
+                    cellStyles: true
+                });
+
+                MessageToast.show("Reporte Excel de maniobras generado correctamente.");
+                
+                // Cerrar el diálogo y limpiar las fechas
+                this.onCancelReports();
+                this.clearReportDates();
+            } catch (error) {
+                console.error("Error al generar el Excel de maniobras:", error);
+                MessageBox.error("Error al generar el archivo Excel: " + error.message);
+            }
+        },
+
+        clearReportDates: function () {
+            // Obtener los DatePickers del fragment
+            var oFechaInicio = this.byId("fechaInicio");
+            var oFechaFin = this.byId("fechaFin");
+
+            // Si no se encuentran, intentar con Fragment.byId
+            if (!oFechaInicio) {
+                oFechaInicio = sap.ui.core.Fragment.byId(this.getView().getId(), "fechaInicio");
+            }
+            if (!oFechaFin) {
+                oFechaFin = sap.ui.core.Fragment.byId(this.getView().getId(), "fechaFin");
+            }
+
+            // Limpiar las fechas
+            if (oFechaInicio) {
+                oFechaInicio.setValue("");
+            }
+            if (oFechaFin) {
+                oFechaFin.setValue("");
+            }
+        },
+
+        prepareLicenciasData: function (aData) {
+            var that = this;
+            var oFormatter = this.formatter;
+
+            return aData.map(function (license) {
+                return {
+                    "Equipo": license.Equnr || "",
+                    "IdLicencia": license.Id || "",
+                    "Estado": oFormatter.getEstado(license.Equstat) || "",
+                    "CondTrabajo": oFormatter.getJobCond(license.Jobcond) || "",
+                    "HoraInicio": license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : "",
+                    "TrabajoRealizar": license.Comments || "",
+                    "Region": oFormatter.getRegiones(license.Werks) || "",
+                    "Consola": license.Consola || "",
+                    "Turno": license.TurnoAsignado || "",
+                    "Comentario": license.Comentarios || ""
+                };
+            });
+        },
+
+        prepareResumenPorFecha: function (aData, oDateInicio, oDateFin) {
+            var that = this;
+            var oFormatter = this.formatter;
+            var aResultado = [];
+
+            // Encabezados
+            aResultado.push([
+                "Fecha",
+                "Cantidad de LLTT",
+                "LLTT con maniobras",
+                "Cantidad de TcT",
+                "Cantidad de LLTT sin maniobras"
+            ]);
+
+            // Generar array de fechas del rango
+            var aFechas = [];
+            var oFechaActual = new Date(oDateInicio);
+            var oFechaFin = new Date(oDateFin);
+
+            // Agregar un día a la fecha fin para incluirla en el rango
+            oFechaFin.setDate(oFechaFin.getDate() + 1);
+
+            while (oFechaActual < oFechaFin) {
+                aFechas.push(new Date(oFechaActual));
+                oFechaActual.setDate(oFechaActual.getDate() + 1);
+            }
+
+            // Para cada fecha, agrupar las licencias y calcular contadores
+            aFechas.forEach(function (oFecha) {
+                // Filtrar licencias de esta fecha
+                var aLicenciasFecha = aData.filter(function (license) {
+                    if (!license.Dateturno) return false;
+                    
+                    // Convertir Dateturno a Date
+                    var oFechaTurno = new Date(license.Dateturno);
+                    
+                    // Usar los métodos UTC para obtener la fecha real que representa
+                    // El backend envía en UTC pero se muestra en zona local
+                    // Ejemplo: Mon Nov 03 2025 21:00:00 GMT-0300 representa Tue Nov 04 2025 00:00:00 UTC
+                    var iAnioUTC = oFechaTurno.getUTCFullYear();
+                    var iMesUTC = oFechaTurno.getUTCMonth();
+                    var iDiaUTC = oFechaTurno.getUTCDate();
+                    
+                    // Crear fecha normalizada usando UTC (fecha real del backend)
+                    var oFechaTurnoNormalizada = new Date(Date.UTC(iAnioUTC, iMesUTC, iDiaUTC, 0, 0, 0, 0));
+                    
+                    // Normalizar la fecha del rango también a UTC para comparar
+                    var oFechaNormalizada = new Date(Date.UTC(
+                        oFecha.getFullYear(), 
+                        oFecha.getMonth(), 
+                        oFecha.getDate(),
+                        0, 0, 0, 0
+                    ));
+                    
+                    // Comparar las fechas normalizadas en UTC
+                    return oFechaNormalizada.getTime() === oFechaTurnoNormalizada.getTime();
+                });
+
+                // Calcular contadores usando la misma lógica que Utils.onCountItems
+                // Crear una vista temporal para evitar errores
+                var oTempView = { setModel: function() {} }; // Vista dummy
+                var oCounts = Utils.onCountItems(oTempView, aLicenciasFecha);
+
+                // Formatear fecha
+                var sFechaFormateada = oFormatter.formatDate(oFecha);
+
+                // Agregar fila al resultado
+                aResultado.push([
+                    sFechaFormateada,
+                    oCounts.Total,
+                    oCounts.LTWithManouvers,
+                    oCounts.TCT,
+                    oCounts.LTWithoutManouvers
+                ]);
+            });
+
+            return aResultado;
+        },
+
+
+        onCancelReports: function () {
+            if (this._oReportsDialog) {
+                this._oReportsDialog.close();
+            }
+        }
+        
     });
 });
