@@ -190,6 +190,35 @@
 										</t:template>
 									</t:Column>
 
+									<t:Column id="attachment" hAlign="Center" width="150px">
+										<Label text="{i18n>attachment}"/>
+										<t:template>
+											<HBox alignItems="Center" justifyContent="Center">
+												<Button 
+													icon="sap-icon://attachment" 
+													type="Transparent"
+													tooltip="{i18n>attachFile}"
+													press="onAttachFile"
+													visible="{= !${LicencesJsonModel>AttachmentData} }"
+													class="sapUiTinyMarginEnd"/>
+												<Button 
+													icon="sap-icon://download" 
+													type="Emphasized"
+													tooltip="{i18n>downloadFile}"
+													press="onDownloadFile"
+													visible="{= !!${LicencesJsonModel>AttachmentData} }"
+													class="sapUiTinyMarginEnd"/>
+												<Button 
+													icon="sap-icon://delete" 
+													type="Transparent"
+													tooltip="{i18n>deleteFile}"
+													press="onDeleteAttachment"
+													visible="{= !!${LicencesJsonModel>AttachmentData} }"
+													class="sapUiTinyMarginEnd"/>
+											</HBox>
+										</t:template>
+									</t:Column>
+
 								</t:columns>
 							</t:Table>
 						</IconTabFilter>

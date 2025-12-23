@@ -978,18 +978,15 @@ sap.ui.define([
             oModel.setProperty(sPath + "/accionesEntregas", aAccionesEntregas);
         },
         onSaveTurnoPress: function () {
-
-            //  const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel",this.getView()).getProperty("/FechaTurno")
             const Fecha = this.getView().byId('date').getDateValue()
             const oTable = this.getView().byId('turnosTable');
-            const aRows = oTable.getRows(); // Obtén las filas visibles de la tabla
-            const aData = []; // Array para almacenar los datos de cada fila
+            const aRows = oTable.getRows();
+            const aData = [];
+            let hasAttachments = false; // ✨ NUEVO
 
             aRows.forEach(function (oRow) {
-                // Accede al contexto de cada fila (a través del modelo asociado)
                 const oContext = oRow.getBindingContext("LicencesJsonModel");
                 if (oContext) {
-                    // Obtén los datos de la fila a través del contexto
                     const oRowData = oContext.getObject();
 
                     const row = {
@@ -1000,17 +997,38 @@ sap.ui.define([
                         Fecha: Fecha,
                         Turno: oRowData.TurnoAsignado,
                         Comentarios: oRowData.Comentarios
+                    }
 
+                    // ✨ NUEVO: Incluir datos de adjunto si existen
+                    if (oRowData.AttachmentData) {
+                        hasAttachments = true;
+                        row.AttachmentData = oRowData.AttachmentData;
+                        row.AttachmentName = oRowData.AttachmentName;
+                        row.AttachmentSize = oRowData.AttachmentSize;
+                        row.AttachmentType = oRowData.AttachmentType;
                     }
 
                     aData.push(row);
-
                 }
             });
 
             console.log("Datos de cada fila:", aData);
 
-            this.createTurno(aData)
+            // ✨ NUEVO: Mostrar advertencia si hay archivos adjuntos
+            if (hasAttachments) {
+                MessageBox.information(
+                    this.getView().getModel("i18n").getResourceBundle().getText("backendNotIntegrated") +
+                    "\n\nLos archivos adjuntos están listos en el modelo pero no se enviarán al backend hasta que se complete la integración.",
+                    {
+                        title: "Información",
+                        onClose: function () {
+                            this.createTurno(aData);
+                        }.bind(this)
+                    }
+                );
+            } else {
+                this.createTurno(aData);
+            }
         },
         createTurno: function (licencias) {
             var entity = "/TurnosLicenciasSet";
@@ -1248,5 +1266,135 @@ sap.ui.define([
             }
         },
 
+        onAttachFile: function (oEvent) {
+            // Guardar el contexto de la fila
+            this._currentAttachmentContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
+
+            // Crear un input file oculto para seleccionar el archivo
+            if (!this._fileInput) {
+                this._fileInput = document.createElement("input");
+                this._fileInput.type = "file";
+                this._fileInput.accept = "application/pdf";
+                this._fileInput.style.display = "none";
+
+                // Evento cuando se selecciona un archivo
+                this._fileInput.addEventListener("change", function (e) {
+                    this._handleFileSelection(e);
+                }.bind(this));
+
+                document.body.appendChild(this._fileInput);
+            }
+
+            // Resetear el input y abrirlo
+            this._fileInput.value = null;
+            this._fileInput.click();
+        },
+
+        _handleFileSelection: function (oEvent) {
+            const file = oEvent.target.files[0];
+
+            if (!file) {
+                return;
+            }
+
+            // Validar que sea PDF
+            if (file.type !== "application/pdf") {
+                MessageBox.error(this.getView().getModel("i18n").getResourceBundle().getText("invalidFileType"));
+                return;
+            }
+
+            // Validar tamaño (máximo 5MB)
+            const maxSize = 5 * 1024 * 1024; // 5MB en bytes
+            if (file.size > maxSize) {
+                MessageBox.error(this.getView().getModel("i18n").getResourceBundle().getText("fileTooLarge"));
+                return;
+            }
+
+            // Convertir a Base64
+            this._convertFileToBase64(file);
+        },
+
+        _convertFileToBase64: function (file) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                const base64String = e.target.result;
+
+                // Guardar en el modelo
+                if (this._currentAttachmentContext) {
+                    const oModel = this.getView().getModel("LicencesJsonModel");
+                    const sPath = this._currentAttachmentContext.getPath();
+
+                    oModel.setProperty(sPath + "/AttachmentData", base64String);
+                    oModel.setProperty(sPath + "/AttachmentName", file.name);
+                    oModel.setProperty(sPath + "/AttachmentSize", file.size);
+                    oModel.setProperty(sPath + "/AttachmentType", file.type);
+
+                    oModel.refresh(true);
+
+                    MessageToast.show(this.getView().getModel("i18n").getResourceBundle().getText("fileUploadSuccess"));
+                }
+            }.bind(this);
+
+            reader.onerror = function () {
+                MessageBox.error("Error al leer el archivo. Por favor, intente nuevamente.");
+            };
+
+            reader.readAsDataURL(file);
+        },
+
+        onDownloadFile: function (oEvent) {
+            const oContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
+
+            if (!oContext) {
+                return;
+            }
+
+            const oData = oContext.getObject();
+
+            if (!oData.AttachmentData) {
+                MessageToast.show("No hay archivo adjunto para descargar.");
+                return;
+            }
+
+            // Crear un enlace temporal para descargar
+            const link = document.createElement("a");
+            link.href = oData.AttachmentData;
+            link.download = oData.AttachmentName || "archivo.pdf";
+
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            MessageToast.show("Descargando archivo: " + link.download);
+        },
+
+        onDeleteAttachment: function (oEvent) {
+            const oContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
+
+            if (!oContext) {
+                return;
+            }
+
+            MessageBox.confirm("¿Está seguro que desea eliminar el archivo adjunto?", {
+                title: "Confirmar eliminación",
+                onClose: function (sAction) {
+                    if (sAction === MessageBox.Action.OK) {
+                        const oModel = this.getView().getModel("LicencesJsonModel");
+                        const sPath = oContext.getPath();
+
+                        // Eliminar las propiedades del adjunto
+                        oModel.setProperty(sPath + "/AttachmentData", null);
+                        oModel.setProperty(sPath + "/AttachmentName", null);
+                        oModel.setProperty(sPath + "/AttachmentSize", null);
+                        oModel.setProperty(sPath + "/AttachmentType", null);
+
+                        oModel.refresh(true);
+
+                        MessageToast.show("Archivo eliminado correctamente.");
+                    }
+                }.bind(this)
+            });
+        },
     });
 });
