@@ -301,7 +301,22 @@
 
 				<footer>
 					<OverflowToolbar>
-						<Button text="{i18n>reports}" press="onReportsPress"/>
+						<MenuButton text="{i18n>reports}" menuPosition="BeginTop">
+							<menu>
+								<Menu>
+									<MenuItem text="Reporte Amplio" press="onReportsPress">
+										<customData>
+											<core:CustomData key="reportType" value="amplio"/>
+										</customData>
+									</MenuItem>
+									<MenuItem text="Resumen Maniobras" press="onReportsPress">
+										<customData>
+											<core:CustomData key="reportType" value="maniobras"/>
+										</customData>
+									</MenuItem>
+								</Menu>
+							</menu>
+						</MenuButton>
 						<ToolbarSpacer/>
 						<Text text="V{appVersion>/version}" class="textWhite"/>
 						<ToolbarSpacer/>
