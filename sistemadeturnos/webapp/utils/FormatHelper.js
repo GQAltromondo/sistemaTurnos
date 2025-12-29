@@ -19,7 +19,7 @@ sap.ui.define([
                 default:
                     return value
             }
-        }, 
+        },
         getJobCond: function (value) {
             switch (value) {
                 case '01':
@@ -53,6 +53,7 @@ sap.ui.define([
             }
         }, msTohoursSeconds: function (ms) {
             let date = new Date(ms);
+
             let hours = date.getHours().toString();
             hours = hours.length === 1 ? "0" + hours : hours;
 
@@ -71,7 +72,7 @@ sap.ui.define([
                     return "None";
             }
         },
-        
+
 
     };
 });
