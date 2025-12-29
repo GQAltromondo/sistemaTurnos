@@ -27,7 +27,7 @@ sap.ui.define([
     LicenseService, TurnosService, TipoEquipoService, InterventionTypesService
 ) {
     "use strict";
-    var oDialog = null
+    let oDialog = null
     return Controller.extend("transener.sistemadeturnos.controller.Main", {
         formatter: FormatHelper,
 
@@ -491,27 +491,55 @@ sap.ui.define([
         // },
 
         onChangeHour: function (oEvent) {
+            const oResourceBundle = this.getView().getModel("i18n").getResourceBundle();
+            const oSource = oEvent.getSource(); // TimePicker
+            const sPath = oSource.getBindingContext("LicencesJsonModel").getPath();
+            const iLicenseIndex = parseInt(sPath.split("/")[1], 10);
 
-            var oSource = oEvent.getSource(); // TimePicker
-            var sPath = oSource.getBindingContext("LicencesJsonModel").getPath();
-            var iLicenseIndex = parseInt(sPath.split("/")[1], 10);
+            const oModel = this.getView().getModel("LicencesJsonModel");
+            const aLicences = oModel.getProperty("/");
 
-            var oModel = this.getView().getModel("LicencesJsonModel");
-            var aLicences = oModel.getProperty("/");
+            const sNewTime = oEvent.getParameter("value");
+            const oSelectedLicence = aLicences[iLicenseIndex];
 
-            var sNewTime = oEvent.getParameter("value");
-            var oSelectedLicence = aLicences[iLicenseIndex];
+            if (this._isTimeInRestrictedRange(sNewTime)) {
+                MessageBox.error(
+                    oResourceBundle.getText("invalidShiftTimeRange"),
+                    {
+                        title: oResourceBundle.getText("validationError"),
+                        onClose: function () {
+                            oSource.setValue("");
+                            oSource.setValueState(CoreLibrary.ValueState.Error);
 
+                            aLicences.forEach(function (oLicence) {
+                                if (oLicence.Consola === oSelectedLicence.Consola &&
+                                    oLicence.Grupo === oSelectedLicence.Grupo) {
+                                    oLicence.TurnoAsignado = "";
+                                }
+                            });
+
+                            oModel.setProperty("/", aLicences);
+                            oModel.refresh(true);
+                        }
+                    }
+                );
+                return;
+            }
+
+            // Resetear el estado de validación si el horario es válido
+            oSource.setValueState(CoreLibrary.ValueState.None);
+            oSource.setValueStateText("");
+
+            // Continuar con la lógica normal
             this._updateSameGroupAndConsoleShifts(aLicences, oSelectedLicence, sNewTime);
-
             this._sortLicences(aLicences);
 
             // buscar nuevo índice después del sort
-            var iNewIndex = aLicences.findIndex(function (lic) {
+            const iNewIndex = aLicences.findIndex(function (lic) {
                 return lic === oSelectedLicence;
             });
 
-            // 👉 ahora le pasamos el timepicker también
+            // Cascada hacia abajo con validación de separación
             this._cascadeGroupsDown(aLicences, iNewIndex, oSource);
 
             oModel.setProperty("/", aLicences);
@@ -2394,6 +2422,32 @@ sap.ui.define([
 
             // Retornar true si la fecha del turno es >= hoy
             return oFechaTurnoNormalizada.getTime() >= oHoyNormalizada.getTime();
+        },
+
+        // Restriccón horaria
+
+        _isTimeInRestrictedRange: function (sTime) {
+            if (!sTime || typeof sTime !== "string") {
+                return false;
+            }
+
+            const aTimeParts = sTime.split(":");
+            if (aTimeParts.length !== 2) {
+                return false;
+            }
+
+            const iHours = parseInt(aTimeParts[0], 10);
+            const iMinutes = parseInt(aTimeParts[1], 10);
+
+            if (isNaN(iHours) || isNaN(iMinutes)) {
+                return false;
+            }
+
+            const iTotalMinutes = iHours * 60 + iMinutes;
+            const iStartRestricted = 5 * 60 + 30;
+            const iEndRestricted = 6 * 60 + 30;
+
+            return iTotalMinutes >= iStartRestricted && iTotalMinutes <= iEndRestricted;
         },
 
     });
