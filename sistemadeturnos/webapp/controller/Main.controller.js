@@ -363,7 +363,6 @@ sap.ui.define([
                     });
             });
 
-
             return Promise.all(aPromises)
                 .then((licenciasProcesadas) => {
                     const results = licenciasProcesadas.filter(x => x);
@@ -374,7 +373,6 @@ sap.ui.define([
                         return;
                     }
 
-                    // ✅ ACÁ calcular InitHourSort
                     results.forEach(item => {
                         if (item.Gdate) {
                             const d = new Date(item.Gdate);
@@ -391,16 +389,29 @@ sap.ui.define([
 
                     TurnosService.assignShiftsToLicences(arrayOrdenado);
 
+                    const oDatePicker = this.byId("date");
+                    const oFechaTurno = oDatePicker && oDatePicker.getDateValue();
+
+                    const bIsEditable = this._isEditableTurno(oFechaTurno);
+
+                    arrayOrdenado.forEach(item => {
+                        item.isEditable = bIsEditable;
+                    });
+
                     oLicencesModel.setData(arrayOrdenado);
                     Utils.onCountItems(oView, arrayOrdenado);
 
-                    // Clonamos la informacion
+                    // Clonamos la información
                     const arrayClonado = JSON.parse(JSON.stringify(arrayOrdenado));
+
+                    arrayClonado.forEach(item => {
+                        item.isEditable = bIsEditable;
+                    });
 
                     // Ordenamos por turno
                     arrayClonado.sort(sortByTurnoAsignado);
 
-                    // Modelo que usa la tabla cronologica
+                    // Modelo que usa la tabla cronológica
                     const oListCronoModel = new JSONModel(arrayClonado);
                     oView.setModel(oListCronoModel, "listCronoModel");
 
@@ -420,7 +431,6 @@ sap.ui.define([
                     console.error("Error inesperado en Promise.all:", error);
                     oLicencesModel.setData([]);
                 });
-
         },
 
 
@@ -909,6 +919,13 @@ sap.ui.define([
                 return;
             }
 
+            const oDatePicker = this.byId("date");
+            const oFechaTurno = oDatePicker && oDatePicker.getDateValue();
+            const bIsEditable = this._isEditableTurno(oFechaTurno);
+
+            aNewData.forEach(item => {
+                item.isEditable = bIsEditable;
+            });
 
             TurnosService.appendLicencesToModel(aNewData, this.getView());
 
@@ -1369,7 +1386,7 @@ sap.ui.define([
                 return;
             }
 
-            const maxSize = 5 * 1024 * 1024; 
+            const maxSize = 5 * 1024 * 1024;
             if (file.size > maxSize) {
                 MessageBox.error(this.getView().getModel("i18n").getResourceBundle().getText("fileTooLarge"));
                 return;
@@ -1452,7 +1469,7 @@ sap.ui.define([
         _setPDFContent: function (base64Data) {
             const oHTMLControl = this.byId("pdfViewerContent");
             if (oHTMLControl) {
-                const sHTMLContent = 
+                const sHTMLContent =
                     '<embed src="' + base64Data + '" ' +
                     'type="application/pdf" ' +
                     'width="100%" ' +
@@ -1577,7 +1594,7 @@ sap.ui.define([
                         "Id": attachment.Id,
                         "Empresa": attachment.Empresa,
                         "Anio": attachment.Anio,
-                        "Attindex": "1", 
+                        "Attindex": "1",
                         "Attachment": base64Data,
                         "Filename": attachment.AttachmentName,
                         "Doctype": attachment.AttachmentType || "application/pdf"
@@ -2348,6 +2365,35 @@ sap.ui.define([
                     MessageBox.error(oResourceBundle.getText("errorUpdatingData"));
                 }
             });
+        },
+
+        //Editar turnos
+
+        _isEditableTurno: function (fechaTurno) {
+            if (!fechaTurno) {
+                return false;
+            }
+
+            // Normalizar fecha del turno a UTC 00:00:00
+            const oFechaTurno = new Date(fechaTurno);
+            const oFechaTurnoNormalizada = new Date(Date.UTC(
+                oFechaTurno.getUTCFullYear(),
+                oFechaTurno.getUTCMonth(),
+                oFechaTurno.getUTCDate(),
+                0, 0, 0, 0
+            ));
+
+            // Normalizar fecha actual a UTC 00:00:00
+            const oHoy = new Date();
+            const oHoyNormalizada = new Date(Date.UTC(
+                oHoy.getFullYear(),
+                oHoy.getMonth(),
+                oHoy.getDate(),
+                0, 0, 0, 0
+            ));
+
+            // Retornar true si la fecha del turno es >= hoy
+            return oFechaTurnoNormalizada.getTime() >= oHoyNormalizada.getTime();
         },
 
     });
