@@ -98,13 +98,13 @@
 					</HBox>
 
 
-					<HBox width="500px" class="border" alignItems="End">
+					<HBox width="600px" class="border" alignItems="End">
 						<HBox class="border sapUiTinyMargin" width="100%" justifyContent="SpaceAround">
-							<Input placeholder="{i18n>fastSearch}"/>
+							<Input id="fastSearchInput" placeholder="{i18n>fastSearch}"/>
 							<HBox width="50%" class="btnContainer" justifyContent="SpaceBetween">
-								<Button icon="sap-icon://search" text="Buscar" press="onFilter"/>
-								<Button icon="sap-icon://clear-filter" text="Limpiar Filtros" press="onClearFilter"/>
-								<Button icon="sap-icon://refresh" press="onRefresh"/>
+								<Button icon="sap-icon://search" text="{i18n>search}" press="onFilter"/>
+								<Button icon="sap-icon://clear-filter" text="{i18n>clearFilters}" press="onClearFilter"/>
+								<Button icon="sap-icon://refresh" text="{i18n>refresh}" press="onRefresh"/>
 							</HBox>
 						</HBox>
 					</HBox>

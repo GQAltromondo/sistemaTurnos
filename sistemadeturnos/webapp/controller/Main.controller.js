@@ -126,7 +126,6 @@ sap.ui.define([
 
                     this.successSelectTurno(oData)
                         .then(() => {
-                            console.log("✓ Turno y adjuntos cargados completamente");
                         })
                         .catch((err) => {
                             console.error("Error en successSelectTurno:", err);
@@ -373,6 +372,13 @@ sap.ui.define([
                         return;
                     }
 
+                    const turnosOriginales = {};
+                    aResults.forEach(item => {
+                        if (item.Id && item.Turno) {
+                            turnosOriginales[item.Id] = item.Turno;
+                        }
+                    });
+
                     results.forEach(item => {
                         if (item.Gdate) {
                             const d = new Date(item.Gdate);
@@ -387,6 +393,7 @@ sap.ui.define([
                         oView
                     );
 
+                    // ⚠️ ESTE MÉTODO SOBRESCRIBE TurnoAsignado con valores calculados
                     TurnosService.assignShiftsToLicences(arrayOrdenado);
 
                     const oDatePicker = this.byId("date");
@@ -396,6 +403,10 @@ sap.ui.define([
 
                     arrayOrdenado.forEach(item => {
                         item.isEditable = bIsEditable;
+
+                        if (turnosOriginales[item.Id]) {
+                            item.TurnoAsignado = turnosOriginales[item.Id];
+                        }
                     });
 
                     oLicencesModel.setData(arrayOrdenado);
@@ -492,16 +503,16 @@ sap.ui.define([
 
         onChangeHour: function (oEvent) {
             const oResourceBundle = this.getView().getModel("i18n").getResourceBundle();
-            const oSource = oEvent.getSource(); // TimePicker
+            const oSource = oEvent.getSource();
             const sPath = oSource.getBindingContext("LicencesJsonModel").getPath();
             const iLicenseIndex = parseInt(sPath.split("/")[1], 10);
 
             const oModel = this.getView().getModel("LicencesJsonModel");
             const aLicences = oModel.getProperty("/");
-
             const sNewTime = oEvent.getParameter("value");
             const oSelectedLicence = aLicences[iLicenseIndex];
 
+            // Validación: rango prohibido 5:30 - 6:30
             if (this._isTimeInRestrictedRange(sNewTime)) {
                 MessageBox.error(
                     oResourceBundle.getText("invalidShiftTimeRange"),
@@ -510,15 +521,10 @@ sap.ui.define([
                         onClose: function () {
                             oSource.setValue("");
                             oSource.setValueState(CoreLibrary.ValueState.Error);
+                            oSource.setValueStateText(oResourceBundle.getText("invalidShiftTimeRange"));
 
-                            aLicences.forEach(function (oLicence) {
-                                if (oLicence.Consola === oSelectedLicence.Consola &&
-                                    oLicence.Grupo === oSelectedLicence.Grupo) {
-                                    oLicence.TurnoAsignado = "";
-                                }
-                            });
-
-                            oModel.setProperty("/", aLicences);
+                            oSelectedLicence.TurnoAsignado = "";
+                            oModel.setProperty(sPath + "/TurnoAsignado", "");
                             oModel.refresh(true);
                         }
                     }
@@ -526,20 +532,19 @@ sap.ui.define([
                 return;
             }
 
-            // Resetear el estado de validación si el horario es válido
             oSource.setValueState(CoreLibrary.ValueState.None);
             oSource.setValueStateText("");
 
-            // Continuar con la lógica normal
-            this._updateSameGroupAndConsoleShifts(aLicences, oSelectedLicence, sNewTime);
+            // Solo actualizar licencia individual
+            oSelectedLicence.TurnoAsignado = sNewTime;
+            oModel.setProperty(sPath + "/TurnoAsignado", sNewTime);
+
             this._sortLicences(aLicences);
 
-            // buscar nuevo índice después del sort
             const iNewIndex = aLicences.findIndex(function (lic) {
                 return lic === oSelectedLicence;
             });
 
-            // Cascada hacia abajo con validación de separación
             this._cascadeGroupsDown(aLicences, iNewIndex, oSource);
 
             oModel.setProperty("/", aLicences);
@@ -958,8 +963,6 @@ sap.ui.define([
             TurnosService.appendLicencesToModel(aNewData, this.getView());
 
             MessageBox.success("Se han agregado " + aNewData.length + " elementos correctamente.");
-
-            console.log("Datos agregados:", aNewData);
         },
 
         onOpenComboPopover: function (oEvent) {
@@ -1064,58 +1067,136 @@ sap.ui.define([
             oModel.setProperty(sPath + "/accionesEntregas", aAccionesEntregas);
         },
         onSaveTurnoPress: function () {
+            const Fecha = this.getView().byId('date').getDateValue();
 
-            //  const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel",this.getView()).getProperty("/FechaTurno")
-            const Fecha = this.getView().byId('date').getDateValue()
-            const oTable = this.getView().byId('turnosTable');
-            const aRows = oTable.getRows(); // Obtén las filas visibles de la tabla
-            const aData = []; // Array para almacenar los datos de cada fila
-            let hasAttachments = false;
+            if (!Fecha) {
+                MessageBox.warning("Debe seleccionar una fecha para guardar el turno.");
+                return;
+            }
+
+            const oModel = this.getView().getModel("LicencesJsonModel");
+            const aAllLicences = oModel.getProperty("/") || [];
+
+            if (!aAllLicences || aAllLicences.length === 0) {
+                MessageBox.warning("No hay datos para guardar.");
+                return;
+            }
+
+            const aData = [];
             const aAttachments = [];
 
+            aAllLicences.forEach(function (oRowData) {
+                const row = {
+                    Id: oRowData.Id,
+                    Empresa: oRowData.Empresa,
+                    Tipo: oRowData.Tipo,
+                    Anio: oRowData.Anio,
+                    Fecha: Fecha,
+                    Turno: oRowData.TurnoAsignado,  
+                    Comentarios: oRowData.Comentarios
+                };
 
-
-            aRows.forEach(function (oRow) {
-                // Accede al contexto de cada fila (a través del modelo asociado)
-                const oContext = oRow.getBindingContext("LicencesJsonModel");
-                if (oContext) {
-                    // Obtén los datos de la fila a través del contexto
-                    const oRowData = oContext.getObject();
-
-                    const row = {
+                if (oRowData.AttachmentData) {
+                    aAttachments.push({
                         Id: oRowData.Id,
                         Empresa: oRowData.Empresa,
-                        Tipo: oRowData.Tipo,
                         Anio: oRowData.Anio,
-                        Fecha: Fecha,
-                        Turno: oRowData.TurnoAsignado,
-                        Comentarios: oRowData.Comentarios
-                    }
-
-                    // Incluir datos de adjunto si existen
-                    if (oRowData.AttachmentData) {
-                        aAttachments.push({
-                            Id: oRowData.Id,
-                            Empresa: oRowData.Empresa,
-                            Anio: oRowData.Anio,
-                            AttachmentData: oRowData.AttachmentData,
-                            AttachmentName: oRowData.AttachmentName,
-                            AttachmentType: oRowData.AttachmentType
-                        });
-                    }
-
-                    aData.push(row);
-
+                        AttachmentData: oRowData.AttachmentData,
+                        AttachmentName: oRowData.AttachmentName,
+                        AttachmentType: oRowData.AttachmentType
+                    });
                 }
+
+                aData.push(row);
             });
 
-            console.log("Datos de cada fila:", aData);
-
-            // Mostrar advertencia si hay archivos adjuntos
-            console.log("Datos de cada fila:", aData);
-            console.log("Adjuntos a guardar:", aAttachments);
-
             this.createTurno(aData, aAttachments);
+        },
+
+        createTurno: function (licencias, aAttachments) {
+            const entity = "/TurnosLicenciasSet";
+            const oDataService = this.getView().getModel();
+            const oResourceBundle = this.getView().getModel("i18n").getResourceBundle();
+
+            this.showGlobalBusy("Guardando turnos...");
+
+            const aPromises = licencias.map((licencia) => {
+                return new Promise((resolve, reject) => {
+                    const license = {
+                        "Id": licencia.Id,
+                        "Empresa": licencia.Empresa,
+                        "Tipo": licencia.Tipo || "L",
+                        "Anio": licencia.Anio,
+                        "Dateturno": new Date(licencia.Fecha),
+                        "Turno": licencia.Turno,
+                        "Comentarios": licencia.Comentarios
+                    };
+
+                    oDataService.create(entity, license, {
+                        success: () => resolve(),
+                        error: (oError) => {
+                            reject(oError);
+                        }
+                    });
+                });
+            });
+
+            Promise.all(aPromises)
+                .then(() => {
+
+                    MessageToast.show(oResourceBundle.getText("saveTurno") + " - Éxito");
+
+                    if (aAttachments && aAttachments.length > 0) {
+                        this._saveAttachments(aAttachments)
+                            .then(() => {
+                                this._recargarDatosDespuesDeGuardar();
+                            });
+                    } else {
+                        this._recargarDatosDespuesDeGuardar();
+                    }
+                })
+                .catch((error) => {
+                    this.hideGlobalBusy();
+                    MessageBox.error("Error al guardar los turnos");
+                    console.error(error);
+                });
+        },
+
+        _recargarDatosDespuesDeGuardar: function () {
+            const oView = this.getView();
+            const oDataService = this.getView().getModel();
+            const oDatePicker = this.byId("date");
+            const oFechaTurno = oDatePicker && oDatePicker.getDateValue();
+
+            if (!oFechaTurno) {
+                this.hideGlobalBusy();
+                return;
+            }
+
+            const aFilters = [
+                new Filter("Dateturno", FilterOperator.EQ, oFechaTurno),
+                new Filter("Empresa", FilterOperator.EQ, "100")
+            ];
+
+            const sEntity = "/TurnosLicenciasSet";
+
+            oDataService.read(sEntity, {
+                filters: aFilters,
+                success: (oData) => {
+                    this.successSelectTurno(oData)
+                        .then(() => {
+                        })
+                        .catch((err) => {
+                            console.error("Error al procesar datos recargados:", err);
+                        })
+                        .finally(() => {
+                            this.hideGlobalBusy();
+                        });
+                },
+                error: (oError) => {
+                    this.hideGlobalBusy();
+                }
+            });
         },
 
         createTurno: function (licencias, aAttachments) {
@@ -1151,12 +1232,13 @@ sap.ui.define([
                 .then(() => {
                     MessageToast.show(oResourceBundle.getText("saveTurno") + " - Éxito");
 
-                    // Si hay adjuntos, guardarlos
                     if (aAttachments && aAttachments.length > 0) {
                         this._saveAttachments(aAttachments);
-                    } else {
-                        this.hideGlobalBusy();
                     }
+
+                    setTimeout(() => {
+                        this._recargarDatosDespuesDeGuardar();
+                    }, 1000);
                 })
                 .catch((error) => {
                     this.hideGlobalBusy();
@@ -1630,7 +1712,6 @@ sap.ui.define([
 
                     oDataService.create("/AttachmentLicenciasSet", oAttachment, {
                         success: () => {
-                            console.log("Adjunto guardado exitosamente para:", attachment.Id);
                             resolve();
                         },
                         error: (oError) => {
