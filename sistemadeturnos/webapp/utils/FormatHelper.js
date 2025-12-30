@@ -3,13 +3,14 @@ sap.ui.define([
 ], function (JSONModel) {
     "use strict";
 
-    return {
+    const FormatHelper = {
         formatDate: function (oDate) {
             var oDateFormat = sap.ui.core.format.DateFormat.getDateTimeInstance({
-                pattern: "dd/MM/yyyy" // El formato que necesites
+                pattern: "dd/MM/yyyy"
             });
             return oDateFormat.format(oDate);
         },
+        
         getEstado: function (value) {
             switch (value) {
                 case 'X':
@@ -20,6 +21,7 @@ sap.ui.define([
                     return value
             }
         },
+        
         getJobCond: function (value) {
             switch (value) {
                 case '01':
@@ -35,9 +37,10 @@ sap.ui.define([
                 case '06':
                     return 'Condiciones Especiales';
                 default:
-                    return value; // Devuelve el valor original si no coincide con ninguno de los casos
+                    return value;
             }
         },
+        
         getRegiones: function (value) {
             switch (value) {
                 case '103':
@@ -49,18 +52,18 @@ sap.ui.define([
                 case '114':
                     return 'Sur';
                 default:
-                    return value; // Devuelve el valor original si no coincide con ninguno de los casos
+                    return value;
             }
-        }, msTohoursSeconds: function (ms) {
+        },
+        
+        msTohoursSeconds: function (ms) {
             let date = new Date(ms);
-
-            let hours = date.getHours().toString();
-            hours = hours.length === 1 ? "0" + hours : hours;
-
-            let minutes = date.getMinutes().toString();
-            minutes = minutes.length === 1 ? "0" + minutes : minutes;
+            let hours = date.getHours().toString().padStart(2, '0');
+            let minutes = date.getMinutes().toString().padStart(2, '0');
             return hours + ":" + minutes;
-        }, turnoColor: function (consola) {
+        },
+        
+        turnoColor: function (consola) {
             switch (consola) {
                 case "NOA":
                     return "Warning";
@@ -72,7 +75,59 @@ sap.ui.define([
                     return "None";
             }
         },
-
-
+   
+        edmTimeToHHMM: function (edmTime) {
+            console.log("🕐 edmTimeToHHMM - Input:", edmTime, "Tipo:", typeof edmTime);
+            
+            let milliseconds = edmTime;
+            if (typeof edmTime === 'object' && edmTime !== null && 'ms' in edmTime) {
+                milliseconds = edmTime.ms;
+            }
+            
+            // Convertir milisegundos a horas y minutos
+            const totalMinutes = Math.floor(milliseconds / (1000 * 60));
+            const hours = Math.floor(totalMinutes / 60);
+            const minutes = totalMinutes % 60;
+            
+            const result = hours.toString().padStart(2, '0') + ':' + minutes.toString().padStart(2, '0');
+            
+            return result;
+        },
+        
+        durationToTime: function (duration) {
+            if (!duration || typeof duration !== 'string') {
+                return "";
+            }
+            
+            const hoursMatch = duration.match(/(\d+)H/);
+            const minutesMatch = duration.match(/(\d+)M/);
+            
+            const hours = hoursMatch ? hoursMatch[1].padStart(2, '0') : '00';
+            const minutes = minutesMatch ? minutesMatch[1].padStart(2, '0') : '00';
+            
+            const result = hours + ":" + minutes;
+            
+            return result;
+        },
+    
+        formatInitHour: function (timbeg, gdate) {
+            
+            if (timbeg && typeof timbeg === 'object' && 'ms' in timbeg) {
+                return FormatHelper.edmTimeToHHMM(timbeg);
+            }
+            
+            if (timbeg && typeof timbeg === 'string' && timbeg !== "PT00H00M00S") {
+                return FormatHelper.durationToTime(timbeg);
+            }
+            
+            if (gdate) {
+                return FormatHelper.msTohoursSeconds(gdate);
+            }
+            
+            console.log("❌ Sin datos de hora válidos");
+            return "";
+        }
     };
+
+    return FormatHelper;
 });

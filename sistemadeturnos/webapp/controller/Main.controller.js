@@ -353,13 +353,46 @@ sap.ui.define([
                 return Promise.resolve();
             }
 
-            const aPromises = aResults.map((licencia) => {
-                return LicenseService.FIND(licencia, oDataModel)
-                    .then(result => result)
-                    .catch(err => {
-                        console.error("Error en FIND para licencia", licencia, err);
-                        return null;
+            const aPromises = aResults.map((turnoLicencia) => {
+                return new Promise((resolve, reject) => {
+                    const sPath = oDataModel.createKey("/LicenciaTrabajoSet", {
+                        Empresa: turnoLicencia.Empresa,
+                        Id: turnoLicencia.Id,
+                        Tipo: turnoLicencia.Tipo,
+                        Anio: turnoLicencia.Anio
                     });
+
+                    oDataModel.read(sPath, {
+                        urlParameters: {
+                            "$expand": "HorariosPorLicencia_nav,CoordinacionesLicencia_nav,ObservacionesLicencia_nav,TramitacionesLicencia_nav,SuspensionLicencia_nav,ReanudacionLicencia_nav,TransferenciaJefeTrabajo_nav,DevolucionLicencia_nav,EntregasLicencia_nav,AttachmentXLicencia_nav,EsquemaUnifilar_nav,TurnosLicencias_nav"
+                        },
+                        success: (oData) => {
+
+                            const licenciaCompleta = {
+                                ...oData,
+                                Timbeg: oData.Timbeg || null,
+                                Timend: oData.Timend || null,
+                                Gdate: oData.Gdate || null,
+                                TurnoAsignado: turnoLicencia.Turno || ""
+                            };
+
+                            resolve(licenciaCompleta);
+                        },
+                        error: (oError) => {
+                            LicenseService.FIND(turnoLicencia, oDataModel)
+                                .then(result => {
+                                    if (!result.Timbeg && turnoLicencia.Timbeg) {
+                                        result.Timbeg = turnoLicencia.Timbeg;
+                                    }
+                                    resolve(result);
+                                })
+                                .catch(err => {
+                                    console.error("Error en fallback FIND:", err);
+                                    reject(err);
+                                });
+                        }
+                    });
+                });
             });
 
             return Promise.all(aPromises)
@@ -380,7 +413,18 @@ sap.ui.define([
                     });
 
                     results.forEach(item => {
-                        if (item.Gdate) {
+
+                        if (item.Timbeg && typeof item.Timbeg === 'string' && item.Timbeg !== "PT00H00M00S") {
+                            const hoursMatch = item.Timbeg.match(/(\d+)H/);
+                            const minutesMatch = item.Timbeg.match(/(\d+)M/);
+
+                            const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+                            const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+
+                            item.InitHourSort = hours * 60 + minutes;
+
+                        }
+                        else if (item.Gdate) {
                             const d = new Date(item.Gdate);
                             item.InitHourSort = d.getHours() * 60 + d.getMinutes();
                         } else {
@@ -393,7 +437,6 @@ sap.ui.define([
                         oView
                     );
 
-                    // ⚠️ ESTE MÉTODO SOBRESCRIBE TurnoAsignado con valores calculados
                     TurnosService.assignShiftsToLicences(arrayOrdenado);
 
                     const oDatePicker = this.byId("date");
@@ -1092,7 +1135,7 @@ sap.ui.define([
                     Tipo: oRowData.Tipo,
                     Anio: oRowData.Anio,
                     Fecha: Fecha,
-                    Turno: oRowData.TurnoAsignado,  
+                    Turno: oRowData.TurnoAsignado,
                     Comentarios: oRowData.Comentarios
                 };
 
@@ -2194,7 +2237,8 @@ sap.ui.define([
                     // Datos
                     aLicenciasUnicas.forEach(function (license) {
                         var sEquipo = license.Equnr || "";
-                        var sHora = license.TurnoAsignado || (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : "");
+                        var sHora = license.TurnoAsignado || (license.Horainicio ? oFormatter.durationToTime(license.Horainicio)
+                            : (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : ""));
                         var sComentarios = license.Comments || license.PatAdic || "";
                         aGrillaFecha.push([sEquipo, sHora, sComentarios]);
                     });
@@ -2256,12 +2300,16 @@ sap.ui.define([
             var oFormatter = this.formatter;
 
             return aData.map(function (license) {
+                console.log("📊 prepareLicenciasData - License:", license.Id);
+                console.log("   Horainicio:", license.Horainicio, "Tipo:", typeof license.Horainicio);
+                console.log("   Gdate:", license.Gdate, "Tipo:", typeof license.Gdate);
+
                 return {
                     "Equipo": license.Equnr || "",
                     "IdLicencia": license.Id || "",
                     "Estado": oFormatter.getEstado(license.Equstat) || "",
                     "CondTrabajo": oFormatter.getJobCond(license.Jobcond) || "",
-                    "HoraInicio": license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : "",
+                    "HoraInicio": license.Horainicio ? oFormatter.durationToTime(license.Horainicio) : (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : ""),
                     "TrabajoRealizar": license.Comments || "",
                     "Region": oFormatter.getRegiones(license.Werks) || "",
                     "Consola": license.Consola || "",
