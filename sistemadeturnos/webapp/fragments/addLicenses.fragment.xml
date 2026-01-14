@@ -66,6 +66,11 @@
                                                         <Text text="{i18n>region}"/>
                                                     </header>
                                                 </Column>
+                                                <Column>
+                                                    <header>
+                                                        <Text text="{i18n>Estado}"/>
+                                                    </header>
+                                                </Column>
                                             </columns>
                                             <items>
                                                 <ColumnListItem >
@@ -76,10 +81,29 @@
                                                         <Text text="{path:'SearchLicense>Gdate', formatter: '.formatter.msTohoursSeconds'}" class="text-bold" wrapping="false"/>
                                                         <Text text="{SearchLicense>Comments}" wrapping="false"/>
                                                         <Text text="{path: 'SearchLicense>Werks', formatter: '.formatter.getRegiones'}" textAlign="Center" wrapping="true"/>
+                                                        <Text text="{path: 'SearchLicense>Licstat', formatter: '.formatter.formatLicState'}" textAlign="Center" wrapping="true"/>
                                                     </cells>
                                                 </ColumnListItem>
                                             </items>
                                         </Table>
+
+                                        <!-- 
+                                        <t:Column
+                                        id="state"
+                                        width="250px"
+                                        sortProperty="Licstat"
+                                        filterProperty="Licstat"
+                                    >
+                                        <Label text="{i18n>state}" />
+                                        <t:template>
+                                            <Text
+                                                text="{path: 'LicencesJsonModel>Licstat', formatter: '.formatter.formatLicState'}"
+                                                textAlign="Center"
+                                                wrapping="false"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+                                         -->
 
                                     </VBox>
                                 </f:fields>

@@ -79,10 +79,13 @@ sap.ui.define([
             if (!Array.isArray(datos)) {
                 throw new Error("El parámetro 'datos' debe ser un array.");
             }
-            let estadosPermitidos = []
+
+            let estadosPermitidos = [];
+
             if (typeof fechaSeleccionada !== "string") {
                 throw new Error("El parámetro 'fechaSeleccionada' debe ser un string con formato de fecha (YYYY-MM-DD).");
             }
+
             if (isRefresh) {
                 // 01 = Autorizada
                 // 02 = Observada
@@ -91,14 +94,31 @@ sap.ui.define([
                 // 09 = Generada
                 // 10 = Suspendida
                 // 23 = En Tramite
-
                 estadosPermitidos = ["01", "02", "07", "08", "09", "10", "23"];
             } else {
                 estadosPermitidos = ["01", "07", "08", "09", "10", "23"];
             }
+
+            // 🔍 LOG INICIAL
+            console.log("🔍 filtrarFechasTipo - INICIO");
+            console.log("Total licencias recibidas:", datos.length);
+            console.log("Estados permitidos:", estadosPermitidos);
+            console.log("isRefresh:", isRefresh);
+
+            // 🔍 LOG: Ver todos los estados que llegan
+            const estadosEncontrados = {};
+            datos.forEach(d => {
+                if (!estadosEncontrados[d.Licstat]) {
+                    estadosEncontrados[d.Licstat] = 0;
+                }
+                estadosEncontrados[d.Licstat]++;
+            });
+            console.log("Estados encontrados en datos:", estadosEncontrados);
+
             const datosFiltrados = datos.filter(dato => {
                 // 1) Filtrar por estados permitidos
                 if (!estadosPermitidos.includes(dato.Licstat)) {
+                    console.log(`❌ Rechazada ${dato.Id} - Estado ${dato.Licstat} NO permitido`);
                     return false;
                 }
 
@@ -126,6 +146,11 @@ sap.ui.define([
                 // Otros Period no pasan
                 return false;
             });
+
+            // 🔍 LOG FINAL
+            console.log("✅ Licencias aprobadas:", datosFiltrados.length);
+            console.log("❌ Licencias rechazadas:", datos.length - datosFiltrados.length);
+            console.log("Licencias aprobadas:", datosFiltrados.map(d => ({ Id: d.Id, Estado: d.Licstat, Period: d.Period })));
 
             return datosFiltrados;
         },
@@ -172,82 +197,82 @@ sap.ui.define([
             return data;
         },
         assignShiftsToLicences: function (licences) {
-    const initialTime = 7 * 60; // 7:00 AM en minutos
+            const initialTime = 7 * 60; // 7:00 AM en minutos
 
-    // Asegurar Grupo por defecto
-    licences.forEach((license) => {
-        if (!license.Grupo) {
-            license.Grupo = license.Equnr;
+            // Asegurar Grupo por defecto
+            licences.forEach((license) => {
+                if (!license.Grupo) {
+                    license.Grupo = license.Equnr;
+                }
+            });
+
+            // Agrupar por Consola
+            const groupedByConsola = {};
+            licences.forEach((license) => {
+                const consola = license.Consola || "";
+                if (!groupedByConsola[consola]) {
+                    groupedByConsola[consola] = [];
+                }
+                groupedByConsola[consola].push(license);
+            });
+
+            Object.keys(groupedByConsola).forEach((consola) => {
+                let currentTime = initialTime;
+                let previousGrupo = "";
+                let firstShiftInGroup = "";
+
+                groupedByConsola[consola].forEach((license) => {
+
+                    // 1) Si ya viene con turno desde backend, respetarlo
+                    if (Array.isArray(license.TurnosLicencias_nav?.results) &&
+                        license.TurnosLicencias_nav.results.length > 0) {
+
+                        const nav = license.TurnosLicencias_nav.results[0];
+
+                        license.TurnoAsignado = nav.Turno;
+                        license.Comentarios = nav.Comentarios;
+
+                        return;
+                    }
+
+                    // 2) Obtener duración
+                    const shiftInfo = Utils.getShiftInfo(license);
+                    const shiftDuration = shiftInfo.duration;
+
+                    // 3) Desacoplados
+                    if (license.Grupo && license.Grupo.startsWith("_")) {
+                        license.TurnoAsignado = this._formatTime(currentTime);
+                        currentTime += shiftDuration;
+                        return;
+                    }
+
+                    // 4) Grupos normales
+                    if (license.Grupo !== previousGrupo) {
+                        previousGrupo = license.Grupo;
+
+                        firstShiftInGroup = this._formatTime(currentTime);
+                        license.TurnoAsignado = firstShiftInGroup;
+
+                        currentTime += shiftDuration;
+                    } else {
+                        license.TurnoAsignado = firstShiftInGroup;
+                    }
+                });
+
+                // Ordenar por turno asignado
+                groupedByConsola[consola].sort((a, b) =>
+                    this._convertTimeToMinutes(a.TurnoAsignado) -
+                    this._convertTimeToMinutes(b.TurnoAsignado)
+                );
+            });
+
+            // Reconstruir array final
+            licences.length = 0;
+            Object.keys(groupedByConsola).forEach((consola) => {
+                licences.push(...groupedByConsola[consola]);
+            });
         }
-    });
-
-    // Agrupar por Consola
-    const groupedByConsola = {};
-    licences.forEach((license) => {
-        const consola = license.Consola || "";
-        if (!groupedByConsola[consola]) {
-            groupedByConsola[consola] = [];
-        }
-        groupedByConsola[consola].push(license);
-    });
-
-    Object.keys(groupedByConsola).forEach((consola) => {
-        let currentTime = initialTime;
-        let previousGrupo = "";
-        let firstShiftInGroup = "";
-
-        groupedByConsola[consola].forEach((license) => {
-
-            // 1) Si ya viene con turno desde backend, respetarlo
-            if (Array.isArray(license.TurnosLicencias_nav?.results) &&
-                license.TurnosLicencias_nav.results.length > 0) {
-
-                const nav = license.TurnosLicencias_nav.results[0];
-
-                license.TurnoAsignado = nav.Turno;
-                license.Comentarios   = nav.Comentarios;
-
-                return;
-            }
-
-            // 2) Obtener duración
-            const shiftInfo = Utils.getShiftInfo(license);
-            const shiftDuration = shiftInfo.duration;
-
-            // 3) Desacoplados
-            if (license.Grupo && license.Grupo.startsWith("_")) {
-                license.TurnoAsignado = this._formatTime(currentTime);
-                currentTime += shiftDuration;
-                return;
-            }
-
-            // 4) Grupos normales
-            if (license.Grupo !== previousGrupo) {
-                previousGrupo = license.Grupo;
-
-                firstShiftInGroup = this._formatTime(currentTime);
-                license.TurnoAsignado = firstShiftInGroup;
-
-                currentTime += shiftDuration;
-            } else {
-                license.TurnoAsignado = firstShiftInGroup;
-            }
-        });
-
-        // Ordenar por turno asignado
-        groupedByConsola[consola].sort((a, b) =>
-            this._convertTimeToMinutes(a.TurnoAsignado) -
-            this._convertTimeToMinutes(b.TurnoAsignado)
-        );
-    });
-
-    // Reconstruir array final
-    licences.length = 0;
-    Object.keys(groupedByConsola).forEach((consola) => {
-        licences.push(...groupedByConsola[consola]);
-    });
-}
-,
+        ,
 
 
         _formatTime: function (iMinutes) {

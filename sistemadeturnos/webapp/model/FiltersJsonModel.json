@@ -1,0 +1,182 @@
+{
+    "Period": {
+        "attribute": "Period",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Arbpl": {
+        "attribute": "Arbpl",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Solicitante": {
+        "attribute": "Solicitante",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Tipoequipo": {
+        "attribute": "Tipoequipo",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "R500kv": {
+        "attribute": "R500kv",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "SenalesC": {
+        "attribute": "SenalesC",
+        "value": [],
+        "operator": "EQ",
+        "typeOfFilter": "Multiple",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "typeOfValue": "Array"
+    },
+    "Tipinterv": {
+        "attribute": "Tipinterv",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Barrafs": {
+        "attribute": "Barrafs",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Tiemporep": {
+        "attribute": "Tiemporep",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Tipolicencia": {
+        "attribute": "Tipolicencia",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "SolSuplente": {
+        "attribute": "SolSuplente",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Jobcond": {
+        "attribute": "Jobcond",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Jefe": {
+        "attribute": "Jefe",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Aro": {
+        "attribute": "Aro",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "JefeSuplente": {
+        "attribute": "JefeSuplente",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Bloqueo": {
+        "attribute": "Bloqueo",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Equstat": {
+        "attribute": "Equstat",
+        "value": "N",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": true,
+        "EmptyValues": "N",
+        "type": "String"
+    },
+    "Rdisparo": {
+        "attribute": "Rdisparo",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": true,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Equnr": {
+        "attribute": "Equnr",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    },
+    "Werks": {
+        "attribute": "Werks",
+        "value": "",
+        "operator": "EQ",
+        "typeOfFilter": "Single",
+        "hasEmptyValues": false,
+        "EmptyValues": "",
+        "type": "String"
+    }
+}

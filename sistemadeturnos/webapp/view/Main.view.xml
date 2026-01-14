@@ -32,7 +32,6 @@
                                 <ComboBox
                                     width="20rem"
                                     id="Region"
-                                    selectionChange=".loadGrupoPlanificador"
                                     selectedKey="{FiltersJsonModel>/Werks/value}"
                                     items="{ path: 'RegionesJsonModel>/Regiones', templateShareable: true }"
                                 >
@@ -67,6 +66,8 @@
                                 <ComboBox
                                     width="20rem"
                                     id="EquipCammesa"
+                                    enabled="false"
+                                    selectedKey="{FiltersJsonModel>/Equnr/value}"
                                     items="{ path: 'EquiposJsonModel>/Equipos', templateShareable: true }"
                                 >
                                     <core:Item
@@ -83,7 +84,8 @@
                                 <ComboBox
                                     width="20rem"
                                     id="StatusECammesa"
-                                    items="{ path: 'HardCodeModel>/EqustatCammesa', templateShareable: true }"
+                                    selectedKey="{FiltersJsonModel>/Equstat/value}"
+                                    items="{ path: 'HardCodeModel>/Equstat', templateShareable: true }"
                                 >
                                     <core:Item
                                         key="{HardCodeModel>key}"
@@ -114,6 +116,8 @@
                                         class="sapUiSmallMarginBottom"
                                     />
                                 </HBox>
+
+                                <!-- Bloqueo de Recierre -->
                                 <HBox alignItems="Center">
                                     <Label
                                         text="{i18n>equipRecierre}:"
@@ -122,22 +126,7 @@
                                     <ComboBox
                                         width="10rem"
                                         id="ERecierre"
-                                        items="{ path: 'HardCodeModel>/Rdisparo', templateShareable: true }"
-                                    >
-                                        <core:Item
-                                            key="{HardCodeModel>key}"
-                                            text="{HardCodeModel>value}"
-                                        />
-                                    </ComboBox>
-                                </HBox>
-                                <HBox alignItems="Center">
-                                    <Label
-                                        text="{i18n>equipDisparo}:"
-                                        class="sapUiTinyMarginEnd"
-                                    />
-                                    <ComboBox
-                                        width="10rem"
-                                        id="EDisparo"
+                                        selectedKey="{FiltersJsonModel>/Bloqueo/value}"
                                         items="{ path: 'HardCodeModel>/Bloqueo', templateShareable: true }"
                                     >
                                         <core:Item
@@ -146,6 +135,26 @@
                                         />
                                     </ComboBox>
                                 </HBox>
+
+                                <!-- Riesgo de Disparo -->
+                                <HBox alignItems="Center">
+                                    <Label
+                                        text="{i18n>equipDisparo}:"
+                                        class="sapUiTinyMarginEnd"
+                                    />
+                                    <ComboBox
+                                        width="10rem"
+                                        id="EDisparo"
+                                        selectedKey="{FiltersJsonModel>/Rdisparo/value}"
+                                        items="{ path: 'HardCodeModel>/Rdisparo', templateShareable: true }"
+                                    >
+                                        <core:Item
+                                            key="{HardCodeModel>key}"
+                                            text="{HardCodeModel>value}"
+                                        />
+                                    </ComboBox>
+                                </HBox>
+
                                 <Button
                                     icon="sap-icon://add-filter"
                                     text="Filtros Avanzados"
@@ -219,33 +228,10 @@
                 </FlexBox>
 
                 <HBox
-                    justifyContent="SpaceBetween"
+                    justifyContent="End"
                     alignItems="Center"
                     class="sapUiSmallMarginBeginEnd"
                 >
-                    <HBox>
-                        <Button
-                            icon="sap-icon://add"
-                            press="onAddLicense"
-                            enabled="{= ${tabsControl>/activeTab} === 'LIC' }"
-                            class="sapUiSmallMarginEnd"
-                        />
-
-                        <Button
-                            icon="sap-icon://delete"
-                            press=".onDeletePress"
-                            enabled="{= ${tabsControl>/activeTab} === 'LIC' }"
-                            class="sapUiSmallMarginEnd"
-                        />
-
-                        <Button
-                            icon="sap-icon://broken-link"
-                            press="onDetachLicense"
-                            enabled="{= ${tabsControl>/activeTab} === 'LIC' }"
-                            class="sapUiSmallMarginEnd"
-                        />
-                    </HBox>
-
                     <HBox
                         width="600px"
                         class="border"
@@ -258,10 +244,9 @@
                         >
                             <Input
                                 id="fastSearchInput"
-                                placeholder="{i18n>fastSearch}"
+                                placeholder="{i18n>quickSearch}"
                             />
                             <HBox
-                                width="50%"
                                 class="btnContainer"
                                 justifyContent="SpaceBetween"
                             >
@@ -301,7 +286,88 @@
                                 ariaLabelledBy="title2"
                                 rows="{LicencesJsonModel>/}"
                             >
+                                <t:contextMenu>
+                                    <Menu>
+                                        <!-- Adjuntar archivo -->
+                                        <MenuItem
+                                            text="Adjuntar archivo"
+                                            icon="sap-icon://attachment"
+                                            press="onAttachFile"
+                                        />
+
+                                        <!-- Eliminar adjunto -->
+                                        <MenuItem
+                                            text="Eliminar adjunto"
+                                            icon="sap-icon://delete"
+                                            press="onDeleteAttachment"
+                                            visible="{= ${LicencesJsonModel>Attachments} &amp;&amp; ${LicencesJsonModel>Attachments}.length > 0 }"
+                                        />
+
+                                        <!-- Agregar Licencia (nuevo - por implementar) -->
+                                        <MenuItem
+                                            text="Agregar Licencia"
+                                            icon="sap-icon://add"
+                                            press="onAgregarLicencia"
+                                            enabled="false"
+                                        />
+
+                                        <!-- Eliminar Licencia -->
+                                        <MenuItem
+                                            text="Eliminar Licencia"
+                                            icon="sap-icon://delete"
+                                            press="onDeletePress"
+                                        />
+
+                                        <!-- Desacoplar -->
+                                        <MenuItem
+                                            text="Desacoplar"
+                                            icon="sap-icon://broken-link"
+                                            press="onDetachLicense"
+                                        />
+
+                                        <!-- Acciones para la entrega -->
+                                        <MenuItem
+                                            text="Acciones para la entrega"
+                                            icon="sap-icon://add-activity-2"
+                                            press="onOpenAccionEntregaPopover"
+                                        />
+                                    </Menu>
+                                </t:contextMenu>
+
+                                <t:rowSettingsTemplate>
+                                    <t:RowSettings
+                                        highlight="{path: 'LicencesJsonModel>tramitacionColor', formatter: '.getTramitacionHighlight'}"
+                                    />
+                                </t:rowSettingsTemplate>
+
                                 <t:columns>
+                                    <t:Column width="60px">
+                                        <Label text="Tra..." />
+                                        <t:template>
+                                            <Button
+                                                icon="sap-icon://calendar"
+                                                type="{= ${LicencesJsonModel>tramitacionColor} === 'red' ? 'Reject' : 
+                         ${LicencesJsonModel>tramitacionColor} === 'yellow' ? 'Attention' : 'Default' }"
+                                                press="onOpenCalendarioTramitacion"
+                                                tooltip="Ver calendario de tramitación"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column width="100px">
+                                        <Label text="{i18n>acciones}" />
+                                        <t:template>
+                                            <HBox justifyContent="Center">
+                                                <Button
+                                                    icon="sap-icon://add-activity-2"
+                                                    type="{= ${LicencesJsonModel>accionSeleccionada} ? 'Emphasized' : 'Default' }"
+                                                    press="onOpenAccionEntregaPopover"
+                                                    tooltip="Agregar acción para entrega"
+                                                />
+                                            </HBox>
+                                        </t:template>
+                                    </t:Column>
+
                                     <t:Column
                                         id="equipment"
                                         width="100px"
@@ -312,17 +378,26 @@
                                     >
                                         <Label text="{i18n>equipment}" />
                                         <t:template>
-                                            <Text
-                                                text="{LicencesJsonModel>Equnr}"
-                                                wrapping="false"
-                                                class="{= ${firstItem} ? 'text-bold' : '' }"
-                                            />
+                                            <HBox
+                                                alignItems="Center"
+                                                justifyContent="Center"
+                                                width="100%"
+                                            >
+                                                <core:HTML
+                                                    content="&lt;div class='groupColorBar' style='background-color:{LicencesJsonModel>ColorGrupo}'&gt;&lt;/div&gt;"
+                                                />
+                                                <Text
+                                                    text="{LicencesJsonModel>Equnr}"
+                                                    wrapping="false"
+                                                    class="{= ${firstItem} ? 'text-bold' : '' }"
+                                                />
+                                            </HBox>
                                         </t:template>
                                     </t:Column>
 
                                     <t:Column
                                         hAlign="Center"
-                                        width="200px"
+                                        width="150px"
                                         sortProperty="Id"
                                         filterProperty="Id"
                                     >
@@ -338,7 +413,7 @@
 
                                     <t:Column
                                         id="status"
-                                        width="88px"
+                                        width="60px"
                                         hAlign="Center"
                                         sortProperty="Equstat"
                                         filterProperty="Equstat"
@@ -409,8 +484,24 @@
                                     </t:Column>
 
                                     <t:Column
+                                        id="state"
+                                        width="250px"
+                                        sortProperty="Licstat"
+                                        filterProperty="Licstat"
+                                    >
+                                        <Label text="{i18n>state}" />
+                                        <t:template>
+                                            <Text
+                                                text="{path: 'LicencesJsonModel>Licstat', formatter: '.formatter.formatLicState'}"
+                                                textAlign="Center"
+                                                wrapping="false"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column
                                         id="region"
-                                        width="200px"
+                                        width="180px"
                                         hAlign="Center"
                                         sortProperty="Werks"
                                         filterProperty="Werks"
@@ -444,6 +535,7 @@
                                         hAlign="Center"
                                         width="140px"
                                         filterProperty="TurnoAsignado"
+                                        sortProperty="TurnoAsignado"
                                     >
                                         <Label
                                             text="{i18n>shift}"
@@ -460,9 +552,8 @@
                                                     displayFormat="HH:mm"
                                                     valueState="{path: 'LicencesJsonModel>Consola', formatter: '.formatter.turnoColor'}"
                                                     change="onChangeHour"
-                                                    enabled="{LicencesJsonModel>isEditable}"
                                                     valueStateText="{i18n>pastTurnoNotEditable}"
-                                                    class="sapUiTinyMarginEnd"
+                                                    class="tpGroupBorder {LicencesJsonModel>ColorGrupoClass}"
                                                 />
                                             </HBox>
                                         </t:template>
@@ -478,7 +569,6 @@
                                         <t:template>
                                             <Input
                                                 value="{LicencesJsonModel>Comentarios}"
-                                                enabled="{LicencesJsonModel>isEditable}"
                                                 valueStateText="{i18n>pastTurnoNotEditable}"
                                             />
                                         </t:template>
@@ -487,96 +577,113 @@
                                     <t:Column
                                         id="attachment"
                                         hAlign="Center"
-                                        width="150px"
+                                        width="75px"
                                     >
                                         <Label text="{i18n>attachment}" />
                                         <t:template>
-                                            <HBox
-                                                alignItems="Center"
-                                                justifyContent="Center"
-                                            >
-                                                <Button
-                                                    icon="sap-icon://attachment"
-                                                    type="Transparent"
-                                                    tooltip="{i18n>attachFile}"
-                                                    press="onAttachFile"
-                                                    enabled="{LicencesJsonModel>isEditable}"
-                                                    visible="{= !${LicencesJsonModel>AttachmentData} }"
-                                                    class="sapUiTinyMarginEnd"
-                                                />
-                                                <Button
-                                                    icon="sap-icon://show"
-                                                    type="Emphasized"
-                                                    tooltip="{i18n>viewFile}"
-                                                    press="onDownloadFile"
-                                                    visible="{= !!${LicencesJsonModel>AttachmentData} }"
-                                                    class="sapUiTinyMarginEnd"
-                                                />
-                                                <Button
-                                                    icon="sap-icon://delete"
-                                                    type="Transparent"
-                                                    tooltip="{i18n>deleteFile}"
-                                                    press="onDeleteAttachment"
-                                                    enabled="{LicencesJsonModel>isEditable}"
-                                                    visible="{= !!${LicencesJsonModel>AttachmentData} }"
-                                                    class="sapUiTinyMarginEnd"
-                                                />
-                                            </HBox>
+                                            <Button
+                                                icon="sap-icon://show"
+                                                type="Emphasized"
+                                                tooltip="{i18n>viewFile}"
+                                                press="onViewAttachment"
+                                                visible="{= !!${LicencesJsonModel>Attachments/length} }"
+                                                class="sapUiTinyMarginEnd whiteIconButton"
+                                            />
                                         </t:template>
                                     </t:Column>
                                 </t:columns>
                             </t:Table>
                         </IconTabFilter>
 
+                        <!-- REEMPLAZAR el IconTabFilter "Listado Cronologico" completo por esto -->
                         <IconTabFilter
                             text="Listado Cronologico"
                             key="CRONO"
                         >
-                            <t:Table
-                                id="cronoTable"
-                                rows="{listCronoModel>/}"
+                            <t:TreeTable
+                                id="cronoTreeTable"
+                                rows="{
+            path: 'listCronoTreeModel>/',
+            parameters: {
+                arrayNames: ['children']
+            }
+        }"
+                                selectionMode="None"
+                                enableColumnReordering="false"
+                                enableSelectAll="false"
+                                ariaLabelledBy="title"
+                                visibleRowCount="20"
+                                minAutoRowCount="10"
+                                toggleOpenState=".onToggleOpenState"
+                                expandFirstLevel="false"
                             >
                                 <t:columns>
+                                    <!-- Columna de Equipo con icono de expansión -->
                                     <t:Column
                                         id="equipmentCrono"
-                                        width="100px"
+                                        width="150px"
                                         class="customColumnBackground"
                                         hAlign="Center"
-                                        sortProperty="Equnr"
-                                        filterProperty="Equnr"
                                     >
                                         <Label text="{i18n>equipment}" />
                                         <t:template>
-                                            <Text
-                                                text="{listCronoModel>Equnr}"
-                                                wrapping="false"
-                                                class="{= ${firstItem} ? 'text-bold' : '' }"
-                                            />
+                                            <HBox
+                                                alignItems="Center"
+                                                justifyContent="Center"
+                                                width="100%"
+                                            >
+                                                <!-- Mostrar equipo + turno si es nodo padre -->
+                                                <Text
+                                                    text="{= ${listCronoTreeModel>_isGroup} ? ${listCronoTreeModel>Equnr} + ' - Turno ' + ${listCronoTreeModel>TurnoAsignado} : '' }"
+                                                    wrapping="false"
+                                                    class="text-bold"
+                                                    visible="{= ${listCronoTreeModel>_isGroup} === true }"
+                                                />
+                                                <!-- Mostrar guión para hijos (más estético) -->
+                                                <Text
+                                                    text="└─"
+                                                    wrapping="false"
+                                                    class="sapUiTinyMarginEnd"
+                                                    visible="{= ${listCronoTreeModel>_isGroup} === false }"
+                                                />
+                                            </HBox>
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- IdLicencia -->
                                     <t:Column
                                         hAlign="Center"
                                         width="200px"
-                                        sortProperty="Id"
-                                        filterProperty="Id"
                                     >
                                         <Label text="IdLicencia" />
                                         <t:template>
-                                            <Text
-                                                text="{path: 'listCronoModel>Id', formatter: '.formatter.getJobCond'}"
-                                                textAlign="Center"
-                                                wrapping="true"
-                                            />
+                                            <HBox
+                                                alignItems="Center"
+                                                justifyContent="Center"
+                                            >
+                                                <!-- Si es grupo, mostrar contador -->
+                                                <Text
+                                                    text="{= ${listCronoTreeModel>_isGroup} ? ${listCronoTreeModel>_childCount} + ' LLTT' : '' }"
+                                                    wrapping="false"
+                                                    class="text-bold"
+                                                    visible="{= ${listCronoTreeModel>_isGroup} === true }"
+                                                />
+                                                <!-- Si es hijo, mostrar IdLicencia -->
+                                                <Text
+                                                    text="{path: 'listCronoTreeModel>Id', formatter: '.formatter.getJobCond'}"
+                                                    textAlign="Center"
+                                                    wrapping="true"
+                                                    visible="{= ${listCronoTreeModel>_isGroup} === false }"
+                                                />
+                                            </HBox>
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Estado -->
                                     <t:Column
                                         id="statusCrono"
                                         width="88px"
                                         hAlign="Center"
-                                        sortProperty="Equstat"
-                                        filterProperty="Equstat"
                                     >
                                         <Label
                                             text="{i18n>status}"
@@ -584,33 +691,31 @@
                                         />
                                         <t:template>
                                             <Text
-                                                text="{ path: 'listCronoModel>Equstat' ,formatter: '.formatter.getEstado' }"
+                                                text="{ path: 'listCronoTreeModel>Equstat' ,formatter: '.formatter.getEstado' }"
                                                 wrapping="false"
                                             />
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Condición de Trabajo -->
                                     <t:Column
                                         hAlign="Center"
                                         width="200px"
-                                        sortProperty="Jobcond"
-                                        filterProperty="Jobcond"
                                     >
                                         <Label text="{i18n>conditionWork}" />
                                         <t:template>
                                             <Text
-                                                text="{path: 'listCronoModel>Jobcond', formatter: '.formatter.getJobCond'}"
+                                                text="{path: 'listCronoTreeModel>Jobcond', formatter: '.formatter.getJobCond'}"
                                                 textAlign="Center"
                                                 wrapping="true"
                                             />
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Hora Inicio -->
                                     <t:Column
                                         id="initHourCrono"
                                         hAlign="Center"
-                                        sortProperty="InitHourSort"
-                                        filterProperty="InitHourSort"
                                     >
                                         <Label
                                             text="{i18n>initHour}"
@@ -619,92 +724,167 @@
                                         <t:template>
                                             <Text
                                                 text="{parts: [
-													{path: 'listCronoModel>Timbeg'}, 
-													{path: 'listCronoModel>Gdate'}
-												], formatter: '.formatter.formatInitHour'}"
+                            {path: 'listCronoTreeModel>Timbeg'}, 
+                            {path: 'listCronoTreeModel>Gdate'}
+                        ], formatter: '.formatter.formatInitHour'}"
                                                 class="text-bold"
                                                 wrapping="false"
                                             />
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Trabajo a Realizar -->
                                     <t:Column
                                         id="toDoWorkCrono"
                                         width="250px"
-                                        sortProperty="Comments"
-                                        filterProperty="Comments"
                                     >
                                         <Label text="{i18n>toDoWork}" />
                                         <t:template>
                                             <Text
-                                                text="{listCronoModel>Comments}"
+                                                text="{listCronoTreeModel>Comments}"
                                                 wrapping="false"
                                             />
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Región -->
                                     <t:Column
                                         id="regionCrono"
                                         width="200px"
                                         hAlign="Center"
-                                        sortProperty="Werks"
-                                        filterProperty="Werks"
                                     >
                                         <Label text="{i18n>region}" />
                                         <t:template>
                                             <Text
-                                                text="{path: 'listCronoModel>Werks', formatter: '.formatter.getRegiones'}"
+                                                text="{path: 'listCronoTreeModel>Werks', formatter: '.formatter.getRegiones'}"
                                                 textAlign="Center"
                                                 wrapping="true"
                                             />
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Consola -->
                                     <t:Column
                                         id="consoleCrono"
                                         hAlign="Center"
-                                        sortProperty="Consola"
-                                        filterProperty="Consola"
                                     >
                                         <Label text="{i18n>console}" />
                                         <t:template>
                                             <Text
-                                                text="{listCronoModel>Consola}"
+                                                text="{listCronoTreeModel>Consola}"
                                                 wrapping="false"
                                             />
                                         </t:template>
                                     </t:Column>
 
-                                    <!-- COLUMNA TURNO EN CRONOLÓGICO (SOLO LECTURA) -->
+                                    <!-- Turno Asignado -->
                                     <t:Column
                                         hAlign="Center"
                                         width="140px"
-                                        filterProperty="TurnoAsignado"
                                     >
                                         <Label
                                             text="{i18n>shift}"
                                             textAlign="Center"
                                         />
                                         <t:template>
+                                            <HBox
+                                                justifyContent="Center"
+                                                alignItems="Center"
+                                            >
+                                                <Text
+                                                    text="{listCronoTreeModel>TurnoAsignado}"
+                                                    textAlign="Center"
+                                                />
+                                            </HBox>
+                                        </t:template>
+                                    </t:Column>
+                                </t:columns>
+                            </t:TreeTable>
+                        </IconTabFilter>
+
+                        <IconTabFilter
+                            text="Acciones para la entrega ({AccionesEntregaModel>/length})"
+                            key="ACCIONES"
+                        >
+                            <t:Table
+                                id="accionesEntregaTable"
+                                rows="{AccionesEntregaModel>/}"
+                                selectionMode="None"
+                                alternateRowColors="true"
+                            >
+                                <t:columns>
+                                    <t:Column width="150px">
+                                        <Label text="Acción" />
+                                        <t:template>
                                             <Text
-                                                text="{listCronoModel>TurnoAsignado}"
+                                                text="{AccionesEntregaModel>accion}"
                                                 wrapping="false"
                                             />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="commentCrono"
-                                        hAlign="Center"
-                                        sortProperty="Comentarios"
-                                        filterProperty="Comentarios"
-                                    >
-                                        <Label text="{i18n>comment}" />
+                                    <t:Column width="400px">
+                                        <Label text="Descripción" />
                                         <t:template>
-                                            <Input
-                                                value="{listCronoModel>Comentarios}"
-                                                enabled="{listCronoModel>isEditable}"
-                                                valueStateText="{i18n>pastTurnoNotEditable}"
+                                            <Text
+                                                text="{AccionesEntregaModel>descripcion}"
+                                                wrapping="true"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column width="120px">
+                                        <Label text="Equipo" />
+                                        <t:template>
+                                            <Text
+                                                text="{AccionesEntregaModel>equipo}"
+                                                wrapping="false"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column width="150px">
+                                        <Label text="IdLicencia" />
+                                        <t:template>
+                                            <Text
+                                                text="{AccionesEntregaModel>idLicencia}"
+                                                wrapping="false"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column width="300px">
+                                        <Label text="{i18n>conditionWork}" />
+                                        <t:template>
+                                            <Text
+                                                text="{AccionesEntregaModel>trabajoRealizar}"
+                                                textAlign="Center"
+                                                wrapping="true"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column width="120px">
+                                        <Label text="Turno" />
+                                        <t:template>
+                                            <TimePicker
+                                                value="{AccionesEntregaModel>turnoEntrega}"
+                                                valueFormat="HH:mm"
+                                                displayFormat="HH:mm"
+                                                change="onTurnoEntregaChange"
+                                                width="100%"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column width="75px">
+                                        <Label text="Acciones" />
+                                        <t:template>
+                                            <Button
+                                                icon="sap-icon://delete"
+                                                type="Reject"
+                                                press="onRemoveAccionEntrega"
+                                                tooltip="Eliminar acción"
                                             />
                                         </t:template>
                                     </t:Column>
@@ -747,6 +927,13 @@
                                 </Menu>
                             </menu>
                         </MenuButton>
+                        <Button
+                            icon="sap-icon://add"
+                            press="onAddLicense"
+                            text="{i18n>altaTurno}"
+                            enabled="{= ${tabsControl>/activeTab} === 'LIC' }"
+                            class="sapUiSmallMarginEnd"
+                        />
                         <ToolbarSpacer />
                         <Text
                             text="V{appVersion>/version}"

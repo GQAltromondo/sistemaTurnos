@@ -77,8 +77,6 @@ sap.ui.define([
         },
    
         edmTimeToHHMM: function (edmTime) {
-            console.log("🕐 edmTimeToHHMM - Input:", edmTime, "Tipo:", typeof edmTime);
-            
             let milliseconds = edmTime;
             if (typeof edmTime === 'object' && edmTime !== null && 'ms' in edmTime) {
                 milliseconds = edmTime.ms;
@@ -124,9 +122,29 @@ sap.ui.define([
                 return FormatHelper.msTohoursSeconds(gdate);
             }
             
-            console.log("❌ Sin datos de hora válidos");
             return "";
-        }
+        },
+
+        formatLicState: function (sLicstat) {
+			switch (sLicstat) {
+				case "01":
+					return "Autorizada";
+				case "07":
+					return "Coordinada";
+				case "08":
+					return "Entregada";
+				case "09":
+					return "Generada";
+				case "10":
+					return "Suspendida";
+				case "23":
+					return "En trámite";
+                case "02":
+					return "Observada";
+				default:
+					return sLicstat || "";
+			}
+		}
     };
 
     return FormatHelper;

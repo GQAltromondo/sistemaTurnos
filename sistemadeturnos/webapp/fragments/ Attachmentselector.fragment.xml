@@ -1,0 +1,51 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core">
+    <Dialog
+        title="Archivos Adjuntos - Licencia {attachmentSelector>/licenciaId}"
+        contentWidth="500px"
+        contentHeight="400px">
+        
+        <List
+            id="attachmentList"
+            items="{attachmentSelector>/attachments}"
+            mode="SingleSelectMaster"
+            itemPress="onSelectAttachmentFromList">
+            
+            <StandardListItem
+                title="{attachmentSelector>AttachmentName}"
+                description="{
+                    parts: [
+                        {path: 'attachmentSelector>AttachmentSize'},
+                        {path: 'attachmentSelector>AttachmentType'}
+                    ],
+                    formatter: '.formatAttachmentInfo'
+                }"
+                icon="{
+                    path: 'attachmentSelector>AttachmentType',
+                    formatter: '.getFileIcon'
+                }"
+                type="Active">
+                
+                <customData>
+                    <core:CustomData 
+                        key="attachment" 
+                        value="{attachmentSelector>}" />
+                </customData>
+                
+                <!-- Botón de eliminar en cada item -->
+                <Button
+                    icon="sap-icon://delete"
+                    type="Reject"
+                    press="onDeleteSpecificAttachment"
+                    tooltip="Eliminar archivo" />
+            </StandardListItem>
+        </List>
+        
+        <beginButton>
+            <Button
+                text="Cerrar"
+                press="onCloseAttachmentSelector" />
+        </beginButton>
+    </Dialog>
+</core:FragmentDefinition>

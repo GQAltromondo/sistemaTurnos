@@ -71,3 +71,157 @@
 html.sap-desktop .sapMIBar.sapMFooter-CTX {
   background-color: #3a668b;
 }
+
+.groupColorBar {
+    width: 6px;
+    height: 16px;
+    border-radius: 2px;
+    margin-right: 0.5rem;
+}
+
+.groupText {
+    line-height: 16px;
+}
+
+/* Base: que se note el borde */
+.tpGroupBorder .sapMInputBaseContentWrapper {
+  border-width: 2px;
+}
+
+/* Colores por grupo */
+.tpGroupBorder.grpColor0 .sapMInputBaseContentWrapper { border-color: #2196F3; } /* azul */
+.tpGroupBorder.grpColor1 .sapMInputBaseContentWrapper { border-color: #4CAF50; } /* verde */
+.tpGroupBorder.grpColor2 .sapMInputBaseContentWrapper { border-color: #F44336; } /* rojo */
+.tpGroupBorder.grpColor3 .sapMInputBaseContentWrapper { border-color: #FF9800; }
+.tpGroupBorder.grpColor4 .sapMInputBaseContentWrapper { border-color: #9C27B0; }
+.tpGroupBorder.grpColor5 .sapMInputBaseContentWrapper { border-color: #009688; }
+
+/* (Opcional) al enfocar, que mantenga el color */
+.tpGroupBorder.grpColor0.sapMFocus .sapMInputBaseContentWrapper { border-color: #2196F3; }
+.tpGroupBorder.grpColor1.sapMFocus .sapMInputBaseContentWrapper { border-color: #4CAF50; }
+.tpGroupBorder.grpColor2.sapMFocus .sapMInputBaseContentWrapper { border-color: #F44336; }
+
+/* Icono blanco para botones emphasized */
+.whiteIconButton .sapUiIcon {
+    color: #ffffff !important;
+}
+
+.popoverAccionesEntrega .sapMTitle {
+    color: white !important;
+}
+
+/* ============================================================
+   ESTILOS PARA TRAMITACIÓN - Coloreo de filas
+   Agregar a: webapp/css/style.css
+   ============================================================ */
+
+/* Fila con tramitación ROJA (Anulada o No Autorizada) */
+.tramitacionRoja {
+    background-color: #FFEBEE !important; /* Rojo suave */
+    border-left: 4px solid #D32F2F !important; /* Borde rojo fuerte */
+}
+
+.tramitacionRoja:hover {
+    background-color: #FFCDD2 !important; /* Rojo más oscuro al hover */
+}
+
+/* Fila con tramitación AMARILLA (Condicionada) */
+.tramitacionAmarilla {
+    background-color: #FFF8E1 !important; /* Amarillo suave */
+    border-left: 4px solid #FFA000 !important; /* Borde amarillo/naranja */
+}
+
+.tramitacionAmarilla:hover {
+    background-color: #FFECB3 !important; /* Amarillo más oscuro al hover */
+}
+
+/* Ícono de advertencia en la fila */
+.tramitacionWarningIcon {
+    margin-right: 8px;
+    vertical-align: middle;
+}
+
+/* Tooltip personalizado para tramitación */
+.tramitacionTooltip {
+    max-width: 300px;
+    white-space: pre-wrap;
+}
+
+
+/* ============================================================
+   ALTERNATIVA: Estilos más sutiles
+   ============================================================ */
+
+/* Versión sutil - Rojo */
+.tramitacionRoja-sutil {
+    background-color: #FFF5F5 !important;
+    border-left: 3px solid #EF5350 !important;
+}
+
+/* Versión sutil - Amarillo */
+.tramitacionAmarilla-sutil {
+    background-color: #FFFEF5 !important;
+    border-left: 3px solid #FFCA28 !important;
+}
+
+
+/* ============================================================
+   OPCIÓN: Colorear toda la tabla de turnos
+   ============================================================ */
+
+/* Si la tabla tiene ID específico */
+#turnosTable .tramitacionRoja {
+    background-color: #FFEBEE !important;
+    border-left: 4px solid #D32F2F !important;
+}
+
+#turnosTable .tramitacionAmarilla {
+    background-color: #FFF8E1 !important;
+    border-left: 4px solid #FFA000 !important;
+}
+
+
+/* ============================================================
+   ESTILOS PARA COLUMNA CON ÍCONO DE ADVERTENCIA
+   ============================================================ */
+
+/* Ícono de advertencia rojo */
+.sapUiIcon.tramitacionWarningRed {
+    color: #D32F2F !important;
+    font-size: 1.2rem;
+}
+
+/* Ícono de advertencia amarillo */
+.sapUiIcon.tramitacionWarningYellow {
+    color: #FFA000 !important;
+    font-size: 1.2rem;
+}
+
+/* Animación pulsante para llamar la atención */
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
+.tramitacionWarningIcon.pulse {
+    animation: pulse 2s infinite;
+}
+
+/* Ícono de advertencia */
+.tramitacionWarningIcon {
+    font-size: 1.2rem !important;
+}
+
+/* Color rojo más visible */
+.sapMITBError {
+    background-color: #FFEBEE !important;
+}
+
+/* Color amarillo más visible */
+.sapMITBWarning {
+    background-color: #FFF8E1 !important;
+}
