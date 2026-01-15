@@ -18,13 +18,14 @@ sap.ui.define([
     "transener/sistemadeturnos/services/TurnosService",
     "transener/sistemadeturnos/services/TipoEquipoService",
     "transener/sistemadeturnos/services/InterventionTypesService",
+    "transener/sistemadeturnos/services/oDataService",
 
 
 ], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, Spreadsheet,
     //utils
     ModelHelper, FormatHelper, Utils,
     //services
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService
+    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService,oDataService
 ) {
     "use strict";
     var oDialog = null
@@ -38,6 +39,16 @@ sap.ui.define([
             this.getBaseURL();
 
             this.cargarModelos()
+            this.getView().setModel(
+            new sap.ui.model.json.JSONModel({
+              initialContext: JSON.stringify(
+                { Destinatario: "gq4dev@gmail.com" },
+                null,
+                4
+              ),
+              apiResponse: "",
+            })
+          );
         },
         cargarModelos: function () {
             const oView = this.getView()
@@ -1299,7 +1310,7 @@ sap.ui.define([
             oBinding.filter([oOrFilter]);
         },
 
-         onReportsPress: function (oEvent) {
+        onReportsPress: function (oEvent) {
             var oView = this.getView();
             var sReportType = "amplio"; // Por defecto
             var sDialogTitle = "Reporte Amplio";
@@ -1402,7 +1413,7 @@ sap.ui.define([
                 oDateFin.getDate(),
                 0, 0, 0, 0
             ));
-            
+
             // Incluir también la fecha fin (agregar un día)
             const oFechaFinLimiteUTC = new Date(oFechaFinUTC);
             oFechaFinLimiteUTC.setUTCDate(oFechaFinLimiteUTC.getUTCDate() + 1);
@@ -1522,7 +1533,7 @@ sap.ui.define([
                         oView
                     );
                     TurnosService.assignShiftsToLicences(arrayOrdenado);
-                    
+
                     // Decidir qué función llamar según el tipo de reporte
                     if (sReportType === "amplio") {
                         // Generar el Excel con los datos procesados y las fechas del rango
@@ -1541,18 +1552,18 @@ sap.ui.define([
         createExcelReport: function (aData, oDateInicio, oDateFin) {
             // Cargar la librería XLSX
             jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
-            
+
             // Verificar que XLSX esté disponible
             if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
                 MessageBox.error("No se pudo cargar la librería XLSX. Asegúrese de que el archivo esté en webapp/libs/xlsx/xlsx.full.min.js");
                 return;
             }
-            
+
             // Si existe make_xlsx_lib, inicializarlo (como en el código que funciona)
             if (typeof make_xlsx_lib === 'function') {
                 make_xlsx_lib(XLSX);
             }
-            
+
             try {
                 // Crear workbook
                 var Workbook = XLSX.utils.book_new();
@@ -1577,7 +1588,7 @@ sap.ui.define([
                 });
 
                 MessageToast.show("Reporte Excel generado correctamente.");
-                
+
                 // Cerrar el diálogo y limpiar las fechas
                 this.onCancelReports();
                 this.clearReportDates();
@@ -1590,18 +1601,18 @@ sap.ui.define([
         createExcelReportManiobras: function (aData, oDateInicio, oDateFin) {
             // Cargar la librería XLSX
             jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
-            
+
             // Verificar que XLSX esté disponible
             if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
                 MessageBox.error("No se pudo cargar la librería XLSX. Asegúrese de que el archivo esté en webapp/libs/xlsx/xlsx.full.min.js");
                 return;
             }
-            
+
             // Si existe make_xlsx_lib, inicializarlo (como en el código que funciona)
             if (typeof make_xlsx_lib === 'function') {
                 make_xlsx_lib(XLSX);
             }
-            
+
             try {
                 // Crear workbook
                 var Workbook = XLSX.utils.book_new();
@@ -1609,12 +1620,12 @@ sap.ui.define([
                 // SOLAPA 1: Resumen por Fecha
                 var aDatosResumen = this.prepareResumenPorFecha(aData, oDateInicio, oDateFin);
                 var sheet1 = XLSX.utils.aoa_to_sheet(aDatosResumen);
-                
+
                 // Calcular dónde empezar las nuevas grillas (después del resumen + 3 filas vacías)
                 var iFilaInicioGrillas = aDatosResumen.length + 3;
-                
+
                 // Función helper para convertir número de columna a letra de Excel (0=A, 1=B, etc.)
-                var getColumnLetter = function(colNum) {
+                var getColumnLetter = function (colNum) {
                     var result = "";
                     while (colNum >= 0) {
                         result = String.fromCharCode(65 + (colNum % 26)) + result;
@@ -1622,24 +1633,24 @@ sap.ui.define([
                     }
                     return result;
                 };
-                
+
                 // Variable para rastrear en qué columna empezar la siguiente grilla
                 var iColumnaActual = 0; // Empieza en columna A (0)
                 var oFormatter = this.formatter;
-                
+
                 // Generar array de fechas del rango
                 var aFechas = [];
                 var oFechaActual = new Date(oDateInicio);
                 var oFechaFin = new Date(oDateFin);
-                
+
                 // Agregar un día a la fecha fin para incluirla en el rango
                 oFechaFin.setDate(oFechaFin.getDate() + 1);
-                
+
                 while (oFechaActual < oFechaFin) {
                     aFechas.push(new Date(oFechaActual));
                     oFechaActual.setDate(oFechaActual.getDate() + 1);
                 }
-                
+
                 // Para cada fecha, crear una grilla
                 aFechas.forEach(function (oFecha) {
                     // Filtrar licencias de esta fecha
@@ -1647,14 +1658,14 @@ sap.ui.define([
                         if (!license.Dateturno) {
                             return false;
                         }
-                        
+
                         // Normalizar fecha del turno a UTC 00:00:00
                         var oFechaTurno = new Date(license.Dateturno);
                         var iAnioUTC = oFechaTurno.getUTCFullYear();
                         var iMesUTC = oFechaTurno.getUTCMonth();
                         var iDiaUTC = oFechaTurno.getUTCDate();
                         var oFechaTurnoNormalizada = new Date(Date.UTC(iAnioUTC, iMesUTC, iDiaUTC, 0, 0, 0, 0));
-                        
+
                         // Normalizar fecha actual a UTC 00:00:00
                         var oFechaNormalizada = new Date(Date.UTC(
                             oFecha.getFullYear(),
@@ -1662,27 +1673,27 @@ sap.ui.define([
                             oFecha.getDate(),
                             0, 0, 0, 0
                         ));
-                        
+
                         // Comparar las fechas normalizadas en UTC
                         return oFechaNormalizada.getTime() === oFechaTurnoNormalizada.getTime();
                     });
-                    
+
                     // Eliminar duplicados basados en Equnr + TurnoAsignado
                     var aLicenciasUnicas = [];
                     var oMapaDuplicados = {}; // Clave: "Equnr|TurnoAsignado"
-                    
+
                     aLicenciasFecha.forEach(function (license) {
                         var sEquipo = license.Equnr || "";
                         var sTurno = license.TurnoAsignado || "";
                         var sClave = sEquipo + "|" + sTurno;
-                        
+
                         // Si no existe esta combinación, agregarla
                         if (!oMapaDuplicados[sClave]) {
                             oMapaDuplicados[sClave] = true;
                             aLicenciasUnicas.push(license);
                         }
                     });
-                    
+
                     // Crear la grilla para esta fecha
                     var aGrillaFecha = [];
                     // Título de la grilla
@@ -1697,18 +1708,18 @@ sap.ui.define([
                         var sComentarios = license.Comments || license.PatAdic || "";
                         aGrillaFecha.push([sEquipo, sHora, sComentarios]);
                     });
-                    
+
                     // Agregar la grilla al sheet
                     var sColumnaInicio = getColumnLetter(iColumnaActual);
                     var iFilaInicio = iFilaInicioGrillas + 1;
-                    XLSX.utils.sheet_add_aoa(sheet1, aGrillaFecha, { 
+                    XLSX.utils.sheet_add_aoa(sheet1, aGrillaFecha, {
                         origin: sColumnaInicio + iFilaInicio.toString()
                     });
-                    
+
                     // Avanzar: ancho de grilla (3 columnas) + 2 columnas de separación
                     iColumnaActual += 3 + 2;
                 });
-                
+
                 XLSX.utils.book_append_sheet(Workbook, sheet1, "Resumen por Fecha");
 
                 // Descargar el archivo
@@ -1718,7 +1729,7 @@ sap.ui.define([
                 });
 
                 MessageToast.show("Reporte Excel de maniobras generado correctamente.");
-                
+
                 // Cerrar el diálogo y limpiar las fechas
                 this.onCancelReports();
                 this.clearReportDates();
@@ -1802,35 +1813,35 @@ sap.ui.define([
                 // Filtrar licencias de esta fecha
                 var aLicenciasFecha = aData.filter(function (license) {
                     if (!license.Dateturno) return false;
-                    
+
                     // Convertir Dateturno a Date
                     var oFechaTurno = new Date(license.Dateturno);
-                    
+
                     // Usar los métodos UTC para obtener la fecha real que representa
                     // El backend envía en UTC pero se muestra en zona local
                     // Ejemplo: Mon Nov 03 2025 21:00:00 GMT-0300 representa Tue Nov 04 2025 00:00:00 UTC
                     var iAnioUTC = oFechaTurno.getUTCFullYear();
                     var iMesUTC = oFechaTurno.getUTCMonth();
                     var iDiaUTC = oFechaTurno.getUTCDate();
-                    
+
                     // Crear fecha normalizada usando UTC (fecha real del backend)
                     var oFechaTurnoNormalizada = new Date(Date.UTC(iAnioUTC, iMesUTC, iDiaUTC, 0, 0, 0, 0));
-                    
+
                     // Normalizar la fecha del rango también a UTC para comparar
                     var oFechaNormalizada = new Date(Date.UTC(
-                        oFecha.getFullYear(), 
-                        oFecha.getMonth(), 
+                        oFecha.getFullYear(),
+                        oFecha.getMonth(),
                         oFecha.getDate(),
                         0, 0, 0, 0
                     ));
-                    
+
                     // Comparar las fechas normalizadas en UTC
                     return oFechaNormalizada.getTime() === oFechaTurnoNormalizada.getTime();
                 });
 
                 // Calcular contadores usando la misma lógica que Utils.onCountItems
                 // Crear una vista temporal para evitar errores
-                var oTempView = { setModel: function() {} }; // Vista dummy
+                var oTempView = { setModel: function () { } }; // Vista dummy
                 var oCounts = Utils.onCountItems(oTempView, aLicenciasFecha);
 
                 // Formatear fecha
@@ -1854,7 +1865,161 @@ sap.ui.define([
             if (this._oReportsDialog) {
                 this._oReportsDialog.close();
             }
-        }
-        
+        },
+        // Función para enviar correo usando el workflow WfSistemaTurnos
+        // Basada en el código existente del controlador App
+
+        // Agregar estas funciones a tu controlador App.js
+
+        onSendEmailPress: function (emailDestinatario) {
+            var that = this;
+
+            emailDestinatario = "gq4dev@gmail.com"
+            // Validar que se haya proporcionado un email
+            if (!emailDestinatario || emailDestinatario.trim() === "") {
+                MessageBoxHelper.showAlert("Alerta", "Debe proporcionar una dirección de correo válida.");
+                return;
+            }
+
+            // Obtener el token CSRF
+            var token = this._fetchToken();
+
+            if (!token) {
+                MessageBoxHelper.showAlert("Error", "No se pudo obtener el token de seguridad.");
+                return;
+            }
+
+            // Iniciar el workflow
+            this._iniciarWorkflowCorreo(token, emailDestinatario);
+        },
+
+        _fetchToken: function () {
+            var cUrl = this._getWorkflowRuntimeBaseURL() + "/xsrf-token";
+            var token;
+
+            $.ajax({
+                url: cUrl,
+                method: "GET",
+                async: false,
+                headers: {
+                    "X-CSRF-Token": "Fetch"
+                },
+                success: function (result, xhr, data) {
+                    token = data.getResponseHeader("X-CSRF-Token");
+                },
+                error: function (data) {
+                    MessageToast.show("Error en la obtención del token para la creación del workflow");
+                    console.log(data);
+                }
+            });
+
+            return token;
+        },
+
+        _getWorkflowRuntimeBaseURL: function () {
+            var appId = this.getOwnerComponent().getManifestEntry("/sap.app/id");
+            var appPath = appId.replaceAll(".", "/");
+            var appModulePath = jQuery.sap.getModulePath(appPath);
+            return appModulePath + "/bpmworkflowruntime/v1";
+        },
+
+        _iniciarWorkflowCorreo: function (token, emailDestinatario) {
+            var that = this;
+            var cUrl = this._getWorkflowRuntimeBaseURL() + "/workflow-instances";
+
+            // Contexto mínimo requerido por el workflow
+            var oContext = {
+                Destinatario: emailDestinatario
+            };
+
+            $.ajax({
+                url: cUrl,
+                method: "POST",
+                async: true,
+                contentType: "application/json",
+                headers: {
+                    "X-CSRF-Token": token
+                },
+                data: JSON.stringify({
+                    definitionId: "wfturnos",  // ID del workflow WfSistemaTurnos
+                    context: oContext
+                }),
+                success: function (result, xhr, data) {
+                    MessageToast.show("Correo enviado exitosamente");
+                    console.log("Workflow iniciado correctamente:", result);
+                },
+                error: function (error) {
+                    MessageToast.show("Error al enviar el correo");
+                    console.error("Error al iniciar workflow:", error);
+                    MessageBoxHelper.showAlert("Error", "No se pudo enviar el correo. Por favor intente nuevamente.");
+                }
+            });
+        },
+startWorkflowInstance: function () {
+          var model = this.getView().getModel();
+          var definitionId = "wfturnos";
+          var initialContext = model.getProperty("/initialContext");
+
+          var data = {
+            definitionId: definitionId,
+            context: JSON.parse(initialContext),
+          };
+
+          $.ajax({
+            url: this._getWorkflowRuntimeBaseURL() + "/workflow-instances",
+            method: "POST",
+            async: false,
+            contentType: "application/json",
+            headers: {
+              "X-CSRF-Token": this._fetchToken(),
+            },
+            data: JSON.stringify(data),
+            success: function (result, xhr, data) {
+              model.setProperty(
+                "/apiResponse",
+                JSON.stringify(result, null, 4)
+              );
+            },
+            error: function (request, status, error) {
+              var response = JSON.parse(request.responseText);
+              model.setProperty(
+                "/apiResponse",
+                JSON.stringify(response, null, 4)
+              );
+            },
+          });
+        },
+
+        _fetchToken: function () {
+          var fetchedToken;
+
+          jQuery.ajax({
+            url: this._getWorkflowRuntimeBaseURL() + "/xsrf-token",
+            method: "GET",
+            async: false,
+            headers: {
+              "X-CSRF-Token": "Fetch",
+            },
+            success(result, xhr, data) {
+              fetchedToken = data.getResponseHeader("X-CSRF-Token");
+            },
+          });
+          return fetchedToken;
+        },
+
+        _getWorkflowRuntimeBaseURL: function () {
+          var appId = this.getOwnerComponent().getManifestEntry("/sap.app/id");
+          var appPath = appId.replaceAll(".", "/");
+          var appModulePath = jQuery.sap.getModulePath(appPath);
+
+          return appModulePath + "/bpmworkflowruntime/v1";
+        },
+        // Ejemplo de uso en un botón o evento:
+        // onEnviarCorreo: function() {
+        //     var sEmail = this.byId("emailInput").getValue(); // Obtener email del input
+        //     this.enviarCorreoWorkflow(sEmail);
+        // }
+
+
     });
 });

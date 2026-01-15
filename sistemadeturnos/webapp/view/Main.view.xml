@@ -118,7 +118,19 @@
 							<t:Table id="turnosTable" selectionMode="MultiToggle" selectionBehavior="Row" ariaLabelledBy="title2" rows="{LicencesJsonModel>/}">
 
 								<t:columns>
-
+									<t:Column width="170px">
+										<Label text="Acciones para la entrega"/>
+										<t:template>
+											<HBox justifyContent="SpaceBetween">
+												<Button icon="sap-icon://add-activity-2" press="onOpenComboPopover" />
+												<List items="{LicencesJsonModel>accionesEntregas}">
+													<items>
+														<StandardListItem title="{LicencesJsonModel>nombre}" />
+													</items>
+												</List>
+											</HBox>
+										</t:template>
+									</t:Column>
 									<t:Column id="equipment" width="100px" class="customColumnBackground" hAlign="Center" sortProperty="equipment" filterProperty="equipment">
 										<Label text="{i18n>equipment}"/>
 										<t:template>
@@ -145,7 +157,7 @@
 										<t:template>
 											<Text text="{path: 'LicencesJsonModel>Jobcond', formatter: '.formatter.getJobCond'}" textAlign="Center" wrapping="true"/>
 										</t:template>
-									</t:Column>							
+									</t:Column>
 									<t:Column id="initHour" hAlign="Center" sortProperty="initHour" filterProperty="initHour">
 										<Label text="{i18n>initHour}" textAlign="Center"/>
 										<t:template>
@@ -199,76 +211,58 @@
 							<t:Table id="cronoTable" rows="{listCronoModel>/}">
 								<t:columns>
 
-									<t:Column id="equipmentCrono" width="100px" class="customColumnBackground"
-											hAlign="Center" sortProperty="equipment" filterProperty="equipment">
+									<t:Column id="equipmentCrono" width="100px" class="customColumnBackground" hAlign="Center" sortProperty="equipment" filterProperty="equipment">
 										<Label text="{i18n>equipment}"/>
 										<t:template>
-											<Text text="{listCronoModel>Equnr}"
-												wrapping="false"
-												class="{= ${firstItem} ? 'text-bold' : '' }"/>
+											<Text text="{listCronoModel>Equnr}" wrapping="false" class="{= ${firstItem} ? 'text-bold' : '' }"/>
 										</t:template>
 									</t:Column>
 
 									<t:Column hAlign="Center" width="200px" sortProperty="Id" filterProperty="Id">
 										<Label text="IdLicencia"/>
 										<t:template>
-											<Text text="{path: 'listCronoModel>Id', formatter: '.formatter.getJobCond'}"
-												textAlign="Center"
-												wrapping="true"/>
+											<Text text="{path: 'listCronoModel>Id', formatter: '.formatter.getJobCond'}" textAlign="Center" wrapping="true"/>
 										</t:template>
 									</t:Column>
 
-									<t:Column id="statusCrono" width="88px" hAlign="Center"
-											sortProperty="Equstat" filterProperty="Equstat">
+									<t:Column id="statusCrono" width="88px" hAlign="Center" sortProperty="Equstat" filterProperty="Equstat">
 										<Label text="{i18n>status}" class="back"/>
 										<t:template>
-											<Text text="{ path: 'listCronoModel>Equstat' ,formatter: '.formatter.getEstado' }"
-												wrapping="false"/>
+											<Text text="{ path: 'listCronoModel>Equstat' ,formatter: '.formatter.getEstado' }" wrapping="false"/>
 										</t:template>
 									</t:Column>
 
-									<t:Column hAlign="Center" width="200px"
-											sortProperty="Jobcond" filterProperty="Jobcond">
+									<t:Column hAlign="Center" width="200px" sortProperty="Jobcond" filterProperty="Jobcond">
 										<Label text="{i18n>conditionWork}"/>
 										<t:template>
-											<Text text="{path: 'listCronoModel>Jobcond', formatter: '.formatter.getJobCond'}"
-												textAlign="Center"
-												wrapping="true"/>
+											<Text text="{path: 'listCronoModel>Jobcond', formatter: '.formatter.getJobCond'}" textAlign="Center" wrapping="true"/>
 										</t:template>
 									</t:Column>
 
-									<t:Column id="initHourCrono" hAlign="Center"
-											sortProperty="initHour" filterProperty="initHour">
+									<t:Column id="initHourCrono" hAlign="Center" sortProperty="initHour" filterProperty="initHour">
 										<Label text="{i18n>initHour}" textAlign="Center"/>
 										<t:template>
-											
-											<Text text="{path:'listCronoModel>Gdate', formatter: '.formatter.msTohoursSeconds'}"
-												class="text-bold"
-												wrapping="false"/>
-											
+
+											<Text text="{path:'listCronoModel>Gdate', formatter: '.formatter.msTohoursSeconds'}" class="text-bold" wrapping="false"/>
+
 										</t:template>
 									</t:Column>
 
-									<t:Column id="toDoWorkCrono" width="250px"
-											sortProperty="Comments" filterProperty="Comments">
+									<t:Column id="toDoWorkCrono" width="250px" sortProperty="Comments" filterProperty="Comments">
 										<Label text="{i18n>toDoWork}"/>
 										<t:template>
 											<Text text="{listCronoModel>Comments}" wrapping="false"/>
 										</t:template>
 									</t:Column>
 
-									<t:Column id="regionCrono" width="200px" hAlign="Center"
-											sortProperty="Werks" filterProperty="Werks">
+									<t:Column id="regionCrono" width="200px" hAlign="Center" sortProperty="Werks" filterProperty="Werks">
 										<Label text="{i18n>region}"/>
 										<t:template>
-											<Text text="{path: 'listCronoModel>Werks', formatter: '.formatter.getRegiones'}"
-												textAlign="Center"
-												wrapping="true"/>
+											<Text text="{path: 'listCronoModel>Werks', formatter: '.formatter.getRegiones'}" textAlign="Center" wrapping="true"/>
 										</t:template>
 									</t:Column>
 
-									<t:Column id="consoleCrono" hAlign="Center"
-											sortProperty="Consola" filterProperty="Consola">
+									<t:Column id="consoleCrono" hAlign="Center" sortProperty="Consola" filterProperty="Consola">
 										<Label text="{i18n>console}"/>
 										<t:template>
 											<Text text="{listCronoModel>Consola}" wrapping="false"/>
@@ -278,14 +272,12 @@
 									<t:Column hAlign="Center" width="140px" filterProperty="TurnoAsignado">
 										<Label text="{i18n>shift}" textAlign="Center"/>
 										<t:template>
-											
-											<Text text="{listCronoModel>TurnoAsignado}"
-												wrapping="false"/>
+
+											<Text text="{listCronoModel>TurnoAsignado}" wrapping="false"/>
 										</t:template>
 									</t:Column>
 
-									<t:Column id="commentCrono" hAlign="Center"
-											sortProperty="Comentarios" filterProperty="Comentarios">
+									<t:Column id="commentCrono" hAlign="Center" sortProperty="Comentarios" filterProperty="Comentarios">
 										<Label text="{i18n>comment}"/>
 										<t:template>
 											<Input value="{listCronoModel>Comentarios}" />
@@ -321,8 +313,8 @@
 						<Text text="V{appVersion>/version}" class="textWhite"/>
 						<ToolbarSpacer/>
 						<Button icon="sap-icon://save" text="{i18n>saveTurno}" enabled="{enabledModel>/btnGuardar}" press="onSaveTurnoPress"/>
-						<Button icon="sap-icon://create-form" text="{i18n>createTurno}"  press="onSearch"/>
-						<Button icon="sap-icon://email" text="{i18n>sendEmail}" enabled="{enabledModel>/btnEnviar}" press="onSendEmailPress"/>
+						<Button icon="sap-icon://create-form" text="{i18n>createTurno}" press="onSearch"/>
+						<Button icon="sap-icon://email" text="{i18n>sendEmail}"  press="startWorkflowInstance"/>
 					</OverflowToolbar>
 				</footer>
 			</Page>
