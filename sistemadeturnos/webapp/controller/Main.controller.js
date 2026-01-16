@@ -1,31 +1,22 @@
-// Cargar la librería XLSX
-jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
-jQuery.sap.require("transener.sistemadeturnos.libs.jszip");
 sap.ui.define([
     "sap/ui/core/mvc/Controller",
     "sap/m/MessageToast",
     "sap/m/MessageBox",
-    "sap/ui/core/library",
     "sap/ui/model/Filter",
     "sap/ui/model/FilterOperator",
-    "sap/ui/model/json/JSONModel",
     "sap/ui/core/Fragment",
-    "sap/ui/export/Spreadsheet",
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/FormatHelper",
-    "transener/sistemadeturnos/utils/Utils",
     "transener/sistemadeturnos/services/LicenseService",
     "transener/sistemadeturnos/services/TurnosService",
-    "transener/sistemadeturnos/services/TipoEquipoService",
-    "transener/sistemadeturnos/services/InterventionTypesService",
-    "transener/sistemadeturnos/services/oDataService",
+    "transener/sistemadeturnos/services/WorkflowService",
 
 
-], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, Spreadsheet,
+], function (Controller, MessageToast, MessageBox, Filter, FilterOperator, Fragment,
     //utils
-    ModelHelper, FormatHelper, Utils,
+    ModelHelper, FormatHelper,
     //services
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService,oDataService
+    LicenseService, TurnosService, WorkflowService
 ) {
     "use strict";
     var oDialog = null
@@ -33,22 +24,23 @@ sap.ui.define([
         formatter: FormatHelper,
 
         onInit: function () {
-
-            this._pBusyDialog = null;
+            const oView = this.getView()
+            this._pBusyDialog = null; // promesa del fragment
             this.getVersion();
             this.getBaseURL();
-
+            ModelHelper.getModel("LicencesJsonModel", oView)
             this.cargarModelos()
+
             this.getView().setModel(
-            new sap.ui.model.json.JSONModel({
-              initialContext: JSON.stringify(
-                { Destinatario: "gq4dev@gmail.com" },
-                null,
-                4
-              ),
-              apiResponse: "",
-            })
-          );
+                new sap.ui.model.json.JSONModel({
+                    initialContext: JSON.stringify(
+                        { someProperty: "some value", "Destinatario": "gq4dev@gmail.com" },
+                        null,
+                        4
+                    ),
+                    apiResponse: "",
+                })
+            );
         },
         cargarModelos: function () {
             const oView = this.getView()
@@ -56,16 +48,8 @@ sap.ui.define([
             ModelHelper.getModel("consolasModel", oView)
             ModelHelper.getModel("LocalFilterJsonModel", oView);
             ModelHelper.getModel("ColorModel", oView).setProperty("/Color", "white");
-
-            ModelHelper.getModel("tabsControl", oView).setData({ activeTab: "LIC" });
-            ModelHelper.getModel("LicencesJsonModel", oView)
-
-            const sConsolasUrl = sap.ui.require.toUrl("transener/sistemadeturnos/model/ConsolasModel.json");
-            ModelHelper.getModel("consolasModel", oView).loadData(sConsolasUrl);
-
-            const sEnabledUrl = sap.ui.require.toUrl("transener/sistemadeturnos/model/EnabledModel.json");
-            ModelHelper.getModel("enabledModel", oView).loadData(sEnabledUrl);
-
+            ModelHelper.getModel("consolasModel", oView).loadData("model/ConsolasModel.json", "", false);
+            ModelHelper.getModel("enabledModel", oView).loadData("model/EnabledModel.json", "", false);
         },
 
         getVersion: function () {
@@ -102,12 +86,8 @@ sap.ui.define([
 
             return appModulePath;
         },
-        onTabSelect: function (oEvent) {
-            const key = oEvent.getParameter("key");
-            this.getView().getModel("tabsControl").setProperty("/activeTab", key);
-        },
         onSelectTurno: function (oEvent) {
-
+            // Mostrar Busy global
             this.showGlobalBusy("Buscando turnos creados…");
             const oView = this.getView()
             const oDataService = this.getView().getModel();
@@ -134,6 +114,7 @@ sap.ui.define([
             oDataService.read(sEntity, {
                 filters: aFilters,
                 success: (oData) => {
+                    console.log(oData);
 
                     this.successSelectTurno(oData)
                         .catch((err) => {
@@ -148,150 +129,36 @@ sap.ui.define([
 
                     const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
                     oLicencesModel.setData([]);
-                    Utils.onCountItems([]);
+                    this.onCountItems([]);
                     this.hideGlobalBusy();
                 }
             });
         },
         onSearch: function () {
-            this._openFechaTurnoPopup();
-        },
+            var dateTurno = this.byId("date");
+            var oTable = this.byId("turnosTable");
 
-        _checkExistingTurnoAndProceed: function (oDateValue) {
-            const oView = this.getView();
-            const oDataService = oView.getModel();
+            var oDateValue = dateTurno.getDateValue();
 
-            const sFormattedDate = FormatHelper.formatDate(oDateValue);
-            ModelHelper.getModel("LicencesTurnoJsonModel", oView).setProperty("/FechaTurno", sFormattedDate);
-
-            this.showGlobalBusy("Buscando turnos creados…");
-
-            const aFilters = [
-                new sap.ui.model.Filter("Dateturno", sap.ui.model.FilterOperator.EQ, oDateValue),
-                new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, "100")
-            ];
-
-            oDataService.read("/TurnosLicenciasSet", {
-                filters: aFilters,
-                success: (oData) => {
-                    const aRes = (oData && oData.results) ? oData.results : [];
-
-                    // ✅ existe -> preguntar editar
-                    if (aRes.length) {
-                        this.hideGlobalBusy();
-                        this._resetDefaultTurnoModel();
-                        sap.m.MessageBox.warning("Ya existe un turno para esta fecha.", {
-                            actions: ["Editar", "Cancelar"],
-                            emphasizedAction: "Editar",
-                            onClose: (sAction) => {
-                                if (sAction === "Editar") {
-                                    this.showGlobalBusy("Cargando turno…");
-                                    this._resetDefaultTurnoModel();
-
-                                    ModelHelper.getModel("enabledModel", oView).setData({
-                                        btnCrear: true,
-                                        btnGuardar: true,
-                                        btnEnviar: true
-                                    });
-
-                                    this.successSelectTurno(oData)
-                                        .catch((err) => console.error("Error en successSelectTurno:", err))
-                                        .finally(() => this.hideGlobalBusy());
-                                }
-                            }
-                        });
-
-                        return;
-                    }
-
-
-                    this.hideGlobalBusy();
-                    this._resetDefaultTurnoModel();
-                    this._doSearchTurnos(oDateValue);
-                },
-                error: (oError) => {
-                    console.error(oError);
-
-                    const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
-                    oLicencesModel.setData([]);
-                    oLicencesModel.refresh();
-                    Utils.onCountItems(this.getView(), []);
-                    this.hideGlobalBusy();
-                }
-            });
-        },
-
-
-        _openFechaTurnoPopup: function () {
-            var oView = this.getView();
-            var that = this;
-
-            if (this._oFechaTurnoDialog) {
-                this._oFechaTurnoPicker.setDateValue(new Date());
-                this._oFechaTurnoDialog.open();
+            if (!oDateValue) {
+                sap.m.MessageToast.show("Seleccione una fecha");
                 return;
             }
 
-            this._oFechaTurnoPicker = new sap.m.DatePicker({
-                width: "100%",
-                dateValue: new Date(),
-                displayFormat: "dd/MM/yyyy",
-                valueFormat: "yyyy-MM-dd",
-                placeholder: "Seleccione una fecha"
-            });
 
-            this._oFechaTurnoDialog = new sap.m.Dialog({
-                title: "Seleccionar fecha",
-                contentWidth: "22rem",
-                content: [
-                    new sap.m.VBox({
-                        width: "100%",
-                        alignItems: "Center",
-                        justifyContent: "Center",
-                        items: [
-                            this._oFechaTurnoPicker.addStyleClass("sapUiSmallMarginTop")
-                        ]
-                    })
-                ],
-                beginButton: new sap.m.Button({
-                    text: "Buscar",
-                    type: "Emphasized",
-                    press: function () {
-                        var oDateValue = that._oFechaTurnoPicker.getDateValue();
-                        if (!oDateValue) {
-                            sap.m.MessageToast.show("Seleccione una fecha");
-                            return;
-                        }
-                        that._oFechaTurnoDialog.close();
-                        that._checkExistingTurnoAndProceed(oDateValue);
-                    }
-                }),
-                endButton: new sap.m.Button({
-                    text: "Cancelar",
-                    press: function () {
-                        that._oFechaTurnoDialog.close();
-                    }
-                })
-            });
+            const FechaTurno = oDateValue;
 
-            oView.addDependent(this._oFechaTurnoDialog);
-            this._oFechaTurnoDialog.open();
-        },
-
-
-        _doSearchTurnos: function (FechaTurno) {
-            var oTable = this.byId("turnosTable");
             var oLicencesModel = ModelHelper.getModel("LicencesJsonModel", this.getView());
-
             oLicencesModel.setData([]);
             oTable.setBusy(true);
+
 
             TurnosService.search({ FechaTurno, oView: this.getView(), isRefresh: false })
                 .then((data) => {
                     oLicencesModel.setData(data);
                     oLicencesModel.refresh();
                     oTable.setBusy(false);
-                    Utils.onCountItems(this.getView(), data);
+                    this.onCountItems(data);
                 })
                 .catch((error) => {
                     console.error("Error en la búsqueda:", error);
@@ -299,213 +166,122 @@ sap.ui.define([
                     oLicencesModel.refresh();
                     oTable.setBusy(false);
                 });
+
+            this.closeDialog();
         },
 
 
-        // onSearch: function () {
-        //     var dateTurno = this.byId("date");
-        //     var oTable = this.byId("turnosTable");
-
-        //     var oDateValue = dateTurno.getDateValue();
-
-        //     if (!oDateValue) {
-        //         sap.m.MessageToast.show("Seleccione una fecha");
-        //         return;
-        //     }
-
-
-        //     const FechaTurno = oDateValue;
-
-        //     var oLicencesModel = ModelHelper.getModel("LicencesJsonModel", this.getView());
-        //     oLicencesModel.setData([]);
-        //     oTable.setBusy(true);
-
-
-        //     TurnosService.search({ FechaTurno, oView: this.getView(), isRefresh: false })
-        //         .then((data) => {
-        //             oLicencesModel.setData(data);
-        //             oLicencesModel.refresh();
-        //             oTable.setBusy(false);
-        //             Utils.onCountItems(this.getView(), data);
-        //         })
-        //         .catch((error) => {
-        //             console.error("Error en la búsqueda:", error);
-        //             oLicencesModel.setData([]);
-        //             oLicencesModel.refresh();
-        //             oTable.setBusy(false);
-        //         });
-
-        //     this.closeDialog();
-        // },
-        _resetDefaultTurnoModel: function () {
-            const oView = this.getView();
-
-            const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
-            if (oLicencesModel) {
-                oLicencesModel.setData([]);
-                oLicencesModel.refresh(true);
-            }
-
-            Utils.onCountItems(oView, []);
-        },
-
-        successSelectTurno: function (data) {
-            const oView = this.getView();
+        successSelectTurno: async function (data) {
+            const oView = this.getView()
             const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
             const oDataModel = this.getView().getModel();
 
-            const aResults = Array.isArray(data?.results) ? data.results : [];
+            try {
+                const aResults = Array.isArray(data?.results) ? data.results : [];
 
-            if (!aResults.length) {
-                oLicencesModel.setData([]);
-                Utils.onCountItems(oView, []);
-                return Promise.resolve();
-            }
-
-            const aPromises = aResults.map((licencia) => {
-                return LicenseService.FIND(licencia, oDataModel)
-                    .then(result => result)
-                    .catch(err => {
-                        console.error("Error en FIND para licencia", licencia, err);
-                        return null;
-                    });
-            });
-
-
-            return Promise.all(aPromises)
-                .then((licenciasProcesadas) => {
-                    const results = licenciasProcesadas.filter(x => x);
-
-                    if (!results.length) {
-                        oLicencesModel.setData([]);
-                        Utils.onCountItems(oView, []);
-                        return;
-                    }
-
-                    const arrayOrdenado = TurnosService.encontrarGrupo(
-                        TurnosService.ordenarPorEqunr(results),
-                        oView
-                    );
-
-                    TurnosService.assignShiftsToLicences(arrayOrdenado);
-
-                    oLicencesModel.setData(arrayOrdenado);
-                    Utils.onCountItems(oView, arrayOrdenado);
-
-                    //Clonamos la informacion
-                    const arrayClonado = JSON.parse(JSON.stringify(arrayOrdenado));
-
-                    //Ordenamos por turno
-                    arrayClonado.sort(sortByTurnoAsignado);
-
-                    //Modelo que usa la tabla cronologica.
-                    const oListCronoModel = new JSONModel(arrayClonado);
-                    oView.setModel(oListCronoModel, "listCronoModel");
-
-                    //Funcion para orndear por turno
-                    function sortByTurnoAsignado(a, b) {
-                        const toMinutes = (hora) => {
-                            if (!hora) return 0;
-                            const [h, m] = hora.split(":").map(Number);
-                            return h * 60 + m;
-                        };
-
-                        return toMinutes(a.TurnoAsignado) - toMinutes(b.TurnoAsignado);
-                    }
-
-                })
-                .catch((error) => {
-                    console.error("Error inesperado en Promise.all:", error);
+                if (!aResults.length) {
                     oLicencesModel.setData([]);
-                });
+                    this.onCountItems([]);
+                    return;
+                }
+
+                // Buscar una licencia por vez (sin Promise.all)
+                const results = [];
+                for (const licencia of aResults) {
+                    try {
+                        const licData = await LicenseService.FIND(licencia, oDataModel);
+                        results.push(licData);
+                    } catch (err) {
+                        // Si querés seguir aunque falle una licencia:
+                        console.error("Error en FIND para licencia", licencia, err);
+                        // Si en vez de seguir querés cortar, podés hacer: throw err;
+                    }
+                }
+
+                if (!results.length) {
+                    oLicencesModel.setData([]);
+                    this.onCountItems([]);
+                    return;
+                }
+
+                // Procesar lógica de negocio
+                const arrayOrdenado = TurnosService.encontrarGrupo(
+                    TurnosService.ordenarPorEqunr(results), this.getView()
+                );
+
+                TurnosService.assignShiftsToLicences(arrayOrdenado);
+
+                console.log(oLicencesModel)
+                // Actualizar modelo
+                oLicencesModel.setData(arrayOrdenado);
+
+                // Contador
+                this.onCountItems(arrayOrdenado);
+
+            } catch (error) {
+                console.error("Error en successSelectTurno:", error);
+                oLicencesModel.setData([]);
+                this.onCountItems([]);
+                // OJO: acá ya no llamamos hideGlobalBusy
+            }
         },
 
 
-        // POR SI FALLA ESTE BUSCARIA EN SERIE NO EN PARALELO COMO EL PROMISE.ALL
-        // successSelectTurno: async function (data) {
-        //     const oView = this.getView()
-        //     const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
-        //     const oDataModel = this.getView().getModel();
+        onCountItems: function (data) {
+            let countLTWithManouvers = 0;
+            let countLTWithoutManouvers = 0;
+            let countTCT = 0;
 
-        //     try {
-        //         const aResults = Array.isArray(data?.results) ? data.results : [];
+            data.forEach(item => {
+                if (item.Jobcond === "01" || item.Jobcond === "02" || item.Jobcond === "04") {
+                    countLTWithManouvers++;
+                } else if (item.Jobcond === "05") {
+                    countLTWithoutManouvers++;
+                } else if (item.Jobcond === "03" || item.Jobcond === "06") {
+                    countTCT++;
+                }
+            });
 
-        //         if (!aResults.length) {
-        //             oLicencesModel.setData([]);
-        //             Utils.onCountItems(this,[]);
-        //             return;
-        //         }
+            const totalCount = countLTWithManouvers + countLTWithoutManouvers + countTCT;
 
-        //         // Buscar una licencia por vez (sin Promise.all)
-        //         const results = [];
-        //         for (const licencia of aResults) {
-        //             try {
-        //                 const licData = await LicenseService.FIND(licencia, oDataModel);
-        //                 results.push(licData);
-        //             } catch (err) {
-        //                 // Si querés seguir aunque falle una licencia:
-        //                 console.error("Error en FIND para licencia", licencia, err);
-        //                 // Si en vez de seguir querés cortar, podés hacer: throw err;
-        //             }
-        //         }
-
-        //         if (!results.length) {
-        //             oLicencesModel.setData([]);
-        //             Utils.onCountItems(this,[]);
-        //             return;
-        //         }
-
-        //         // Procesar lógica de negocio
-        //         const arrayOrdenado = TurnosService.encontrarGrupo(
-        //             TurnosService.ordenarPorEqunr(results), this.getView()
-        //         );
-
-        //         TurnosService.assignShiftsToLicences(arrayOrdenado);
-
-        //         console.log(oLicencesModel)
-
-        //         oLicencesModel.setData(arrayOrdenado);
-
-
-        //         Utils.onCountItems(this,arrayOrdenado);
-
-        //     } catch (error) {
-        //         console.error("Error en successSelectTurno:", error);
-        //         oLicencesModel.setData([]);
-        //         Utils.onCountItems(this,[]);
-
-        //     }
-        // },
-
+            // Crear un modelo con los resultados
+            const counts = {
+                LTWithManouvers: countLTWithManouvers,
+                LTWithoutManouvers: countLTWithoutManouvers,
+                TCT: countTCT,
+                Total: totalCount
+            };
+            console.log(counts)
+            // Asignar el modelo al View
+            const oModel = new sap.ui.model.json.JSONModel(counts);
+            this.getView().setModel(oModel, "countsModel");
+        },
         onChangeHour: function (oEvent) {
-
-            var oSource = oEvent.getSource(); // TimePicker
+            // Obtener el contexto de la fila seleccionada
+            var oSource = oEvent.getSource();
             var sPath = oSource.getBindingContext("LicencesJsonModel").getPath();
-            var iLicenseIndex = parseInt(sPath.split("/")[1], 10);
+            var iLicenseIndex = parseInt(sPath.split("/")[1], 10); // Índice de la fila seleccionada
 
+            // Obtener el modelo y los datos actuales
             var oModel = this.getView().getModel("LicencesJsonModel");
             var aLicences = oModel.getProperty("/");
 
+            // Obtener el nuevo horario del TimePicker
             var sNewTime = oEvent.getParameter("value");
+
+            // Obtener los datos de la fila seleccionada
             var oSelectedLicence = aLicences[iLicenseIndex];
 
+            // Actualizar solo las filas del mismo Grupo y Consola
             this._updateSameGroupAndConsoleShifts(aLicences, oSelectedLicence, sNewTime);
 
+            // Reordenar las filas por Consola, luego por Grupo y finalmente por TurnoAsignado
             this._sortLicences(aLicences);
 
-            // buscar nuevo índice después del sort
-            var iNewIndex = aLicences.findIndex(function (lic) {
-                return lic === oSelectedLicence;
-            });
-
-            // 👉 ahora le pasamos el timepicker también
-            this._cascadeGroupsDown(aLicences, iNewIndex, oSource);
-
+            // Actualizar el modelo con los cambios
             oModel.setProperty("/", aLicences);
             oModel.refresh(true);
         },
-
-
         _updateSameGroupAndConsoleShifts: function (aLicences, oSelectedLicence, sNewTime) {
             // Recorre las licencias y actualiza el horario solo de aquellas que comparten el mismo Grupo y Consola
             aLicences.forEach(function (oLicence) {
@@ -516,79 +292,32 @@ sap.ui.define([
         },
         _sortLicences: function (aLicences) {
 
-            // Agrupamos por Consola + Grupo
-            var groupsByConsola = {};
+            aLicences.sort((a, b) => {
+                const aHasTurno = !!a.TurnoAsignado;
+                const bHasTurno = !!b.TurnoAsignado;
 
-            aLicences.forEach(function (lic, index) {
-                var consola = lic.Consola || "";
-                var grupo = lic.Grupo || lic.Equnr || "";
 
-                if (!groupsByConsola[consola]) {
-                    groupsByConsola[consola] = {};
+                if (!aHasTurno && !bHasTurno) return 0;
+
+
+                if (!aHasTurno) return 1;
+
+
+                if (!bHasTurno) return -1;
+
+
+                return this._convertShiftToMinutes(a.TurnoAsignado) -
+                    this._convertShiftToMinutes(b.TurnoAsignado);
+            });
+
+
+            aLicences.sort((a, b) => {
+                if (a.Consola !== b.Consola) {
+                    return a.Consola.localeCompare(b.Consola);
                 }
-                if (!groupsByConsola[consola][grupo]) {
-                    groupsByConsola[consola][grupo] = {
-                        consola: consola,
-                        grupo: grupo,
-                        items: [],
-                        firstIndex: index
-                    };
-                }
-
-                groupsByConsola[consola][grupo].items.push(lic);
-                if (index < groupsByConsola[consola][grupo].firstIndex) {
-                    groupsByConsola[consola][grupo].firstIndex = index;
-                }
-            }.bind(this));
-
-            var result = [];
-
-            // Ordenamos por Consola y dentro de cada consola por hora de grupo
-            Object.keys(groupsByConsola).sort().forEach(function (consola) {
-                var groupsMap = groupsByConsola[consola];
-                var groups = Object.keys(groupsMap).map(function (k) {
-                    return groupsMap[k];
-                });
-
-                // calcular hora de inicio del grupo
-                groups.forEach(function (g) {
-                    var firstWithTurno = g.items.find(function (it) { return !!it.TurnoAsignado; });
-                    if (firstWithTurno) {
-                        g.hasTurno = true;
-                        g.startMinutes = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
-                    } else {
-                        g.hasTurno = false;
-                        g.startMinutes = Number.MAX_SAFE_INTEGER;
-                    }
-                }.bind(this));
-
-                // primero grupos con turno, ordenados por hora, luego sin turno por orden original
-                groups.sort(function (a, b) {
-                    if (a.hasTurno && !b.hasTurno) return -1;
-                    if (!a.hasTurno && b.hasTurno) return 1;
-                    if (!a.hasTurno && !b.hasTurno) {
-                        return a.firstIndex - b.firstIndex;
-                    }
-
-                    if (a.startMinutes !== b.startMinutes) {
-                        return a.startMinutes - b.startMinutes;
-                    }
-                    return a.firstIndex - b.firstIndex;
-                });
-
-                // aplanar
-                groups.forEach(function (g) {
-                    g.items.forEach(function (lic) {
-                        result.push(lic);
-                    });
-                });
-            }.bind(this));
-
-            // Reemplazamos el contenido del array original
-            aLicences.length = 0;
-            Array.prototype.push.apply(aLicences, result);
+                return 0;
+            });
         },
-
 
         _convertShiftToMinutes: function (shift) {
             const [hours, minutes] = shift.split(":").map(Number);
@@ -596,108 +325,53 @@ sap.ui.define([
         },
         onDeletePress: function () {
             const oTable = this.getView().byId("turnosTable");
-            const aSelectedIndices = oTable.getSelectedIndices();
+            const aSelectedIndices = oTable.getSelectedIndices(); // Índices seleccionados
 
-            // 🔹 Validar selección
-            if (!aSelectedIndices || aSelectedIndices.length === 0) {
+            if (aSelectedIndices.length === 0) {
                 MessageToast.show("Por favor, seleccione al menos una fila para eliminar.");
                 return;
             }
 
-            // 🔹 Tomar fecha del turno (para la key Dateturno)
-            const oDatePicker = this.byId("date");
-            const oFechaTurno = oDatePicker && oDatePicker.getDateValue();
-
-            if (!oFechaTurno) {
-                MessageBox.warning("Debe seleccionar una fecha de turno para poder eliminar.");
-                return;
-            }
-
-            // 🔹 Obtener modelo local
-            const oJsonModel = this.getView().getModel("LicencesJsonModel");
-            let aLicenses = oJsonModel.getProperty("/") || [];
+            const oModel = this.getView().getModel("LicencesJsonModel");
+            let aLicenses = oModel.getProperty("/");
 
             if (!Array.isArray(aLicenses) || aLicenses.length === 0) {
                 MessageToast.show("No hay datos para eliminar.");
                 return;
             }
 
-            // 🔹 Ordenar índices de mayor a menor para eliminar sin problemas
-            const aSortedIndices = aSelectedIndices.slice().sort(function (a, b) {
-                return b - a;
-            });
+            let aDataToDelete = [];
 
-            const aDataToDelete = [];
+            // Ordenar índices de mayor a menor para evitar errores al eliminar
+            aSelectedIndices.sort((a, b) => b - a);
 
-            // 🔹 Armar payload para backend y eliminar del modelo local
-            aSortedIndices.forEach(function (index) {
+            // Extraer datos de las filas seleccionadas
+            aSelectedIndices.forEach(index => {
                 if (index >= 0 && index < aLicenses.length) {
-                    const oRowData = aLicenses[index];
+                    let oRowData = aLicenses[index];
 
-                    // Armo objeto clave para el OData
                     aDataToDelete.push({
                         Id: oRowData.Id,
                         Empresa: oRowData.Empresa,
                         Tipo: oRowData.Tipo || "L",
                         Anio: oRowData.Anio,
-                        Dateturno: oFechaTurno     // JS Date usado como key
+                        Dateturno: new Date(oRowData.Fecha),
                     });
 
-                    // Eliminar del array local
-                    aLicenses.splice(index, 1);
+                    aLicenses.splice(index, 1); // Eliminar del modelo local
                 }
             });
 
-            if (aDataToDelete.length === 0) {
-                MessageToast.show("No se encontraron filas válidas para eliminar.");
-                return;
-            }
-
-            // 🔹 Actualizar modelo local y limpiar selección
-            oJsonModel.setProperty("/", aLicenses);
-            oJsonModel.refresh(true);
+            // Actualizar modelo en la vista
+            oModel.setProperty("/", aLicenses);
+            oModel.refresh(true);
             oTable.clearSelection();
 
-            // 🔹 Borrado en backend
-            const oDataModel = this.getView().getModel(); // ODataModel v2
+            MessageToast.show("Se ha eliminado la(s) licencia(s) seleccionada(s).");
 
-            const aPromises = aDataToDelete.map(function (oItem) {
-                return new Promise(function (resolve, reject) {
-                    // Armar path de la entidad con la key
-                    const sPath = oDataModel.createKey("/TurnosLicenciasSet", {
-                        Id: oItem.Id,
-                        Empresa: oItem.Empresa,
-                        Tipo: oItem.Tipo,
-                        Anio: oItem.Anio,
-                        Dateturno: oItem.Dateturno
-                    });
-
-                    oDataModel.remove(sPath, {
-                        success: function () {
-                            resolve();
-                        },
-                        error: function (oError) {
-                            reject(oError);
-                        }
-                    });
-                });
-            });
-
-            Promise.all(aPromises)
-                .then(function () {
-                    const iCount = aDataToDelete.length;
-                    const sMsg = iCount === 1
-                        ? "La licencia seleccionada ha sido eliminada."
-                        : "Se han eliminado " + iCount + " licencias.";
-                    MessageToast.show(sMsg);
-                })
-                .catch(function (oError) {
-                    MessageBox.error("Ocurrió un error al eliminar en backend.");
-                    // console.error(oError); // si querés loguear
-                });
+            // Enviar al backend
+            this.deleteTurno(aDataToDelete);
         },
-
-
         onDetachLicense: function () {
             var oTable = this.byId("turnosTable");
 
@@ -738,8 +412,7 @@ sap.ui.define([
             // Get the last license in the group to calculate the new time
             var oLastLicenseInGroup = aLicences[groupLastIndex];
             var currentTime = this._convertShiftToMinutes(oLastLicenseInGroup.TurnoAsignado);
-            const shiftInfo = Utils.getShiftInfo(oDetachedLicense);
-            const shiftDuration = shiftInfo.duration;
+            var shiftDuration = oDetachedLicense.Jobcond === "04" ? 30 : 15;
 
             currentTime += shiftDuration;
             oDetachedLicense.TurnoAsignado = this._formatTime(currentTime);
@@ -804,7 +477,7 @@ sap.ui.define([
                     oSearchModel.setData(aNuevas);
                     oSearchModel.refresh();
 
-
+                    this.onCountItems(aNuevas);
                 })
                 .catch((error) => {
                     console.error("Error en la búsqueda:", error);
@@ -1014,8 +687,7 @@ sap.ui.define([
 
             // Actualizar el modelo con el nuevo array
             oModel.setProperty(sPath + "/accionesEntregas", aAccionesEntregas);
-        },
-        onSaveTurnoPress: function () {
+        }, onSaveTurnoPress: function () {
 
             //  const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel",this.getView()).getProperty("/FechaTurno")
             const Fecha = this.getView().byId('date').getDateValue()
@@ -1036,8 +708,7 @@ sap.ui.define([
                         Tipo: oRowData.Tipo,
                         Anio: oRowData.Anio,
                         Fecha: Fecha,
-                        Turno: oRowData.TurnoAsignado,
-                        Comentarios: oRowData.Comentarios
+                        Turno: oRowData.TurnoAsignado
 
                     }
 
@@ -1063,36 +734,157 @@ sap.ui.define([
                     "Tipo": licencia.Tipo || "L",
                     "Anio": licencia.Anio,
                     "Dateturno": new Date(licencia.Fecha),
-                    "Turno": licencia.Turno,
-                    "Comentarios": licencia.Comentarios
+                    "Turno": licencia.Turno
                 };
 
                 oDataService.create(entity, license);
             });
         },
-        openAdvancedFilters: function () {
+
+        /**
+         * Invoca el workflow para enviar correo electrónico
+         * Este método se ejecuta cuando el usuario presiona el botón "Enviar Email"
+         */
+        onSendEmailPress: function () {
             const oView = this.getView();
-            const oFiltersModel = ModelHelper.getModel("FiltersJsonModel", oView);
-            const oHardCodeModel = ModelHelper.getModel("HardCodeModel", oView);
-            const PersonalHabilitadoModel = ModelHelper.getModel("PersonalHabilitadoModel", oView);
-            const oRepModel = ModelHelper.getModel("RepositionTimes", oView);
-            const oSelectModel = ModelHelper.getModel("SelectModel", oView);
-            const society = this.society;
+            const oComponent = this.getOwnerComponent();
 
-            // Carga servicios
-            TipoEquipoService.loadTipoEquipo(society, oView);
-            InterventionTypesService.getPromise(oView);
+            // Obtener el email del destinatario
+            // Puedes obtenerlo del usuario actual, de un campo en la vista, o de configuración
+           // const sDestinatario = this._obtenerDestinatarioEmail();
+            const sDestinatario = [
+                "gq4dev@gmail.com",
+                "daniela.bracamonte@altromondo.com.ar" // ← Cambia esto por el email real
+            ];
 
-            // Si el diálogo no existe
+            if (!sDestinatario) {
+                MessageBox.warning(
+                    "No se pudo determinar el destinatario del correo. Por favor, configure el email del destinatario.",
+                    {
+                        title: "Destinatario no configurado"
+                    }
+                );
+                return;
+            }
+
+            // Mostrar indicador de carga
+            this.showGlobalBusy("Iniciando workflow de envío de correo...");
+
+            // Preparar el contexto del workflow
+            const oContext = {
+                Destinatario: sDestinatario
+                // Puedes agregar más campos aquí según lo que necesite tu workflow
+                // Ejemplo: FechaTurno, datos de las licencias, etc.
+            };
+
+            // Invocar el workflow
+            WorkflowService.startWorkflowInstance({
+                definitionId: "transener.wfturnos",
+                context: oContext,
+                oComponent: oComponent,
+                onSuccess: (result) => {
+                    this.hideGlobalBusy();
+                    MessageBox.success(
+                        "El workflow se ha iniciado correctamente. El correo será enviado pronto.",
+                        {
+                            title: "Workflow iniciado",
+                            details: "ID de instancia: " + result.id
+                        }
+                    );
+                    console.log("Workflow iniciado:", result);
+                },
+                onError: (error, jqXHR) => {
+                    this.hideGlobalBusy();
+                    let sErrorMessage = "Error al iniciar el workflow";
+
+                    if (jqXHR && jqXHR.responseText) {
+                        try {
+                            const oErrorResponse = JSON.parse(jqXHR.responseText);
+                            sErrorMessage = oErrorResponse.error?.message || sErrorMessage;
+                        } catch (e) {
+                            sErrorMessage = jqXHR.responseText;
+                        }
+                    } else if (error && error.message) {
+                        sErrorMessage = error.message;
+                    }
+
+                    MessageBox.error(
+                        sErrorMessage,
+                        {
+                            title: "Error al iniciar workflow"
+                        }
+                    );
+                    console.error("Error al iniciar workflow:", error, jqXHR);
+                }
+            });
+        },
+
+        /**
+         * Obtiene el email del destinatario
+         * Puedes modificar este método para obtener el email de diferentes fuentes:
+         * - Usuario actual del sistema
+         * - Campo en la vista
+         * - Configuración
+         * - Modelo de datos
+         * @returns {string} Email del destinatario
+         */
+        _obtenerDestinatarioEmail: function () {
+            // Opción 1: Obtener del usuario actual (si está disponible)
+            try {
+                const oUserInfo = sap.ushell.Container.getService("UserInfo");
+                if (oUserInfo && oUserInfo.getEmail) {
+                    const sEmail = oUserInfo.getEmail();
+                    if (sEmail) {
+                        return sEmail;
+                    }
+                }
+            } catch (e) {
+                console.log("No se pudo obtener email del usuario actual:", e);
+            }
+
+            // Opción 2: Obtener de un campo en la vista (si tienes un Input para email)
+            // const oEmailInput = this.byId("emailInput");
+            // if (oEmailInput) {
+            //     return oEmailInput.getValue();
+            // }
+
+            // Opción 3: Obtener de un modelo
+            // const oModel = this.getView().getModel("configModel");
+            // if (oModel) {
+            //     return oModel.getProperty("/emailDestinatario");
+            // }
+
+            // Opción 4: Email por defecto (para pruebas)
+            // TODO: Reemplazar con el email real o implementar una de las opciones anteriores
+            return [
+                "gq4dev@gmail.com",
+                "daniela.bracamonte@altromondo.com.ar" // ← Cambia esto por el email real
+            ];
+            // Si no se encuentra ningún email, retornar null
+            // return null;
+        }
+        , openAdvancedFilters: function () {
+            var oFiltersModel = AppManagementHelper.getModel("FiltersJsonModel");
+            var oHardCodeModel = AppManagementHelper.getModel("HardCodeModel");
+            var PersonalHabilitadoModel = AppManagementHelper.getModel("PersonalHabilitadoModel");
+            var oRepModel = AppManagementHelper.getModel("RepositionTimes");
+            var oSelectModel = AppManagementHelper.getModel("SelectModel");
+            var society = this.society;
+
+            // Carga los servicios necesarios
+            TipoEquipoService.loadTipoEquipo(society);
+            InterventionTypesService.getPromise();
+
+            // Verifica si ya existe el diálogo
             if (!this.advancedFilters) {
-
+                // Carga el fragmento y lo inserta en el diálogo
+                var oView = this.getView();
                 Fragment.load({
                     id: oView.getId(),
                     name: "transener.sistemadeturnos.fragments.advancedFilters",
                     controller: this
-                }).then((oDialogContent) => {
-
-                    const oDialog = new sap.m.Dialog({
+                }).then(function (oDialogContent) {
+                    var oDialog = new sap.m.Dialog({
                         title: "Filtros Avanzados",
                         contentWidth: "60%",
                         modal: true,
@@ -1101,925 +893,56 @@ sap.ui.define([
                             new sap.m.Button({
                                 text: "Cancelar",
                                 icon: "sap-icon://decline",
-                                press: () => this.closeAdvancedFilters()
+                                press: this.closeAdvancedFilters.bind(this)
                             }).addStyleClass("buttonInverted floatLeft"),
-
                             new sap.m.Button({
                                 text: "Limpiar",
                                 icon: "sap-icon://document",
-                                press: () => this.clearAdvancedFilters()
+                                press: this.clearAdvancedFilters.bind(this)
                             }).addStyleClass("buttonInverted floatLeft"),
-
                             new sap.m.Button({
                                 text: "Aplicar",
                                 icon: "sap-icon://search",
-                                press: () => this.makeFilters()
+                                press: this.makeFilters.bind(this)
                             }).addStyleClass("buttonInverted floatRight")
                         ]
                     }).addStyleClass("customDialog");
 
-                    // Set models
-                    oDialog.setModel(ModelHelper.getModel("WorkPlacesJsonModel", oView), "WorkPlacesJsonModel");
+                    // Asignar los modelos al diálogo
+                    oDialog.setModel(AppManagementHelper.getModel("WorkPlacesJsonModel"), "WorkPlacesJsonModel");
                     oDialog.setModel(oView.getModel("GrupoPlanificador"), "GrupoPlanificador");
-                    oDialog.setModel(ModelHelper.getModel("TiposIntervencion", oView), "TiposIntervencion");
-                    oDialog.setModel(ModelHelper.getModel("TipoEquipoJsonModel", oView), "TipoEquipoJsonModel");
+                    oDialog.setModel(AppManagementHelper.getModel("TiposIntervencion"), "TiposIntervencion");
+                    oDialog.setModel(AppManagementHelper.getModel("TipoEquipoJsonModel"), "TipoEquipoJsonModel");
                     oDialog.setModel(oSelectModel, "SelectModel");
                     oDialog.setModel(oFiltersModel, "FiltersJsonModel");
                     oDialog.setModel(oHardCodeModel, "HardCodeModel");
                     oDialog.setModel(PersonalHabilitadoModel, "PersonalHabilitadoModel");
                     oDialog.setModel(oRepModel, "RepositionTimes");
-                    oDialog.setModel(ModelHelper.getModel("TipoLicFiltersModel", oView), "TipoLicFiltersModel");
-                    oDialog.setModel(ModelHelper.getModel("CheckAdvancedFiltersModel", oView), "CheckAdvancedFiltersModel");
+                    oDialog.setModel(oView.getModel("RepositionTimes"), "RepositionTimes");
+                    oDialog.setModel(AppManagementHelper.getModel("TipoLicFiltersModel"), "TipoLicFiltersModel");
+                    oDialog.setModel(AppManagementHelper.getModel("CheckAdvancedFiltersModel"), "CheckAdvancedFiltersModel");
 
                     this.advancedFilters = oDialog;
                     this.advancedFilters.open();
-                });
-
+                }.bind(this));
             } else {
-                // Si ya existe
+                // Si ya existe el diálogo, actualiza los modelos y ábrelo
                 this.advancedFilters.setModel(PersonalHabilitadoModel, "PersonalHabilitadoModel");
                 this.advancedFilters.setModel(oSelectModel, "SelectModel");
                 this.advancedFilters.setModel(oHardCodeModel, "HardCodeModel");
                 this.advancedFilters.setModel(oFiltersModel, "FiltersJsonModel");
                 this.advancedFilters.setModel(oRepModel, "RepositionTimes");
-                this.advancedFilters.setModel(oView.getModel("RepositionTimes"), "RepositionTimes");
-                this.advancedFilters.setModel(ModelHelper.getModel("WorkPlacesJsonModel", oView), "WorkPlacesJsonModel");
-                this.advancedFilters.setModel(oView.getModel("GrupoPlanificador"), "GrupoPlanificador");
-                this.advancedFilters.setModel(ModelHelper.getModel("TipoLicFiltersModel", oView), "TipoLicFiltersModel");
-                this.advancedFilters.setModel(ModelHelper.getModel("CheckAdvancedFiltersModel", oView), "CheckAdvancedFiltersModel");
+                this.advancedFilters.setModel(this.getView().getModel("RepositionTimes"), "RepositionTimes");
+                this.advancedFilters.setModel(AppManagementHelper.getModel("WorkPlacesJsonModel"), "WorkPlacesJsonModel");
+                this.advancedFilters.setModel(this.getView().getModel("GrupoPlanificador"), "GrupoPlanificador");
+                this.advancedFilters.setModel(AppManagementHelper.getModel("TipoLicFiltersModel"), "TipoLicFiltersModel");
+                this.advancedFilters.setModel(AppManagementHelper.getModel("CheckAdvancedFiltersModel"), "CheckAdvancedFiltersModel");
                 this.advancedFilters.open();
             }
         },
 
-
         closeAdvancedFilters: function () {
             this.advancedFilters.close();
         },
-        _cascadeGroupsDown: function (aLicences, startIndex, oTimeControl) {
-
-            var ValueState = CoreLibrary.ValueState;
-
-            if (startIndex < 0 || startIndex >= aLicences.length) {
-                return;
-            }
-
-            var baseLicence = aLicences[startIndex];
-            var consola = baseLicence.Consola;
-
-            if (!consola) {
-                return;
-            }
-
-            // 1) Armamos grupos SOLO de esa consola
-            var groupsMap = {};
-            aLicences.forEach(function (lic, idx) {
-                if (lic.Consola !== consola) return;
-
-                var grupo = lic.Grupo || lic.Equnr || "";
-                if (!groupsMap[grupo]) {
-                    groupsMap[grupo] = {
-                        grupo: grupo,
-                        items: [],
-                        firstIndex: idx
-                    };
-                }
-                groupsMap[grupo].items.push(lic);
-                if (idx < groupsMap[grupo].firstIndex) {
-                    groupsMap[grupo].firstIndex = idx;
-                }
-            });
-
-            var groups = Object.keys(groupsMap).map(function (k) {
-                return groupsMap[k];
-            });
-
-            groups.sort(function (a, b) {
-                return a.firstIndex - b.firstIndex;
-            });
-
-            var editedGroupIndex = groups.findIndex(function (g) {
-                return g.items.indexOf(baseLicence) !== -1;
-            });
-
-            if (editedGroupIndex === -1) {
-                return;
-            }
-
-            var upperWarning = false;
-
-            var prevGroup = groups[editedGroupIndex];
-            var firstWithTurno = prevGroup.items.find(function (it) { return !!it.TurnoAsignado; });
-
-            if (!firstWithTurno) {
-                return;
-            }
-
-            // VALIDAR contra el grupo anterior
-            if (editedGroupIndex > 0) {
-                var upperGroup = groups[editedGroupIndex - 1];
-                var upperFirstWithTurno = upperGroup.items.find(function (it) { return !!it.TurnoAsignado; });
-
-                if (upperFirstWithTurno) {
-                    var upperStart = this._convertShiftToMinutes(upperFirstWithTurno.TurnoAsignado);
-
-                    var upperInfo = Utils.getShiftInfo(upperGroup.items[0]);
-                    var minAllowedStart = upperStart + upperInfo.duration;
-
-                    var newStart = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
-
-                    if (newStart < minAllowedStart) {
-                        upperWarning = true;
-                    }
-                }
-            }
-
-            // CASCADA HACIA ABAJO
-            var prevStart = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
-            var warnings = [];
-
-            for (var i = editedGroupIndex + 1; i < groups.length; i++) {
-                var group = groups[i];
-
-                var gFirstWithTurno = group.items.find(function (it) { return !!it.TurnoAsignado; });
-                if (!gFirstWithTurno) {
-                    continue;
-                }
-
-                var prevInfo = Utils.getShiftInfo(prevGroup.items[0]);
-                var expectedStart = prevStart + prevInfo.duration;
-                var currentStart = this._convertShiftToMinutes(gFirstWithTurno.TurnoAsignado);
-
-                if (expectedStart < currentStart) {
-                    warnings.push(group);
-                    prevGroup = group;
-                    prevStart = currentStart;
-                    continue;
-                }
-
-                var newTimeStr = this._formatTime(expectedStart);
-                group.items.forEach(function (it) {
-                    it.TurnoAsignado = newTimeStr;
-                });
-
-                prevGroup = group;
-                prevStart = expectedStart;
-            }
-
-            // Mensajes
-            if (upperWarning && warnings.length > 0) {
-                MessageToast.show("El turno comienza antes de la separación mínima y algunos grupos no se ajustaron para evitar adelantar turnos.");
-            } else if (upperWarning) {
-                MessageToast.show("El turno comienza antes de la separación mínima con el grupo anterior.");
-            } else if (warnings.length > 0) {
-                MessageToast.show("Algunos grupos no se ajustaron para evitar adelantar turnos.");
-            }
-
-            // VALUE STATE
-            if (oTimeControl) {
-                if (upperWarning) {
-                    oTimeControl.setValueState(ValueState.Error);
-                    oTimeControl.setValueStateText("El turno comienza antes de la separación mínima con el grupo anterior.");
-                } else {
-                    oTimeControl.setValueState(ValueState.None);
-                    oTimeControl.setValueStateText("");
-                }
-            }
-        },
-
-        onLicenseSearch: function (oEvent) {
-            const sQuery = oEvent.getParameter("newValue")?.trim() || "";
-            const oTable = this.byId("idLicensesTable");
-            const oBinding = oTable.getBinding("items");
-
-            if (!sQuery) {
-                oBinding.filter([]);  // Quita filtros
-                return;
-            }
-
-            const aFilters = [
-                new sap.ui.model.Filter("Id", sap.ui.model.FilterOperator.Contains, sQuery),
-                new sap.ui.model.Filter("Equnr", sap.ui.model.FilterOperator.Contains, sQuery),
-                new sap.ui.model.Filter("Comments", sap.ui.model.FilterOperator.Contains, sQuery)
-            ];
-
-            const oOrFilter = new sap.ui.model.Filter({
-                filters: aFilters,
-                and: false  // OR
-            });
-
-            oBinding.filter([oOrFilter]);
-        },
-
-        onReportsPress: function (oEvent) {
-            var oView = this.getView();
-            var sReportType = "amplio"; // Por defecto
-            var sDialogTitle = "Reporte Amplio";
-
-            // Obtener el tipo de reporte desde el CustomData del MenuItem
-            if (oEvent && oEvent.getSource) {
-                var oMenuItem = oEvent.getSource();
-                var aCustomData = oMenuItem.getCustomData();
-                if (aCustomData && aCustomData.length > 0) {
-                    for (var i = 0; i < aCustomData.length; i++) {
-                        if (aCustomData[i].getKey() === "reportType") {
-                            sReportType = aCustomData[i].getValue();
-                            sDialogTitle = sReportType === "maniobras" ? "Resumen maniobras" : "Reporte Amplio";
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Si el diálogo no existe, lo creamos
-            if (!this._oReportsDialog) {
-                Fragment.load({
-                    id: oView.getId(),
-                    name: "transener.sistemadeturnos.fragments.reportsDialog",
-                    controller: this
-                }).then(function (oDialog) {
-                    this._oReportsDialog = oDialog;
-                    oView.addDependent(oDialog);
-                    // Cambiar el título según el tipo de reporte
-                    oDialog.setTitle(sDialogTitle);
-                    // Guardar el tipo de reporte en el diálogo para uso futuro
-                    oDialog.data("reportType", sReportType);
-                    oDialog.open();
-                }.bind(this));
-            } else {
-                // Si ya existe, cambiar el título y abrirlo
-                this._oReportsDialog.setTitle(sDialogTitle);
-                this._oReportsDialog.data("reportType", sReportType);
-                this._oReportsDialog.open();
-            }
-        },
-
-        onDownloadExcel: function () {
-            var oDialog = this._oReportsDialog;
-            if (!oDialog) {
-                return;
-            }
-
-            // Intentar obtener los DatePickers usando this.byId (ya que el fragment se carga con id de la vista)
-            var oFechaInicio = this.byId("fechaInicio");
-            var oFechaFin = this.byId("fechaFin");
-
-            // Si no se encuentran, intentar con Fragment.byId
-            if (!oFechaInicio) {
-                oFechaInicio = sap.ui.core.Fragment.byId(this.getView().getId(), "fechaInicio");
-            }
-            if (!oFechaFin) {
-                oFechaFin = sap.ui.core.Fragment.byId(this.getView().getId(), "fechaFin");
-            }
-
-            if (!oFechaInicio || !oFechaFin) {
-                MessageToast.show("No se pudieron obtener los DatePickers.");
-                return;
-            }
-
-            var oDateInicio = oFechaInicio.getDateValue();
-            var oDateFin = oFechaFin.getDateValue();
-
-            if (!oDateInicio || !oDateFin) {
-                MessageBox.warning("Por favor, seleccione ambas fechas (Inicio y Fin).");
-                return;
-            }
-
-            if (oDateInicio > oDateFin) {
-                MessageBox.warning("La fecha de inicio no puede ser mayor que la fecha de fin.");
-                return;
-            }
-
-            // Obtener el tipo de reporte del diálogo
-            var sReportType = oDialog.data("reportType") || "amplio"; // Por defecto "amplio"
-
-            // Mostrar diálogo de carga
-            this.showGlobalBusy("Buscando turnos para el reporte...");
-
-            const oView = this.getView();
-            const oDataService = this.getView().getModel();
-
-            // Generar array de fechas del rango (desde fecha inicio hasta fecha fin, día por día)
-            // Usar UTC para que OData las serialice como 00:00:00 UTC
-            const aFechas = [];
-            const oFechaInicioUTC = new Date(Date.UTC(
-                oDateInicio.getFullYear(),
-                oDateInicio.getMonth(),
-                oDateInicio.getDate(),
-                0, 0, 0, 0
-            ));
-            const oFechaFinUTC = new Date(Date.UTC(
-                oDateFin.getFullYear(),
-                oDateFin.getMonth(),
-                oDateFin.getDate(),
-                0, 0, 0, 0
-            ));
-
-            // Incluir también la fecha fin (agregar un día)
-            const oFechaFinLimiteUTC = new Date(oFechaFinUTC);
-            oFechaFinLimiteUTC.setUTCDate(oFechaFinLimiteUTC.getUTCDate() + 1);
-
-            const oFechaActualUTC = new Date(oFechaInicioUTC);
-            while (oFechaActualUTC < oFechaFinLimiteUTC) {
-                // Crear nueva fecha en UTC a las 00:00:00
-                const oFechaNormalizada = new Date(Date.UTC(
-                    oFechaActualUTC.getUTCFullYear(),
-                    oFechaActualUTC.getUTCMonth(),
-                    oFechaActualUTC.getUTCDate(),
-                    0, 0, 0, 0
-                ));
-                aFechas.push(oFechaNormalizada);
-                oFechaActualUTC.setUTCDate(oFechaActualUTC.getUTCDate() + 1);
-            }
-
-            const sEntity = "/TurnosLicenciasSet";
-
-            // Crear array de Promises, una llamada por cada fecha
-            const aPromises = aFechas.map((oFecha) => {
-                return new Promise((resolve, reject) => {
-                    const aFilters = [];
-                    // La fecha ya está en UTC a las 00:00:00
-                    aFilters.push(new Filter("Dateturno", FilterOperator.EQ, oFecha));
-                    aFilters.push(new Filter("Empresa", FilterOperator.EQ, "100"));
-
-                    oDataService.read(sEntity, {
-                        filters: aFilters,
-                        success: (oData) => {
-                            // Retornar los results de esta fecha (puede ser array vacío)
-                            resolve(oData.results || []);
-                        },
-                        error: (oError) => {
-                            console.error("Error al obtener turnos para fecha:", oFecha, oError);
-                            // En caso de error, retornar array vacío en lugar de rechazar
-                            // para que las demás fechas puedan procesarse
-                            resolve([]);
-                        }
-                    });
-                });
-            });
-
-            // Ejecutar todas las llamadas en paralelo y acumular resultados
-            Promise.all(aPromises)
-                .then((aResultadosPorFecha) => {
-                    // Acumular todos los resultados en un único array
-                    const aTodosLosResultados = [];
-                    aResultadosPorFecha.forEach((aResultados) => {
-                        if (Array.isArray(aResultados) && aResultados.length > 0) {
-                            aTodosLosResultados.push(...aResultados);
-                        }
-                    });
-
-                    // Crear objeto con formato similar al que espera processReportData
-                    const oDataAcumulado = {
-                        results: aTodosLosResultados
-                    };
-
-                    // Procesar todos los datos acumulados, pasando el tipo de reporte
-                    return this.processReportData(oDataAcumulado, oDateInicio, oDateFin, sReportType);
-                })
-                .catch((err) => {
-                    console.error("Error al procesar datos del reporte:", err);
-                    MessageToast.show("Error al procesar los datos del reporte.");
-                })
-                .finally(() => {
-                    this.hideGlobalBusy();
-                });
-        },
-
-        processReportData: function (data, oDateInicio, oDateFin, sReportType) {
-            const oView = this.getView();
-            const oDataModel = this.getView().getModel();
-
-            // Si no se pasa el tipo de reporte, usar "amplio" por defecto
-            sReportType = sReportType || "amplio";
-
-            const aResults = Array.isArray(data?.results) ? data.results : [];
-
-            if (!aResults.length) {
-                MessageBox.information("No se encontraron turnos para el rango de fechas seleccionado.");
-                return Promise.resolve();
-            }
-
-            // Buscar información de cada licencia usando LicenseService.FIND()
-            // Mantener la fecha del turno (Dateturno) de cada resultado
-            const aPromises = aResults.map((licencia) => {
-                var oDateturno = licencia.Dateturno; // Guardar la fecha del turno
-                return LicenseService.FIND(licencia, oDataModel)
-                    .then(result => {
-                        // Agregar la fecha del turno al resultado
-                        if (result) {
-                            result.Dateturno = oDateturno;
-                        }
-                        return result;
-                    })
-                    .catch(err => {
-                        console.error("Error en FIND para licencia", licencia, err);
-                        return null;
-                    });
-            });
-
-            return Promise.all(aPromises)
-                .then((licenciasProcesadas) => {
-                    const results = licenciasProcesadas.filter(x => x);
-
-                    if (!results.length) {
-                        MessageBox.information("No se encontró información para las licencias del rango de fechas.");
-                        return;
-                    }
-
-                    // Aplicar las mismas funciones de procesamiento que se usan en la tabla principal
-                    // Esto se aplica a ambos tipos de reporte (amplio y maniobras)
-                    const arrayOrdenado = TurnosService.encontrarGrupo(
-                        TurnosService.ordenarPorEqunr(results),
-                        oView
-                    );
-                    TurnosService.assignShiftsToLicences(arrayOrdenado);
-
-                    // Decidir qué función llamar según el tipo de reporte
-                    if (sReportType === "amplio") {
-                        // Generar el Excel con los datos procesados y las fechas del rango
-                        this.createExcelReport(arrayOrdenado, oDateInicio, oDateFin);
-                    } else if (sReportType === "maniobras") {
-                        // Generar el Excel de resumen de maniobras
-                        this.createExcelReportManiobras(arrayOrdenado, oDateInicio, oDateFin);
-                    }
-                })
-                .catch((error) => {
-                    console.error("Error inesperado en Promise.all:", error);
-                    MessageToast.show("Error al procesar las licencias.");
-                });
-        },
-
-        createExcelReport: function (aData, oDateInicio, oDateFin) {
-            // Cargar la librería XLSX
-            jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
-
-            // Verificar que XLSX esté disponible
-            if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
-                MessageBox.error("No se pudo cargar la librería XLSX. Asegúrese de que el archivo esté en webapp/libs/xlsx/xlsx.full.min.js");
-                return;
-            }
-
-            // Si existe make_xlsx_lib, inicializarlo (como en el código que funciona)
-            if (typeof make_xlsx_lib === 'function') {
-                make_xlsx_lib(XLSX);
-            }
-
-            try {
-                // Crear workbook
-                var Workbook = XLSX.utils.book_new();
-
-                // SOLAPA 1: Datos de Licencias
-                var aDatosLicencias = this.prepareLicenciasData(aData);
-                var ws1 = XLSX.utils.aoa_to_sheet([]);
-                var sheet1 = XLSX.utils.sheet_add_json(ws1, aDatosLicencias, {
-                    origin: "A1"
-                });
-                XLSX.utils.book_append_sheet(Workbook, sheet1, "Licencias");
-
-                // SOLAPA 2: Resumen por Fecha
-                var aDatosResumen = this.prepareResumenPorFecha(aData, oDateInicio, oDateFin);
-                var sheet2 = XLSX.utils.aoa_to_sheet(aDatosResumen);
-                XLSX.utils.book_append_sheet(Workbook, sheet2, "Resumen por Fecha");
-
-                // Descargar el archivo
-                var sFileName = "Reporte Amplio.xlsx";
-                XLSX.writeFile(Workbook, sFileName, {
-                    cellStyles: true
-                });
-
-                MessageToast.show("Reporte Excel generado correctamente.");
-
-                // Cerrar el diálogo y limpiar las fechas
-                this.onCancelReports();
-                this.clearReportDates();
-            } catch (error) {
-                console.error("Error al generar el Excel:", error);
-                MessageBox.error("Error al generar el archivo Excel: " + error.message);
-            }
-        },
-
-        createExcelReportManiobras: function (aData, oDateInicio, oDateFin) {
-            // Cargar la librería XLSX
-            jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
-
-            // Verificar que XLSX esté disponible
-            if (typeof XLSX === 'undefined' || !XLSX || !XLSX.utils) {
-                MessageBox.error("No se pudo cargar la librería XLSX. Asegúrese de que el archivo esté en webapp/libs/xlsx/xlsx.full.min.js");
-                return;
-            }
-
-            // Si existe make_xlsx_lib, inicializarlo (como en el código que funciona)
-            if (typeof make_xlsx_lib === 'function') {
-                make_xlsx_lib(XLSX);
-            }
-
-            try {
-                // Crear workbook
-                var Workbook = XLSX.utils.book_new();
-
-                // SOLAPA 1: Resumen por Fecha
-                var aDatosResumen = this.prepareResumenPorFecha(aData, oDateInicio, oDateFin);
-                var sheet1 = XLSX.utils.aoa_to_sheet(aDatosResumen);
-
-                // Calcular dónde empezar las nuevas grillas (después del resumen + 3 filas vacías)
-                var iFilaInicioGrillas = aDatosResumen.length + 3;
-
-                // Función helper para convertir número de columna a letra de Excel (0=A, 1=B, etc.)
-                var getColumnLetter = function (colNum) {
-                    var result = "";
-                    while (colNum >= 0) {
-                        result = String.fromCharCode(65 + (colNum % 26)) + result;
-                        colNum = Math.floor(colNum / 26) - 1;
-                    }
-                    return result;
-                };
-
-                // Variable para rastrear en qué columna empezar la siguiente grilla
-                var iColumnaActual = 0; // Empieza en columna A (0)
-                var oFormatter = this.formatter;
-
-                // Generar array de fechas del rango
-                var aFechas = [];
-                var oFechaActual = new Date(oDateInicio);
-                var oFechaFin = new Date(oDateFin);
-
-                // Agregar un día a la fecha fin para incluirla en el rango
-                oFechaFin.setDate(oFechaFin.getDate() + 1);
-
-                while (oFechaActual < oFechaFin) {
-                    aFechas.push(new Date(oFechaActual));
-                    oFechaActual.setDate(oFechaActual.getDate() + 1);
-                }
-
-                // Para cada fecha, crear una grilla
-                aFechas.forEach(function (oFecha) {
-                    // Filtrar licencias de esta fecha
-                    var aLicenciasFecha = aData.filter(function (license) {
-                        if (!license.Dateturno) {
-                            return false;
-                        }
-
-                        // Normalizar fecha del turno a UTC 00:00:00
-                        var oFechaTurno = new Date(license.Dateturno);
-                        var iAnioUTC = oFechaTurno.getUTCFullYear();
-                        var iMesUTC = oFechaTurno.getUTCMonth();
-                        var iDiaUTC = oFechaTurno.getUTCDate();
-                        var oFechaTurnoNormalizada = new Date(Date.UTC(iAnioUTC, iMesUTC, iDiaUTC, 0, 0, 0, 0));
-
-                        // Normalizar fecha actual a UTC 00:00:00
-                        var oFechaNormalizada = new Date(Date.UTC(
-                            oFecha.getFullYear(),
-                            oFecha.getMonth(),
-                            oFecha.getDate(),
-                            0, 0, 0, 0
-                        ));
-
-                        // Comparar las fechas normalizadas en UTC
-                        return oFechaNormalizada.getTime() === oFechaTurnoNormalizada.getTime();
-                    });
-
-                    // Eliminar duplicados basados en Equnr + TurnoAsignado
-                    var aLicenciasUnicas = [];
-                    var oMapaDuplicados = {}; // Clave: "Equnr|TurnoAsignado"
-
-                    aLicenciasFecha.forEach(function (license) {
-                        var sEquipo = license.Equnr || "";
-                        var sTurno = license.TurnoAsignado || "";
-                        var sClave = sEquipo + "|" + sTurno;
-
-                        // Si no existe esta combinación, agregarla
-                        if (!oMapaDuplicados[sClave]) {
-                            oMapaDuplicados[sClave] = true;
-                            aLicenciasUnicas.push(license);
-                        }
-                    });
-
-                    // Crear la grilla para esta fecha
-                    var aGrillaFecha = [];
-                    // Título de la grilla
-                    var sFechaFormateada = oFormatter.formatDate(oFecha);
-                    aGrillaFecha.push(["Horarios de maniobras previstos " + sFechaFormateada]);
-                    // Encabezados
-                    aGrillaFecha.push(["Equipo", "Hora", "Comentarios"]);
-                    // Datos
-                    aLicenciasUnicas.forEach(function (license) {
-                        var sEquipo = license.Equnr || "";
-                        var sHora = license.TurnoAsignado || (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : "");
-                        var sComentarios = license.Comments || license.PatAdic || "";
-                        aGrillaFecha.push([sEquipo, sHora, sComentarios]);
-                    });
-
-                    // Agregar la grilla al sheet
-                    var sColumnaInicio = getColumnLetter(iColumnaActual);
-                    var iFilaInicio = iFilaInicioGrillas + 1;
-                    XLSX.utils.sheet_add_aoa(sheet1, aGrillaFecha, {
-                        origin: sColumnaInicio + iFilaInicio.toString()
-                    });
-
-                    // Avanzar: ancho de grilla (3 columnas) + 2 columnas de separación
-                    iColumnaActual += 3 + 2;
-                });
-
-                XLSX.utils.book_append_sheet(Workbook, sheet1, "Resumen por Fecha");
-
-                // Descargar el archivo
-                var sFileName = "Resumen Maniobras.xlsx";
-                XLSX.writeFile(Workbook, sFileName, {
-                    cellStyles: true
-                });
-
-                MessageToast.show("Reporte Excel de maniobras generado correctamente.");
-
-                // Cerrar el diálogo y limpiar las fechas
-                this.onCancelReports();
-                this.clearReportDates();
-            } catch (error) {
-                console.error("Error al generar el Excel de maniobras:", error);
-                MessageBox.error("Error al generar el archivo Excel: " + error.message);
-            }
-        },
-
-        clearReportDates: function () {
-            // Obtener los DatePickers del fragment
-            var oFechaInicio = this.byId("fechaInicio");
-            var oFechaFin = this.byId("fechaFin");
-
-            // Si no se encuentran, intentar con Fragment.byId
-            if (!oFechaInicio) {
-                oFechaInicio = sap.ui.core.Fragment.byId(this.getView().getId(), "fechaInicio");
-            }
-            if (!oFechaFin) {
-                oFechaFin = sap.ui.core.Fragment.byId(this.getView().getId(), "fechaFin");
-            }
-
-            // Limpiar las fechas
-            if (oFechaInicio) {
-                oFechaInicio.setValue("");
-            }
-            if (oFechaFin) {
-                oFechaFin.setValue("");
-            }
-        },
-
-        prepareLicenciasData: function (aData) {
-            var that = this;
-            var oFormatter = this.formatter;
-
-            return aData.map(function (license) {
-                return {
-                    "Equipo": license.Equnr || "",
-                    "IdLicencia": license.Id || "",
-                    "Estado": oFormatter.getEstado(license.Equstat) || "",
-                    "CondTrabajo": oFormatter.getJobCond(license.Jobcond) || "",
-                    "HoraInicio": license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : "",
-                    "TrabajoRealizar": license.Comments || "",
-                    "Region": oFormatter.getRegiones(license.Werks) || "",
-                    "Consola": license.Consola || "",
-                    "Turno": license.TurnoAsignado || "",
-                    "Comentario": license.Comentarios || ""
-                };
-            });
-        },
-
-        prepareResumenPorFecha: function (aData, oDateInicio, oDateFin) {
-            var that = this;
-            var oFormatter = this.formatter;
-            var aResultado = [];
-
-            // Encabezados
-            aResultado.push([
-                "Fecha",
-                "Cantidad de LLTT",
-                "LLTT con maniobras",
-                "Cantidad de TcT",
-                "Cantidad de LLTT sin maniobras"
-            ]);
-
-            // Generar array de fechas del rango
-            var aFechas = [];
-            var oFechaActual = new Date(oDateInicio);
-            var oFechaFin = new Date(oDateFin);
-
-            // Agregar un día a la fecha fin para incluirla en el rango
-            oFechaFin.setDate(oFechaFin.getDate() + 1);
-
-            while (oFechaActual < oFechaFin) {
-                aFechas.push(new Date(oFechaActual));
-                oFechaActual.setDate(oFechaActual.getDate() + 1);
-            }
-
-            // Para cada fecha, agrupar las licencias y calcular contadores
-            aFechas.forEach(function (oFecha) {
-                // Filtrar licencias de esta fecha
-                var aLicenciasFecha = aData.filter(function (license) {
-                    if (!license.Dateturno) return false;
-
-                    // Convertir Dateturno a Date
-                    var oFechaTurno = new Date(license.Dateturno);
-
-                    // Usar los métodos UTC para obtener la fecha real que representa
-                    // El backend envía en UTC pero se muestra en zona local
-                    // Ejemplo: Mon Nov 03 2025 21:00:00 GMT-0300 representa Tue Nov 04 2025 00:00:00 UTC
-                    var iAnioUTC = oFechaTurno.getUTCFullYear();
-                    var iMesUTC = oFechaTurno.getUTCMonth();
-                    var iDiaUTC = oFechaTurno.getUTCDate();
-
-                    // Crear fecha normalizada usando UTC (fecha real del backend)
-                    var oFechaTurnoNormalizada = new Date(Date.UTC(iAnioUTC, iMesUTC, iDiaUTC, 0, 0, 0, 0));
-
-                    // Normalizar la fecha del rango también a UTC para comparar
-                    var oFechaNormalizada = new Date(Date.UTC(
-                        oFecha.getFullYear(),
-                        oFecha.getMonth(),
-                        oFecha.getDate(),
-                        0, 0, 0, 0
-                    ));
-
-                    // Comparar las fechas normalizadas en UTC
-                    return oFechaNormalizada.getTime() === oFechaTurnoNormalizada.getTime();
-                });
-
-                // Calcular contadores usando la misma lógica que Utils.onCountItems
-                // Crear una vista temporal para evitar errores
-                var oTempView = { setModel: function () { } }; // Vista dummy
-                var oCounts = Utils.onCountItems(oTempView, aLicenciasFecha);
-
-                // Formatear fecha
-                var sFechaFormateada = oFormatter.formatDate(oFecha);
-
-                // Agregar fila al resultado
-                aResultado.push([
-                    sFechaFormateada,
-                    oCounts.Total,
-                    oCounts.LTWithManouvers,
-                    oCounts.TCT,
-                    oCounts.LTWithoutManouvers
-                ]);
-            });
-
-            return aResultado;
-        },
-
-
-        onCancelReports: function () {
-            if (this._oReportsDialog) {
-                this._oReportsDialog.close();
-            }
-        },
-        // Función para enviar correo usando el workflow WfSistemaTurnos
-        // Basada en el código existente del controlador App
-
-        // Agregar estas funciones a tu controlador App.js
-
-        onSendEmailPress: function (emailDestinatario) {
-            var that = this;
-
-            emailDestinatario = "gq4dev@gmail.com"
-            // Validar que se haya proporcionado un email
-            if (!emailDestinatario || emailDestinatario.trim() === "") {
-                MessageBoxHelper.showAlert("Alerta", "Debe proporcionar una dirección de correo válida.");
-                return;
-            }
-
-            // Obtener el token CSRF
-            var token = this._fetchToken();
-
-            if (!token) {
-                MessageBoxHelper.showAlert("Error", "No se pudo obtener el token de seguridad.");
-                return;
-            }
-
-            // Iniciar el workflow
-            this._iniciarWorkflowCorreo(token, emailDestinatario);
-        },
-
-        _fetchToken: function () {
-            var cUrl = this._getWorkflowRuntimeBaseURL() + "/xsrf-token";
-            var token;
-
-            $.ajax({
-                url: cUrl,
-                method: "GET",
-                async: false,
-                headers: {
-                    "X-CSRF-Token": "Fetch"
-                },
-                success: function (result, xhr, data) {
-                    token = data.getResponseHeader("X-CSRF-Token");
-                },
-                error: function (data) {
-                    MessageToast.show("Error en la obtención del token para la creación del workflow");
-                    console.log(data);
-                }
-            });
-
-            return token;
-        },
-
-        _getWorkflowRuntimeBaseURL: function () {
-            var appId = this.getOwnerComponent().getManifestEntry("/sap.app/id");
-            var appPath = appId.replaceAll(".", "/");
-            var appModulePath = jQuery.sap.getModulePath(appPath);
-            return appModulePath + "/bpmworkflowruntime/v1";
-        },
-
-        _iniciarWorkflowCorreo: function (token, emailDestinatario) {
-            var that = this;
-            var cUrl = this._getWorkflowRuntimeBaseURL() + "/workflow-instances";
-
-            // Contexto mínimo requerido por el workflow
-            var oContext = {
-                Destinatario: emailDestinatario
-            };
-
-            $.ajax({
-                url: cUrl,
-                method: "POST",
-                async: true,
-                contentType: "application/json",
-                headers: {
-                    "X-CSRF-Token": token
-                },
-                data: JSON.stringify({
-                    definitionId: "wfturnos",  // ID del workflow WfSistemaTurnos
-                    context: oContext
-                }),
-                success: function (result, xhr, data) {
-                    MessageToast.show("Correo enviado exitosamente");
-                    console.log("Workflow iniciado correctamente:", result);
-                },
-                error: function (error) {
-                    MessageToast.show("Error al enviar el correo");
-                    console.error("Error al iniciar workflow:", error);
-                    MessageBoxHelper.showAlert("Error", "No se pudo enviar el correo. Por favor intente nuevamente.");
-                }
-            });
-        },
-startWorkflowInstance: function () {
-          var model = this.getView().getModel();
-          var definitionId = "wfturnos";
-          var initialContext = model.getProperty("/initialContext");
-
-          var data = {
-            definitionId: definitionId,
-            context: JSON.parse(initialContext),
-          };
-
-          $.ajax({
-            url: this._getWorkflowRuntimeBaseURL() + "/workflow-instances",
-            method: "POST",
-            async: false,
-            contentType: "application/json",
-            headers: {
-              "X-CSRF-Token": this._fetchToken(),
-            },
-            data: JSON.stringify(data),
-            success: function (result, xhr, data) {
-              model.setProperty(
-                "/apiResponse",
-                JSON.stringify(result, null, 4)
-              );
-            },
-            error: function (request, status, error) {
-              var response = JSON.parse(request.responseText);
-              model.setProperty(
-                "/apiResponse",
-                JSON.stringify(response, null, 4)
-              );
-            },
-          });
-        },
-
-        _fetchToken: function () {
-          var fetchedToken;
-
-          jQuery.ajax({
-            url: this._getWorkflowRuntimeBaseURL() + "/xsrf-token",
-            method: "GET",
-            async: false,
-            headers: {
-              "X-CSRF-Token": "Fetch",
-            },
-            success(result, xhr, data) {
-              fetchedToken = data.getResponseHeader("X-CSRF-Token");
-            },
-          });
-          return fetchedToken;
-        },
-
-        _getWorkflowRuntimeBaseURL: function () {
-          var appId = this.getOwnerComponent().getManifestEntry("/sap.app/id");
-          var appPath = appId.replaceAll(".", "/");
-          var appModulePath = jQuery.sap.getModulePath(appPath);
-
-          return appModulePath + "/bpmworkflowruntime/v1";
-        },
-        // Ejemplo de uso en un botón o evento:
-        // onEnviarCorreo: function() {
-        //     var sEmail = this.byId("emailInput").getValue(); // Obtener email del input
-        //     this.enviarCorreoWorkflow(sEmail);
-        // }
-
-
     });
 });

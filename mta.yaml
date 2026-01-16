@@ -18,7 +18,7 @@ modules:
         name: uaa_sistemaTurnos-key
   parameters:
     content:
-      subaccount:
+      instance:
         destinations:
         - Name: sistemaTurnos_sistemaTurnos_html_repo_host
           ServiceInstanceName: sistemaTurnos-html5-app-host-service
@@ -45,10 +45,12 @@ modules:
     - artifacts:
       - transenersistemadeturnos.zip
       name: transenersistemadeturnos
-      target-path: resources/ 
+      target-path: resources/
 - name: transenersistemadeturnos
   type: html5
   path: sistemadeturnos
+  requires:
+  - name: sap_processautomation
   build-parameters:
     build-result: dist
     builder: custom
@@ -56,25 +58,19 @@ modules:
     - npm install
     - npm run build:cf
     supported-platforms: []
-- name: workflow-module
-  type: com.sap.application.content
-  path: workflow-module
-  requires:
-  - name: sap_processautomation
-    parameters:
-      content-target: true
-      service-key:
-        config:
-          deployUsageScenario: workflow
-        name: spa-workflow-service-key
 resources:
+- name: sap_processautomation
+  type: org.cloudfoundry.managed-service
+  parameters:
+    service: process-automation-service
+    service-plan: standard
 - name: sistemaTurnos-destination-service
   type: org.cloudfoundry.managed-service
   parameters:
     config:
       HTML5Runtime_enabled: true
       init_data:
-        subaccount:
+        instance:
           destinations:
           - Authentication: NoAuthentication
             Name: ui5
@@ -99,11 +95,6 @@ resources:
     service: xsuaa
     service-name: sistemaTurnos-xsuaa-service
     service-plan: application
-- name: sap_processautomation
-  type: org.cloudfoundry.managed-service
-  parameters:
-    service: process-automation-service
-    service-plan: standard
 parameters:
   deploy_mode: html5-repo
   enable-parallel-deployments: true
