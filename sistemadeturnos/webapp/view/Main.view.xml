@@ -281,7 +281,7 @@
                         >
                             <t:Table
                                 id="turnosTable"
-                                selectionMode="MultiToggle"
+                                selectionMode="None"
                                 selectionBehavior="Row"
                                 ariaLabelledBy="title2"
                                 rows="{LicencesJsonModel>/}"
@@ -293,6 +293,7 @@
                                             text="Adjuntar archivo"
                                             icon="sap-icon://attachment"
                                             press="onAttachFile"
+                                            enabled="{editableModel>/isEditable}"
                                         />
 
                                         <!-- Eliminar adjunto -->
@@ -301,6 +302,7 @@
                                             icon="sap-icon://delete"
                                             press="onDeleteAttachment"
                                             visible="{= ${LicencesJsonModel>Attachments} &amp;&amp; ${LicencesJsonModel>Attachments}.length > 0 }"
+                                            enabled="{editableModel>/isEditable}"
                                         />
 
                                         <!-- Agregar Licencia (nuevo - por implementar) -->
@@ -316,6 +318,7 @@
                                             text="Eliminar Licencia"
                                             icon="sap-icon://delete"
                                             press="onDeletePress"
+                                            enabled="{editableModel>/isEditable}"
                                         />
 
                                         <!-- Desacoplar -->
@@ -323,6 +326,7 @@
                                             text="Desacoplar"
                                             icon="sap-icon://broken-link"
                                             press="onDetachLicense"
+                                            enabled="{editableModel>/isEditable}"
                                         />
 
                                         <!-- Acciones para la entrega -->
@@ -330,31 +334,32 @@
                                             text="Acciones para la entrega"
                                             icon="sap-icon://add-activity-2"
                                             press="onOpenAccionEntregaPopover"
+                                            enabled="{editableModel>/isEditable}"
                                         />
                                     </Menu>
                                 </t:contextMenu>
 
                                 <t:rowSettingsTemplate>
                                     <t:RowSettings
-                                        highlight="{path: 'LicencesJsonModel>tramitacionColor', formatter: '.getTramitacionHighlight'}"
+                                        highlight="{path:'LicencesJsonModel>tramitacionColorFecha', formatter:'.getTramitacionHighlight'}"
                                     />
                                 </t:rowSettingsTemplate>
 
                                 <t:columns>
-                                    <t:Column width="60px">
-                                        <Label text="Tra..." />
+                                    <!-- <t:Column width="60px">
+                                        <Label text="Tramitación" />
                                         <t:template>
                                             <Button
                                                 icon="sap-icon://calendar"
-                                                type="{= ${LicencesJsonModel>tramitacionColor} === 'red' ? 'Reject' : 
-                         ${LicencesJsonModel>tramitacionColor} === 'yellow' ? 'Attention' : 'Default' }"
+                                                type="{= ${LicencesJsonModel>tramitacionColorFecha} === 'red' ? 'Reject' : 
+             ${LicencesJsonModel>tramitacionColorFecha} === 'yellow' ? 'Attention' : 'Default' }"
                                                 press="onOpenCalendarioTramitacion"
                                                 tooltip="Ver calendario de tramitación"
                                             />
                                         </t:template>
-                                    </t:Column>
+                                    </t:Column> -->
 
-                                    <t:Column width="100px">
+                                    <!-- <t:Column width="100px">
                                         <Label text="{i18n>acciones}" />
                                         <t:template>
                                             <HBox justifyContent="Center">
@@ -366,11 +371,11 @@
                                                 />
                                             </HBox>
                                         </t:template>
-                                    </t:Column>
+                                    </t:Column> -->
 
                                     <t:Column
                                         id="equipment"
-                                        width="100px"
+                                        width="250px"
                                         class="customColumnBackground"
                                         hAlign="Center"
                                         sortProperty="Equnr"
@@ -387,7 +392,7 @@
                                                     content="&lt;div class='groupColorBar' style='background-color:{LicencesJsonModel>ColorGrupo}'&gt;&lt;/div&gt;"
                                                 />
                                                 <Text
-                                                    text="{LicencesJsonModel>Equnr}"
+                                                     text="{LicencesJsonModel>EquipoCompleto}" 
                                                     wrapping="false"
                                                     class="{= ${firstItem} ? 'text-bold' : '' }"
                                                 />
@@ -470,7 +475,7 @@
 
                                     <t:Column
                                         id="toDoWork"
-                                        width="250px"
+                                        width="450px"
                                         sortProperty="Comments"
                                         filterProperty="Comments"
                                     >
@@ -483,7 +488,7 @@
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
+                                    <!-- <t:Column
                                         id="state"
                                         width="250px"
                                         sortProperty="Licstat"
@@ -497,11 +502,11 @@
                                                 wrapping="false"
                                             />
                                         </t:template>
-                                    </t:Column>
+                                    </t:Column> -->
 
                                     <t:Column
                                         id="region"
-                                        width="180px"
+                                        width="150px"
                                         hAlign="Center"
                                         sortProperty="Werks"
                                         filterProperty="Werks"
@@ -554,6 +559,7 @@
                                                     change="onChangeHour"
                                                     valueStateText="{i18n>pastTurnoNotEditable}"
                                                     class="tpGroupBorder {LicencesJsonModel>ColorGrupoClass}"
+                                                    enabled="{editableModel>/isEditable}"
                                                 />
                                             </HBox>
                                         </t:template>
@@ -570,6 +576,7 @@
                                             <Input
                                                 value="{LicencesJsonModel>Comentarios}"
                                                 valueStateText="{i18n>pastTurnoNotEditable}"
+                                                enabled="{editableModel>/isEditable}"
                                             />
                                         </t:template>
                                     </t:Column>
@@ -595,7 +602,6 @@
                             </t:Table>
                         </IconTabFilter>
 
-                        <!-- REEMPLAZAR el IconTabFilter "Listado Cronologico" completo por esto -->
                         <IconTabFilter
                             text="Listado Cronologico"
                             key="CRONO"
@@ -612,16 +618,19 @@
                                 enableColumnReordering="false"
                                 enableSelectAll="false"
                                 ariaLabelledBy="title"
-                                visibleRowCount="20"
-                                minAutoRowCount="10"
                                 toggleOpenState=".onToggleOpenState"
-                                expandFirstLevel="false"
                             >
+                                <t:rowSettingsTemplate>
+                                    <t:RowSettings
+                                        highlight="{path: 'listCronoTreeModel>tramitacionColorFecha', formatter: '.getTramitacionHighlight'}"
+                                    />
+                                </t:rowSettingsTemplate>
+
                                 <t:columns>
                                     <!-- Columna de Equipo con icono de expansión -->
                                     <t:Column
                                         id="equipmentCrono"
-                                        width="150px"
+                                        width="250px"
                                         class="customColumnBackground"
                                         hAlign="Center"
                                     >
@@ -634,7 +643,7 @@
                                             >
                                                 <!-- Mostrar equipo + turno si es nodo padre -->
                                                 <Text
-                                                    text="{= ${listCronoTreeModel>_isGroup} ? ${listCronoTreeModel>Equnr} + ' - Turno ' + ${listCronoTreeModel>TurnoAsignado} : '' }"
+                                                    text="{= ${listCronoTreeModel>_isGroup} ? ${listCronoTreeModel>EquipoCompleto} : '' }"
                                                     wrapping="false"
                                                     class="text-bold"
                                                     visible="{= ${listCronoTreeModel>_isGroup} === true }"
@@ -653,7 +662,7 @@
                                     <!-- IdLicencia -->
                                     <t:Column
                                         hAlign="Center"
-                                        width="200px"
+                                        width="150px"
                                     >
                                         <Label text="IdLicencia" />
                                         <t:template>
@@ -702,7 +711,7 @@
                                         hAlign="Center"
                                         width="200px"
                                     >
-                                        <Label text="{i18n>conditionWork}" />
+                                        <Label text="{i18n>toDoWork}" />
                                         <t:template>
                                             <Text
                                                 text="{path: 'listCronoTreeModel>Jobcond', formatter: '.formatter.getJobCond'}"
@@ -716,6 +725,7 @@
                                     <t:Column
                                         id="initHourCrono"
                                         hAlign="Center"
+                                        width="50px"
                                     >
                                         <Label
                                             text="{i18n>initHour}"
@@ -736,7 +746,7 @@
                                     <!-- Trabajo a Realizar -->
                                     <t:Column
                                         id="toDoWorkCrono"
-                                        width="250px"
+                                        width="450px"
                                     >
                                         <Label text="{i18n>toDoWork}" />
                                         <t:template>
@@ -750,7 +760,7 @@
                                     <!-- Región -->
                                     <t:Column
                                         id="regionCrono"
-                                        width="200px"
+                                        width="130px"
                                         hAlign="Center"
                                     >
                                         <Label text="{i18n>region}" />
@@ -766,6 +776,7 @@
                                     <!-- Consola -->
                                     <t:Column
                                         id="consoleCrono"
+                                        width="130px"
                                         hAlign="Center"
                                     >
                                         <Label text="{i18n>console}" />
@@ -780,7 +791,7 @@
                                     <!-- Turno Asignado -->
                                     <t:Column
                                         hAlign="Center"
-                                        width="140px"
+                                        width="120px"
                                     >
                                         <Label
                                             text="{i18n>shift}"
@@ -891,6 +902,90 @@
                                 </t:columns>
                             </t:Table>
                         </IconTabFilter>
+
+                        <!-- TAB REPORTES MANIOBRAS -->
+
+                        <IconTabFilter
+                            text="Reporte"
+                            key="REPORTE"
+                            visible="false"
+                        >
+                            <VBox class="sapUiSmallMargin">
+                                <Title
+                                    id="reporteTitle"
+                                    text="Resumen Maniobras"
+                                    level="H2"
+                                    class="sapUiSmallMarginBottom"
+                                />
+
+                                <HBox class="sapUiTinyMarginBottom">
+                                    <Text
+                                        id="reporteDateRange"
+                                        text="Horarios de maniobras previstas desde: -- Hasta: --"
+                                    />
+                                </HBox>
+
+                                <!-- ✅ TABLA MOVIDA AQUÍ DENTRO -->
+                                <t:Table
+                                    id="reporteTable"
+                                    rows="{ReporteModel>/}"
+                                    selectionMode="None"
+                                    enableColumnReordering="false"
+                                >
+                                    <t:columns>
+                                        <t:Column width="120px">
+                                            <Label text="Fecha" />
+                                            <t:template>
+                                                <Text
+                                                    text="{ReporteModel>Fecha}"
+                                                />
+                                            </t:template>
+                                        </t:Column>
+
+                                        <t:Column width="150px">
+                                            <Label text="Equipo" />
+                                            <t:template>
+                                                <Text
+                                                    text="{ReporteModel>Equipo}"
+                                                />
+                                            </t:template>
+                                        </t:Column>
+
+                                        <t:Column width="120px">
+                                            <Label text="Hora" />
+                                            <t:template>
+                                                <Text
+                                                    text="{ReporteModel>Hora}"
+                                                />
+                                            </t:template>
+                                        </t:Column>
+
+                                        <t:Column>
+                                            <Label text="Comentarios" />
+                                            <t:template>
+                                                <Text
+                                                    text="{ReporteModel>Comentarios}"
+                                                    wrapping="true"
+                                                />
+                                            </t:template>
+                                        </t:Column>
+                                    </t:columns>
+                                </t:Table>
+
+                                <Toolbar class="sapUiSmallMarginTop">
+                                    <ToolbarSpacer />
+                                    <Button
+                                        text="Descargar Excel"
+                                        icon="sap-icon://excel-attachment"
+                                        press=".onDescargarReporteActual"
+                                    />
+                                    <Button
+                                        text="Cerrar"
+                                        press=".onCerrarReporte"
+                                    />
+                                </Toolbar>
+                            </VBox>
+                        </IconTabFilter>
                     </items>
                 </IconTabBar>
 
@@ -931,7 +1026,6 @@
                             icon="sap-icon://add"
                             press="onAddLicense"
                             text="{i18n>altaTurno}"
-                            enabled="{= ${tabsControl>/activeTab} === 'LIC' }"
                             class="sapUiSmallMarginEnd"
                         />
                         <ToolbarSpacer />

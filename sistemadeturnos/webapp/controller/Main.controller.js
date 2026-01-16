@@ -46,8 +46,27 @@ sap.ui.define([
 
             const oTreeModel = new JSONModel([]);
             this.getView().setModel(oTreeModel, "listCronoTreeModel");
-        },
 
+            const oReporteModel = new JSONModel([]);
+            this.getView().setModel(oReporteModel, "ReporteModel");
+        },
+        // ----------------------------------- TURNOS EDITABLES ----------------------------------------
+        _updateEditableState: function () {
+            const oView = this.getView();
+            const oDatePicker = this.byId("date");
+            const oFechaTurno = oDatePicker && oDatePicker.getDateValue();
+            const bIsEditable = this._isEditableTurno(oFechaTurno);
+
+            // Crear o actualizar modelo de habilitación para la UI
+            let oEditableModel = oView.getModel("editableModel");
+            if (!oEditableModel) {
+                oEditableModel = new JSONModel({ isEditable: bIsEditable });
+                oView.setModel(oEditableModel, "editableModel");
+            } else {
+                oEditableModel.setProperty("/isEditable", bIsEditable);
+            }
+        },
+        //---------------------------------------------------------------------------------------------
         // ------------------------------------ Acciones para la entrega ------------------------------------------------------
         _initAccionesEntregaModel: function () {
             const oView = this.getView();
@@ -363,7 +382,6 @@ sap.ui.define([
             const oLicencia = this._currentLicenciaEntrega;
 
             if (!oLicencia) {
-                console.error("No hay licencia seleccionada");
                 return;
             }
 
@@ -729,6 +747,7 @@ sap.ui.define([
 
         _validateSingleLicense: function (oModel, oLicencia, dFecha, current, total) {
             return new Promise((resolve) => {
+
                 const aFilters = [
                     new Filter("Empresa", FilterOperator.EQ, oLicencia.Empresa || "100"),
                     new Filter("Id", FilterOperator.EQ, oLicencia.Id),
@@ -743,6 +762,7 @@ sap.ui.define([
                         const duration = Date.now() - startTime;
                         const aResults = oData.results || [];
 
+
                         if (aResults.length === 0) {
                             resolve({
                                 ...oLicencia,
@@ -750,7 +770,8 @@ sap.ui.define([
                                 tramitacionProblematica: false,
                                 tramitacionEstado: null,
                                 tramitacionDetalles: [],
-                                calendarioCompleto: []
+                                calendarioCompleto: [],
+                                tramitacionPorFecha: {}
                             });
                             return;
                         }
@@ -758,17 +779,27 @@ sap.ui.define([
                         aResults.forEach(r => {
                             const fechaFormateada = this._formatDateYYYYMMDD(r.Fecha);
                             const desc = this._getEstadoDescription(r.Estado);
-                            console.log(`  │    • ${fechaFormateada} → ${r.Estado} ${desc}`);
                         });
 
                         let tramitacionColor = null;
                         let tramitacionProblematica = false;
                         let tramitacionEstado = null;
                         const aEstadosProblematicos = [];
+                        const tramitacionPorFecha = {};
 
                         aResults.forEach(item => {
                             if (item.Estado === 'AS' || item.Estado === 'NA' || item.Estado === 'CD' || item.Estado === 'CC') {
                                 aEstadosProblematicos.push(item);
+
+                                const fechaItem = this._formatDateYYYYMMDD(item.Fecha);
+
+                                if (item.Estado === 'AS' || item.Estado === 'NA') {
+                                    tramitacionPorFecha[fechaItem] = 'red';
+                                } else if (item.Estado === 'CD' || item.Estado === 'CC') {
+                                    if (!tramitacionPorFecha[fechaItem]) {
+                                        tramitacionPorFecha[fechaItem] = 'yellow';
+                                    }
+                                }
                             }
                         });
 
@@ -796,7 +827,6 @@ sap.ui.define([
                             tramitacionColor = 'yellow';
                             tramitacionProblematica = true;
                             tramitacionEstado = 'CD';
-                        } else {
                         }
 
                         resolve({
@@ -805,15 +835,16 @@ sap.ui.define([
                             tramitacionProblematica: tramitacionProblematica,
                             tramitacionEstado: tramitacionEstado,
                             tramitacionDetalles: aEstadosProblematicos,
-                            calendarioCompleto: aResults
+                            calendarioCompleto: aResults,
+                            tramitacionPorFecha: tramitacionPorFecha
                         });
                     },
                     error: (oError) => {
                         const duration = Date.now() - startTime;
+
                         if (oError.responseText) {
                             try {
                                 const errorObj = JSON.parse(oError.responseText);
-                                console.error(`  │    Error Detail:`, errorObj);
                             } catch (e) {
                                 console.error(`  │    ResponseText:`, oError.responseText);
                             }
@@ -825,11 +856,25 @@ sap.ui.define([
                             tramitacionProblematica: false,
                             tramitacionEstado: null,
                             tramitacionDetalles: [],
-                            calendarioCompleto: []
+                            calendarioCompleto: [],
+                            tramitacionPorFecha: {}
                         });
                     }
                 });
             });
+        },
+
+        _getTramitacionColorPorFecha: function (oLicencia, dFechaTurno) {
+
+            if (!oLicencia || !oLicencia.tramitacionPorFecha || !dFechaTurno) {
+                return null;
+            }
+
+            const sFechaTurno = this._formatDateYYYYMMDD(dFechaTurno);
+
+            const color = oLicencia.tramitacionPorFecha[sFechaTurno] || null;
+
+            return color;
         },
 
         _formatDateYYYYMMDD: function (date) {
@@ -1196,6 +1241,34 @@ sap.ui.define([
                             sap.m.MessageToast.show("Seleccione una fecha");
                             return;
                         }
+
+                        // ✅ VALIDACIÓN: No permitir crear turnos con fecha anterior a hoy
+                        var oFechaTurno = new Date(oDateValue);
+                        var oFechaTurnoNormalizada = new Date(Date.UTC(
+                            oFechaTurno.getUTCFullYear(),
+                            oFechaTurno.getUTCMonth(),
+                            oFechaTurno.getUTCDate(),
+                            0, 0, 0, 0
+                        ));
+
+                        var oHoy = new Date();
+                        var oHoyNormalizada = new Date(Date.UTC(
+                            oHoy.getFullYear(),
+                            oHoy.getMonth(),
+                            oHoy.getDate(),
+                            0, 0, 0, 0
+                        ));
+
+                        if (oFechaTurnoNormalizada.getTime() < oHoyNormalizada.getTime()) {
+                            sap.m.MessageBox.error(
+                                "No se puede crear un turno con fecha anterior al día de hoy. Por favor, seleccione una fecha válida.",
+                                {
+                                    title: "Fecha no válida"
+                                }
+                            );
+                            return;
+                        }
+
                         that._oFechaTurnoDialog.close();
                         that._checkExistingTurnoAndProceed(oDateValue);
                     }
@@ -1220,15 +1293,22 @@ sap.ui.define([
             oLicencesModel.setData([]);
             oTable.setBusy(true);
 
-            TurnosService.search({ FechaTurno, oView: this.getView(), isRefresh: false })
+            TurnosService.search({ FechaTurno, oView: this.getView(), isRefresh: true })
                 .then((data) => {
+                    const bIsEditable = this._isEditableTurno(FechaTurno);
+
+                    data.forEach(item => {
+                        item.isEditable = bIsEditable;
+                    });
+
                     oLicencesModel.setData(data);
                     oLicencesModel.refresh();
                     oTable.setBusy(false);
                     Utils.onCountItems(this.getView(), data);
+
+                    this._updateEditableState();
                 })
                 .catch((error) => {
-                    console.error("Error en la búsqueda:", error);
                     oLicencesModel.setData([]);
                     oLicencesModel.refresh();
                     oTable.setBusy(false);
@@ -1291,9 +1371,6 @@ sap.ui.define([
 
             const aResults = Array.isArray(data?.results) ? data.results : [];
 
-            // 🔍 LOG: Estados que llegan desde TurnosLicenciasSet
-            console.log("📥 Total de licencias recibidas:", aResults.length);
-
             if (!aResults.length) {
                 oLicencesModel.setData([]);
                 Utils.onCountItems(oView, []);
@@ -1342,7 +1419,8 @@ sap.ui.define([
                                 tramitacionProblematica: turnoLicencia.tramitacionProblematica || false,
                                 tramitacionEstado: turnoLicencia.tramitacionEstado || null,
                                 tramitacionDetalles: turnoLicencia.tramitacionDetalles || [],
-                                calendarioCompleto: turnoLicencia.calendarioCompleto || []
+                                calendarioCompleto: turnoLicencia.calendarioCompleto || [],
+                                tramitacionPorFecha: turnoLicencia.tramitacionPorFecha || {}  // ✅ AGREGAR ESTA LÍNEA
                             };
 
                             resolve(licenciaCompleta);
@@ -1414,73 +1492,126 @@ sap.ui.define([
 
                     TurnosService.assignShiftsToLicences(arrayOrdenado);
 
-                    const oDatePicker = this.byId("date");
-                    const oFechaTurno = oDatePicker && oDatePicker.getDateValue();
+                    // ✅ OBTENER EQUIPOS ÚNICOS
+                    const aEquiposUnicos = [...new Set(arrayOrdenado.map(item => (item.Equnr || "").trim()).filter(Boolean))];
+                    console.log("🔧 [TABLAS] Equipos únicos encontrados:", aEquiposUnicos);
 
-                    const bIsEditable = this._isEditableTurno(oFechaTurno);
+                    // ✅ OBTENER DESCRIPCIONES DE EQUIPOS
+                    return this._obtenerDescripcionesEquipos(aEquiposUnicos)
+                        .then((oDescripcionesEquipos) => {
+                            console.log("✅ [TABLAS] Descripciones obtenidas:", Object.keys(oDescripcionesEquipos).length);
 
-                    arrayOrdenado.forEach(item => {
-                        item.isEditable = bIsEditable;
+                            // ✅ AGREGAR DESCRIPCIÓN A CADA ITEM
+                            arrayOrdenado.forEach(item => {
+                                const sEquipoNormalizado = (item.Equnr || "").trim();
+                                item.DescEquipo = oDescripcionesEquipos[sEquipoNormalizado] || "";
+                                item.EquipoCompleto = item.DescEquipo ? item.Equnr + " - " + item.DescEquipo : item.Equnr;
+                            });
 
-                        if (turnosOriginales[item.Id]) {
-                            item.TurnoAsignado = turnosOriginales[item.Id];
-                        }
-                    });
+                            const oDatePicker = this.byId("date");
+                            const oFechaTurno = oDatePicker && oDatePicker.getDateValue();
 
-                    this._rebuildFrontendGroupsByEquipoHora(arrayOrdenado);
-                    this._assignGroupColors(arrayOrdenado);
+                            const bIsEditable = this._isEditableTurno(oFechaTurno);
 
-                    const arrayOrdenadoPorTurno = [...arrayOrdenado];
-                    arrayOrdenadoPorTurno.sort((a, b) => {
-                        const toMinutes = (hora) => {
-                            if (!hora) return 0;
-                            const [h, m] = hora.split(":").map(Number);
-                            return h * 60 + m;
-                        };
-                        return toMinutes(a.TurnoAsignado) - toMinutes(b.TurnoAsignado);
-                    });
-                    oLicencesModel.setData(arrayOrdenadoPorTurno);
-                    Utils.onCountItems(oView, arrayOrdenadoPorTurno);
+                            arrayOrdenado.forEach((item, index) => {
+                                item.isEditable = bIsEditable;
 
-                    const arrayClonado = JSON.parse(JSON.stringify(arrayOrdenadoPorTurno));
-                    arrayClonado.forEach(item => {
-                        item.isEditable = bIsEditable;
-                    });
+                                if (turnosOriginales[item.Id]) {
+                                    item.TurnoAsignado = turnosOriginales[item.Id];
+                                }
 
-                    // Modelo que usa la tabla cronológica
-                    const oListCronoModel = new JSONModel(arrayClonado);
-                    oView.setModel(oListCronoModel, "listCronoModel");
+                                if (item.tramitacionPorFecha && oFechaTurno) {
+                                    const colorEspecifico = this._getTramitacionColorPorFecha(item, oFechaTurno);
+                                    item.tramitacionColorFecha = colorEspecifico;
+                                } else {
+                                    item.tramitacionColorFecha = null;
+                                }
+                            });
 
-                    // Transformar datos para TreeTable
-                    const aTreeData = TreeTableHelper.transformToTreeStructure(arrayClonado);
-                    const oTreeModel = ModelHelper.getModel("listCronoTreeModel", oView);
-                    oTreeModel.setData(aTreeData);
-                    oTreeModel.refresh();
+                            arrayOrdenado.forEach(item => {
+                                const iconoColor = item.tramitacionColorFecha === 'red' ? '🔴' :
+                                    item.tramitacionColorFecha === 'yellow' ? '🟡' : '⚪';
+                            });
 
-                    function sortByTurnoAsignado(a, b) {
-                        const toMinutes = (hora) => {
-                            if (!hora) return 0;
-                            const [h, m] = hora.split(":").map(Number);
-                            return h * 60 + m;
-                        };
+                            this._rebuildFrontendGroupsByEquipoHora(arrayOrdenado);
+                            this._assignGroupColors(arrayOrdenado);
 
-                        return toMinutes(a.TurnoAsignado) - toMinutes(b.TurnoAsignado);
-                    }
+                            // Ordenar por consola y luego por hora dentro de cada consola
+                            this._sortLicences(arrayOrdenado);
 
-                    this._loadAttachmentsForLicensesAsync(arrayOrdenado)
-                        .then(() => {
-                        })
-                        .catch((error) => {
-                            console.error("Error al cargar adjuntos:", error);
+                            oLicencesModel.setData(arrayOrdenado);
+                            Utils.onCountItems(oView, arrayOrdenado);
+
+                            // ✅ CLONAR Y AGREGAR DESCRIPCIONES TAMBIÉN AL CLON
+                            const arrayClonado = JSON.parse(JSON.stringify(arrayOrdenado));
+                            arrayClonado.forEach(item => {
+                                item.isEditable = bIsEditable;
+                                // Las descripciones ya están en arrayOrdenado, se copian automáticamente con JSON
+                            });
+
+                            // Modelo que usa la tabla cronológica
+                            const oListCronoModel = new JSONModel(arrayClonado);
+                            oView.setModel(oListCronoModel, "listCronoModel");
+
+                            // Transformar datos para TreeTable
+                            const aTreeData = TreeTableHelper.transformToTreeStructure(arrayClonado);
+
+                            function preserveNodeData(nodes) {
+                                nodes.forEach(node => {
+                                    // Preservar tramitación
+                                    if (!node.tramitacionColorFecha && node.Id) {
+                                        const original = arrayClonado.find(item => item.Id === node.Id);
+                                        if (original && original.tramitacionColorFecha) {
+                                            node.tramitacionColorFecha = original.tramitacionColorFecha;
+                                        }
+                                    }
+
+                                    // Preservar descripciones de equipo para nodos grupo
+                                    if (node._isGroup && node.Equnr) {
+                                        const original = arrayClonado.find(item => item.Equnr === node.Equnr);
+                                        if (original) {
+                                            node.DescEquipo = original.DescEquipo || "";
+                                            node.EquipoCompleto = original.EquipoCompleto || node.Equnr;
+                                        }
+                                    }
+
+                                    // Recursivo para hijos
+                                    if (node.children && node.children.length > 0) {
+                                        preserveNodeData(node.children);
+                                    }
+                                });
+                            }
+                            preserveNodeData(aTreeData);
+
+                            const oTreeModel = ModelHelper.getModel("listCronoTreeModel", oView);
+                            oTreeModel.setData(aTreeData);
+                            oTreeModel.refresh();
+
+                            function sortByTurnoAsignado(a, b) {
+                                const toMinutes = (hora) => {
+                                    if (!hora) return 0;
+                                    const [h, m] = hora.split(":").map(Number);
+                                    return h * 60 + m;
+                                };
+
+                                return toMinutes(a.TurnoAsignado) - toMinutes(b.TurnoAsignado);
+                            }
+
+                            this._loadAttachmentsForLicensesAsync(arrayOrdenado)
+                                .then(() => {
+                                })
+                                .catch((error) => {
+                                    console.error("Error al cargar adjuntos:", error);
+                                });
+
+                            this._checkUnassignedLicenses(oFechaTurno);
+                            this._updateEditableState();
                         });
-
-                    this._checkUnassignedLicenses(oFechaTurno);
                 })
                 .catch((error) => {
                     oLicencesModel.setData([]);
                 });
         },
-
 
         // POR SI FALLA ESTE BUSCARIA EN SERIE NO EN PARALELO COMO EL PROMISE.ALL
         // successSelectTurno: async function (data) {
@@ -1655,18 +1786,18 @@ sap.ui.define([
                 }.bind(this));
 
                 // primero grupos con turno, ordenados por hora, luego sin turno por orden original
-                //groups.sort(function (a, b) {
-                //if (a.hasTurno && !b.hasTurno) return -1;
-                //if (!a.hasTurno && b.hasTurno) return 1;
-                //if (!a.hasTurno && !b.hasTurno) {
-                //  return a.firstIndex - b.firstIndex;
-                //}
+                groups.sort(function (a, b) {
+                    if (a.hasTurno && !b.hasTurno) return -1;
+                    if (!a.hasTurno && b.hasTurno) return 1;
+                    if (!a.hasTurno && !b.hasTurno) {
+                        return a.firstIndex - b.firstIndex;
+                    }
 
-                //if (a.startMinutes !== b.startMinutes) {
-                //    return a.startMinutes - b.startMinutes;
-                // }
-                //   return a.firstIndex - b.firstIndex;
-                // });
+                    if (a.startMinutes !== b.startMinutes) {
+                        return a.startMinutes - b.startMinutes;
+                    }
+                    return a.firstIndex - b.firstIndex;
+                });
 
                 // aplanar
                 groups.forEach(function (g) {
@@ -1948,7 +2079,7 @@ sap.ui.define([
             }
 
             Fragment.load({
-                id: oView.getId(),       
+                id: oView.getId(),
                 name: fragment,
                 controller: this,
             }).then(function (oFragment) {
@@ -2157,13 +2288,6 @@ sap.ui.define([
             }
 
             aAllLicences.forEach((lic, idx) => {
-                console.log(`📋 Licencia ${idx + 1}:`, {
-                    Id: lic.Id,
-                    Empresa: lic.Empresa,
-                    Anio: lic.Anio,
-                    TieneAttachments: !!lic.Attachments,
-                    CantidadAttachments: lic.Attachments?.length || 0
-                });
 
                 if (lic.Attachments && lic.Attachments.length > 0) {
                     lic.Attachments.forEach((att, attIdx) => {
@@ -2178,6 +2302,27 @@ sap.ui.define([
                     console.log(`   ⚠️ Sin adjuntos`);
                 }
             });
+
+            // VALIDACIÓN: Verificar que todas las licencias tengan horario asignado
+            const aLicenciasSinHorario = aAllLicences.filter(lic => {
+                const turno = lic.TurnoAsignado;
+                return !turno || turno.trim() === "";
+            });
+
+            if (aLicenciasSinHorario.length > 0) {
+                const sLicenciasDetalle = aLicenciasSinHorario
+                    .map(lic => `• Licencia ${lic.Id} (${lic.Equnr || 'Sin equipo'})`)
+                    .join("\n");
+
+                MessageBox.error(
+                    `No se puede guardar el turno porque hay ${aLicenciasSinHorario.length} licencia(s) sin horario asignado:\n\n${sLicenciasDetalle}\n\nPor favor, asigne un horario a todas las licencias antes de guardar.`,
+                    {
+                        title: "Horarios sin asignar",
+                        styleClass: "sapUiSizeCompact"
+                    }
+                );
+                return;
+            }
 
             // Mensaje informativo: "Acciones para la entrega" NO persiste en backend
             MessageBox.information(
@@ -2310,10 +2455,16 @@ sap.ui.define([
             oDataService.read(sEntity, {
                 filters: aFilters,
                 success: (oData) => {
+                    const aResults = oData?.results || [];
+
+                    if (aResults.length === 0) {
+                        this.hideGlobalBusy();
+                        MessageToast.show("Turno guardado correctamente");
+                        return;
+                    }
 
                     this.successSelectTurno(oData)
                         .then(() => {
-
                             setTimeout(() => {
                                 this.hideGlobalBusy();
                                 MessageToast.show("Turno guardado y actualizado correctamente");
@@ -2324,7 +2475,9 @@ sap.ui.define([
                         });
                 },
                 error: (oError) => {
+                    console.error("Error al recargar datos:", oError);
                     this.hideGlobalBusy();
+                    MessageToast.show("Turno guardado (no se pudo recargar automáticamente)");
                 }
             });
         },
@@ -2876,7 +3029,7 @@ sap.ui.define([
             const checkEQ = (id, lic, fieldName, expectedRaw, actualRaw, normalizeFn = norm) => {
                 const expected = normalizeFn(expectedRaw);
                 const actual = normalizeFn(actualRaw);
-                if (expected === "") return true; // no activo realmente
+                if (expected === "") return true;
 
                 if (actual === expected) return true;
 
@@ -3339,7 +3492,7 @@ sap.ui.define([
                                                     this._openAttachment(oAttachment);
                                                 }.bind(this)
                                             }).addStyleClass("sapUiTinyMarginEnd"),
-                                            // ✅ Botón Eliminar
+                                            // Botón Eliminar
                                             new sap.m.Button({
                                                 icon: "sap-icon://delete",
                                                 type: "Reject",
@@ -3636,7 +3789,7 @@ sap.ui.define([
             const oModel = this.getView().getModel("LicencesJsonModel");
             oModel.updateBindings(true);  // Cambiado de refresh a updateBindings
 
-            // ✅ CORRECCIÓN 2: Obtener la tabla y refrescarla
+            // Obtener la tabla y refrescarla
             const oTable = this.byId("turnosTable");
             if (oTable) {
                 oTable.getBinding("rows").refresh();
@@ -3649,7 +3802,7 @@ sap.ui.define([
                 MessageToast.show("Archivo eliminado: " + oAttachment.AttachmentName);
             }
 
-            // ✅ CORRECCIÓN 3: Cerrar el diálogo siempre (para forzar refresco visual)
+            // Cerrar el diálogo siempre (para forzar refresco visual)
             if (this._attachmentSelectorDialog) {
                 this._attachmentSelectorDialog.close();
             }
@@ -3977,6 +4130,12 @@ sap.ui.define([
                 // Si ya existe, cambiar el título y abrirlo
                 this._oReportsDialog.setTitle(sDialogTitle);
                 this._oReportsDialog.data("reportType", sReportType);
+
+                var oBtnVisualizar = sap.ui.core.Fragment.byId(oView.getId(), "btnVisualizar");
+                if (oBtnVisualizar) {
+                    oBtnVisualizar.setVisible(sReportType === "maniobras");
+                }
+
                 this._oReportsDialog.open();
             }
         },
@@ -4233,12 +4392,13 @@ sap.ui.define([
                 return;
             }
 
-            // Si existe make_xlsx_lib, inicializarlo (como en el código que funciona)
+            // Si existe make_xlsx_lib, inicializarlo
             if (typeof make_xlsx_lib === 'function') {
                 make_xlsx_lib(XLSX);
             }
 
             try {
+                var oFormatter = this.formatter;
                 // Crear workbook
                 var Workbook = XLSX.utils.book_new();
 
@@ -4246,10 +4406,10 @@ sap.ui.define([
                 var aDatosResumen = this.prepareResumenPorFecha(aData, oDateInicio, oDateFin);
                 var sheet1 = XLSX.utils.aoa_to_sheet(aDatosResumen);
 
-                // Calcular dónde empezar las nuevas grillas (después del resumen + 3 filas vacías)
+                // Calcular dónde empezar las nuevas grillas
                 var iFilaInicioGrillas = aDatosResumen.length + 3;
 
-                // Función helper para convertir número de columna a letra de Excel (0=A, 1=B, etc.)
+                // Función helper para convertir número de columna a letra de Excel
                 var getColumnLetter = function (colNum) {
                     var result = "";
                     while (colNum >= 0) {
@@ -4260,15 +4420,12 @@ sap.ui.define([
                 };
 
                 // Variable para rastrear en qué columna empezar la siguiente grilla
-                var iColumnaActual = 0; // Empieza en columna A (0)
-                var oFormatter = this.formatter;
+                var iColumnaActual = 0;
 
                 // Generar array de fechas del rango
                 var aFechas = [];
                 var oFechaActual = new Date(oDateInicio);
                 var oFechaFin = new Date(oDateFin);
-
-                // Agregar un día a la fecha fin para incluirla en el rango
                 oFechaFin.setDate(oFechaFin.getDate() + 1);
 
                 while (oFechaActual < oFechaFin) {
@@ -4276,8 +4433,12 @@ sap.ui.define([
                     oFechaActual.setDate(oFechaActual.getDate() + 1);
                 }
 
+                var todosLosDatosExcel = [];
+
                 // Para cada fecha, crear una grilla
                 aFechas.forEach(function (oFecha) {
+                    var sFechaFormateada = oFormatter.formatDate(oFecha);
+
                     // Filtrar licencias de esta fecha
                     var aLicenciasFecha = aData.filter(function (license) {
                         if (!license.Dateturno) {
@@ -4303,16 +4464,16 @@ sap.ui.define([
                         return oFechaNormalizada.getTime() === oFechaTurnoNormalizada.getTime();
                     });
 
+
                     // Eliminar duplicados basados en Equnr + TurnoAsignado
                     var aLicenciasUnicas = [];
-                    var oMapaDuplicados = {}; // Clave: "Equnr|TurnoAsignado"
+                    var oMapaDuplicados = {};
 
                     aLicenciasFecha.forEach(function (license) {
                         var sEquipo = license.Equnr || "";
                         var sTurno = license.TurnoAsignado || "";
                         var sClave = sEquipo + "|" + sTurno;
 
-                        // Si no existe esta combinación, agregarla
                         if (!oMapaDuplicados[sClave]) {
                             oMapaDuplicados[sClave] = true;
                             aLicenciasUnicas.push(license);
@@ -4321,19 +4482,25 @@ sap.ui.define([
 
                     // Crear la grilla para esta fecha
                     var aGrillaFecha = [];
-                    // Título de la grilla
-                    var sFechaFormateada = oFormatter.formatDate(oFecha);
                     aGrillaFecha.push(["Horarios de maniobras previstos " + sFechaFormateada]);
-                    // Encabezados
                     aGrillaFecha.push(["Equipo", "Hora", "Comentarios"]);
+
                     // Datos
                     aLicenciasUnicas.forEach(function (license) {
                         var sEquipo = license.Equnr || "";
                         var sHora = license.TurnoAsignado || (license.Horainicio ? oFormatter.durationToTime(license.Horainicio)
                             : (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : ""));
                         var sComentarios = license.Comments || license.PatAdic || "";
-                        var sState = license.Licstat;
+
                         aGrillaFecha.push([sEquipo, sHora, sComentarios]);
+
+                        // Acumular para comparación
+                        todosLosDatosExcel.push({
+                            Fecha: sFechaFormateada,
+                            Equipo: sEquipo,
+                            Hora: sHora,
+                            Comentarios: sComentarios
+                        });
                     });
 
                     // Agregar la grilla al sheet
@@ -4343,9 +4510,9 @@ sap.ui.define([
                         origin: sColumnaInicio + iFilaInicio.toString()
                     });
 
-                    // Avanzar: ancho de grilla (3 columnas) + 2 columnas de separación
+                    // Avanzar columnas
                     iColumnaActual += 3 + 2;
-                });
+                }.bind(this));
 
                 XLSX.utils.book_append_sheet(Workbook, sheet1, "Resumen por Fecha");
 
@@ -4365,6 +4532,7 @@ sap.ui.define([
                 MessageBox.error("Error al generar el archivo Excel: " + error.message);
             }
         },
+
 
         clearReportDates: function () {
             // Obtener los DatePickers del fragment
@@ -5122,6 +5290,422 @@ sap.ui.define([
         // ------------------------------ AGREGAR LICENCIA --------------------------------------
         onAgregarLicencia: function (oEvent) {
             MessageToast.show("Funcionalidad en desarrollo");
+        },
+
+        // ------------------------------- TAB REPORTES ------------------------------------------
+
+        onVisualizarReporte: function () {
+            var oDialog = this._oReportsDialog;
+            if (!oDialog) {
+                return;
+            }
+
+            // Obtener DatePickers
+            var oFechaInicio = this.byId("fechaInicio") || sap.ui.core.Fragment.byId(this.getView().getId(), "fechaInicio");
+            var oFechaFin = this.byId("fechaFin") || sap.ui.core.Fragment.byId(this.getView().getId(), "fechaFin");
+
+            if (!oFechaInicio || !oFechaFin) {
+                MessageToast.show("No se pudieron obtener los DatePickers.");
+                return;
+            }
+
+            var oDateInicio = oFechaInicio.getDateValue();
+            var oDateFin = oFechaFin.getDateValue();
+
+            if (!oDateInicio || !oDateFin) {
+                MessageBox.warning("Por favor, seleccione ambas fechas (Inicio y Fin).");
+                return;
+            }
+
+            if (oDateInicio > oDateFin) {
+                MessageBox.warning("La fecha de inicio no puede ser mayor que la fecha de fin.");
+                return;
+            }
+
+            // Guardar fechas para uso posterior
+            this._reporteFechaInicio = oDateInicio;
+            this._reporteFechaFin = oDateFin;
+
+            // Obtener tipo de reporte
+            var sReportType = oDialog.data("reportType") || "maniobras";
+
+            // Cerrar el diálogo
+            oDialog.close();
+
+            // Mostrar busy
+            this.showGlobalBusy("Cargando datos del reporte...");
+
+            const oView = this.getView();
+            const oDataService = this.getView().getModel();
+
+            // Generar array de fechas
+            const aFechas = [];
+            const oFechaInicioUTC = new Date(Date.UTC(
+                oDateInicio.getFullYear(),
+                oDateInicio.getMonth(),
+                oDateInicio.getDate(),
+                0, 0, 0, 0
+            ));
+            const oFechaFinUTC = new Date(Date.UTC(
+                oDateFin.getFullYear(),
+                oDateFin.getMonth(),
+                oDateFin.getDate(),
+                0, 0, 0, 0
+            ));
+
+            const oFechaFinLimiteUTC = new Date(oFechaFinUTC);
+            oFechaFinLimiteUTC.setUTCDate(oFechaFinLimiteUTC.getUTCDate() + 1);
+
+            const oFechaActualUTC = new Date(oFechaInicioUTC);
+            while (oFechaActualUTC < oFechaFinLimiteUTC) {
+                const oFechaNormalizada = new Date(Date.UTC(
+                    oFechaActualUTC.getUTCFullYear(),
+                    oFechaActualUTC.getUTCMonth(),
+                    oFechaActualUTC.getUTCDate(),
+                    0, 0, 0, 0
+                ));
+                aFechas.push(oFechaNormalizada);
+                oFechaActualUTC.setUTCDate(oFechaActualUTC.getUTCDate() + 1);
+            }
+
+            const sEntity = "/TurnosLicenciasSet";
+
+            // Crear promesas para cada fecha
+            const aPromises = aFechas.map((oFecha) => {
+                return new Promise((resolve, reject) => {
+                    const aFilters = [
+                        new Filter("Dateturno", FilterOperator.EQ, oFecha),
+                        new Filter("Empresa", FilterOperator.EQ, "100")
+                    ];
+
+                    oDataService.read(sEntity, {
+                        filters: aFilters,
+                        success: (oData) => {
+                            resolve(oData.results || []);
+                        },
+                        error: (oError) => {
+                            resolve([]);
+                        }
+                    });
+                });
+            });
+
+            // Ejecutar todas las promesas
+            Promise.all(aPromises)
+                .then((aResultadosPorFecha) => {
+                    // Acumular resultados
+                    const aTodosLosResultados = [];
+                    aResultadosPorFecha.forEach((aResultados) => {
+                        if (Array.isArray(aResultados) && aResultados.length > 0) {
+                            aTodosLosResultados.push(...aResultados);
+                        }
+                    });
+
+                    if (!aTodosLosResultados.length) {
+                        this.hideGlobalBusy();
+                        MessageBox.information("No se encontraron turnos para el rango de fechas seleccionado.");
+                        return;
+                    }
+
+                    // PROCESAR IGUAL QUE processReportData
+                    const oDataModel = this.getView().getModel();
+                    const aPromisesLicense = aTodosLosResultados.map((licencia) => {
+                        var oDateturno = licencia.Dateturno;
+                        return LicenseService.FIND(licencia, oDataModel)
+                            .then(result => {
+                                if (result) {
+                                    result.Dateturno = oDateturno;
+                                }
+                                return result;
+                            })
+                            .catch(err => {
+                                console.error("Error en FIND para licencia", licencia, err);
+                                return null;
+                            });
+                    });
+
+                    return Promise.all(aPromisesLicense);
+                })
+                .then((licenciasProcesadas) => {
+                    const results = licenciasProcesadas.filter(x => x);
+
+                    if (!results.length) {
+                        this.hideGlobalBusy();
+                        MessageBox.information("No se encontró información para las licencias del rango de fechas.");
+                        return;
+                    }
+
+                    // APLICAR MISMO PROCESAMIENTO QUE EL EXCEL
+                    const arrayOrdenado = TurnosService.encontrarGrupo(
+                        TurnosService.ordenarPorEqunr(results),
+                        this.getView()
+                    );
+                    TurnosService.assignShiftsToLicences(arrayOrdenado);
+
+                    this._datosReporteProcesados = arrayOrdenado;
+
+                    var aDatosTabla = this._procesarDatosComoExcel(arrayOrdenado, oDateInicio, oDateFin);
+
+                    // CARGAR DATOS PROCESADOS EN EL MODELO
+                    var oReporteModel = this.getView().getModel("ReporteModel");
+                    oReporteModel.setData(aDatosTabla);
+
+                    // Actualizar título y rango de fechas
+                    var oTitleControl = this.byId("reporteTitle");
+                    var oDateRangeControl = this.byId("reporteDateRange");
+
+                    if (oTitleControl) {
+                        oTitleControl.setText(sReportType === "maniobras" ? "Resumen Maniobras" : "Reporte Amplio");
+                    }
+
+                    if (oDateRangeControl) {
+                        var sFormatter = sap.ui.core.format.DateFormat.getDateInstance({ pattern: "dd/MM/yyyy" });
+                        var sFechaInicioStr = sFormatter.format(oDateInicio);
+                        var sFechaFinStr = sFormatter.format(oDateFin);
+                        oDateRangeControl.setText(`Horarios de maniobras previstas desde: ${sFechaInicioStr} Hasta: ${sFechaFinStr}`);
+                    }
+
+                    // Mostrar la tab del reporte
+                    var oIconTabBar = this.byId("mainTabBar");
+                    if (oIconTabBar) {
+                        var oReporteTab = oIconTabBar.getItems().find(item => item.getKey() === "REPORTE");
+                        if (oReporteTab) {
+                            oReporteTab.setVisible(true);
+                        }
+                        oIconTabBar.setSelectedKey("REPORTE");
+                    }
+
+                    this.hideGlobalBusy();
+                    MessageToast.show(`Reporte cargado: ${arrayOrdenado.length} registros`);
+                })
+                .catch((error) => {
+                    this.hideGlobalBusy();
+                    MessageBox.error("Error al cargar el reporte: " + error.message);
+                });
+        },
+
+        _procesarDatosComoExcel: function (aData, oDateInicio, oDateFin) {
+
+            var oFormatter = this.formatter;
+            var aDatosAplanados = [];
+
+            // Generar array de fechas del rango (IGUAL QUE EL EXCEL)
+            var aFechas = [];
+            var oFechaActual = new Date(oDateInicio);
+            var oFechaFin = new Date(oDateFin);
+            oFechaFin.setDate(oFechaFin.getDate() + 1);
+
+            while (oFechaActual < oFechaFin) {
+                aFechas.push(new Date(oFechaActual));
+                oFechaActual.setDate(oFechaActual.getDate() + 1);
+            }
+
+            // Para cada fecha, procesar IGUAL QUE EL EXCEL
+            aFechas.forEach(function (oFecha) {
+                var sFechaFormateada = oFormatter.formatDate(oFecha);
+
+                // Filtrar licencias de esta fecha (IGUAL QUE EL EXCEL)
+                var aLicenciasFecha = aData.filter(function (license) {
+                    if (!license.Dateturno) {
+                        return false;
+                    }
+
+                    // Normalizar fecha del turno a UTC 00:00:00
+                    var oFechaTurno = new Date(license.Dateturno);
+                    var iAnioUTC = oFechaTurno.getUTCFullYear();
+                    var iMesUTC = oFechaTurno.getUTCMonth();
+                    var iDiaUTC = oFechaTurno.getUTCDate();
+                    var oFechaTurnoNormalizada = new Date(Date.UTC(iAnioUTC, iMesUTC, iDiaUTC, 0, 0, 0, 0));
+
+                    // Normalizar fecha actual a UTC 00:00:00
+                    var oFechaNormalizada = new Date(Date.UTC(
+                        oFecha.getFullYear(),
+                        oFecha.getMonth(),
+                        oFecha.getDate(),
+                        0, 0, 0, 0
+                    ));
+
+                    // Comparar las fechas normalizadas en UTC
+                    return oFechaNormalizada.getTime() === oFechaTurnoNormalizada.getTime();
+                });
+
+                // Eliminar duplicados basados en Equnr + TurnoAsignado (IGUAL QUE EL EXCEL)
+                var aLicenciasUnicas = [];
+                var oMapaDuplicados = {};
+
+                aLicenciasFecha.forEach(function (license) {
+                    var sEquipo = license.Equnr || "";
+                    var sTurno = license.TurnoAsignado || "";
+                    var sClave = sEquipo + "|" + sTurno;
+
+                    if (!oMapaDuplicados[sClave]) {
+                        oMapaDuplicados[sClave] = true;
+                        aLicenciasUnicas.push(license);
+                    }
+                });
+
+                aLicenciasUnicas.forEach(function (license) {
+                    var sEquipo = license.Equnr || "";
+                    var sHora = license.TurnoAsignado || (license.Horainicio ? oFormatter.durationToTime(license.Horainicio)
+                        : (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : ""));
+                    var sComentarios = license.Comments || license.PatAdic || "";
+
+                    aDatosAplanados.push({
+                        Fecha: sFechaFormateada,
+                        Equipo: sEquipo,
+                        Hora: sHora,
+                        Comentarios: sComentarios,
+                        Licencia: license.Id,
+                        FechaOriginal: license.Dateturno
+                    });
+
+                });
+            }.bind(this));
+
+            return aDatosAplanados;
+        },
+
+        _obtenerDatosReporte: function (oDateInicio, oDateFin, sReportType) {
+            return new Promise((resolve, reject) => {
+                const oDataService = this.getView().getModel();
+
+                // Generar array de fechas
+                const aFechas = [];
+                const oFechaInicioUTC = new Date(Date.UTC(
+                    oDateInicio.getFullYear(),
+                    oDateInicio.getMonth(),
+                    oDateInicio.getDate(),
+                    0, 0, 0, 0
+                ));
+                const oFechaFinUTC = new Date(Date.UTC(
+                    oDateFin.getFullYear(),
+                    oDateFin.getMonth(),
+                    oDateFin.getDate(),
+                    0, 0, 0, 0
+                ));
+
+                const oFechaFinLimiteUTC = new Date(oFechaFinUTC);
+                oFechaFinLimiteUTC.setUTCDate(oFechaFinLimiteUTC.getUTCDate() + 1);
+
+                const oFechaActualUTC = new Date(oFechaInicioUTC);
+                while (oFechaActualUTC < oFechaFinLimiteUTC) {
+                    const oFechaNormalizada = new Date(Date.UTC(
+                        oFechaActualUTC.getUTCFullYear(),
+                        oFechaActualUTC.getUTCMonth(),
+                        oFechaActualUTC.getUTCDate(),
+                        0, 0, 0, 0
+                    ));
+                    aFechas.push(oFechaNormalizada);
+                    oFechaActualUTC.setUTCDate(oFechaActualUTC.getUTCDate() + 1);
+                }
+
+                const sEntity = "/TurnosLicenciasSet";
+
+                // Crear promesas para cada fecha
+                const aPromises = aFechas.map((oFecha) => {
+                    return new Promise((resolveInner, rejectInner) => {
+                        const aFilters = [
+                            new Filter("Dateturno", FilterOperator.EQ, oFecha),
+                            new Filter("Empresa", FilterOperator.EQ, "100")
+                        ];
+
+                        oDataService.read(sEntity, {
+                            filters: aFilters,
+                            success: (oData) => {
+                                resolveInner(oData.results || []);
+                            },
+                            error: (oError) => {
+                                resolveInner([]);
+                            }
+                        });
+                    });
+                });
+
+                // Ejecutar todas las promesas
+                Promise.all(aPromises)
+                    .then((aResultadosPorFecha) => {
+                        const aTodosLosResultados = [];
+                        aResultadosPorFecha.forEach((aResultados) => {
+                            if (Array.isArray(aResultados) && aResultados.length > 0) {
+                                aTodosLosResultados.push(...aResultados);
+                            }
+                        });
+                        resolve(aTodosLosResultados);
+                    })
+                    .catch(reject);
+            });
+        },
+
+
+        // Función para descargar el reporte actual (desde la tab)
+        onDescargarReporteActual: function () {
+            if (!this._reporteFechaInicio || !this._reporteFechaFin) {
+                MessageToast.show("No hay datos de reporte cargados");
+                return;
+            }
+
+            // USAR LOS DATOS PROCESADOS GUARDADOS
+            if (!this._datosReporteProcesados || this._datosReporteProcesados.length === 0) {
+                MessageToast.show("No hay datos para descargar");
+                return;
+            }
+
+            this.createExcelReportManiobras(
+                this._datosReporteProcesados,
+                this._reporteFechaInicio,
+                this._reporteFechaFin
+            );
+        },
+
+        onCerrarReporte: function () {
+            var oIconTabBar = this.byId("mainTabBar");
+            if (oIconTabBar) {
+                // Ocultar la tab del reporte
+                var oReporteTab = oIconTabBar.getItems().find(item => item.getKey() === "REPORTE");
+                if (oReporteTab) {
+                    oReporteTab.setVisible(false);
+                }
+                // Volver a la primera tab
+                oIconTabBar.setSelectedKey("LIC");
+            }
+        },
+
+        // ------------------------------------------------ DESCRIPCIONES PARA EQUIPOS ------------------------------------------------------------------------
+
+        _obtenerDescripcionesEquipos: function (aEquipos) {
+            return new Promise((resolve, reject) => {
+
+                if (!aEquipos || aEquipos.length === 0) {
+                    resolve({});
+                    return;
+                }
+
+                const oDataModel = this.getView().getModel();
+                const sEntity = "/EquiposRolesSet";
+
+                const aFilters = [
+                    new Filter("Estacion", FilterOperator.EQ, "AT"),
+                    new Filter("Rol", FilterOperator.EQ, "hab_Aprobacion_habilitaciones"),
+                    new Filter("Empresa", FilterOperator.EQ, "100")
+                ];
+
+                oDataModel.read(sEntity, {
+                    filters: aFilters,
+                    success: (oData) => {
+                        const oMapaDescripciones = {};
+
+                        oData.results.forEach(equipo => {
+                            const sCodigoNormalizado = (equipo.CodigoEquipo || "").trim();
+                            oMapaDescripciones[sCodigoNormalizado] = equipo.DescEquipo || "";
+                        });
+
+                        resolve(oMapaDescripciones);
+                    },
+                    error: (oError) => {
+                        resolve({});
+                    }
+                });
+            });
         },
     });
 });
