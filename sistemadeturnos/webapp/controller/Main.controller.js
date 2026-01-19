@@ -1173,9 +1173,21 @@ sap.ui.define([
                                         btnEnviar: true
                                     });
 
-                                    this.successSelectTurno(oData)
-                                        .catch((err) => console.error("Error en successSelectTurno:", err))
-                                        .finally(() => this.hideGlobalBusy());
+                                    const oDatePicker = this.byId("date");
+                                    if (oDatePicker) {
+                                        oDatePicker.setDateValue(oDateValue);
+                                    }
+
+                                    this._validateAndProcessLicenses(aRes, oDateValue)
+                                        .then((aLicenciasProcesadas) => {
+                                            return this.successSelectTurno({ results: aLicenciasProcesadas });
+                                        })
+                                        .catch((err) => {
+                                            return this.successSelectTurno(oData);
+                                        })
+                                        .finally(() => {
+                                            this.hideGlobalBusy();
+                                        });
                                 }
                             }
                         });
@@ -1377,18 +1389,14 @@ sap.ui.define([
                 return Promise.resolve();
             }
 
-            // ✅ FILTRO DE ESTADOS PERMITIDOS
+            // FILTRO DE ESTADOS PERMITIDOS
             // Estados permitidos según requisitos:
-            // 01 = Autorizada
-            // 02 = Observada
-            // 07 = Coordinada
-            // 08 = Entregada
-            // 09 = Generada
-            // 10 = Suspendida
-            // 23 = En Trámite
-            const ESTADOS_PERMITIDOS = ["01", "02", "07", "08", "09", "10", "23"];
-
-            console.log("✅ Estados permitidos:", ESTADOS_PERMITIDOS);
+            // 01 = Autorizada 
+            // 07 = Coordinada 
+            // 08 = Entregada 
+            // 10 = Suspendida 
+            // 23 = En Trámite 
+            const ESTADOS_PERMITIDOS = ["01", "07", "08", "10", "23"];
 
             const aPromises = aResults.map((turnoLicencia) => {
                 return new Promise((resolve, reject) => {
@@ -1492,16 +1500,26 @@ sap.ui.define([
 
                     TurnosService.assignShiftsToLicences(arrayOrdenado);
 
-                    // ✅ OBTENER EQUIPOS ÚNICOS
-                    const aEquiposUnicos = [...new Set(arrayOrdenado.map(item => (item.Equnr || "").trim()).filter(Boolean))];
-                    console.log("🔧 [TABLAS] Equipos únicos encontrados:", aEquiposUnicos);
+                    const aEquiposConEstacion = arrayOrdenado
+                        .map(item => {
+                            const oCombo = {
+                                Equnr: (item.Equnr || "").trim(),
+                                Tplnr: (item.Tplnr || "").trim()
+                            };
+                            return oCombo;
+                        })
+                        .filter(item => {
+                            const bTieneAmbos = item.Equnr && item.Tplnr;
+                            return bTieneAmbos;
+                        });
 
-                    // ✅ OBTENER DESCRIPCIONES DE EQUIPOS
+                    const aEquiposUnicos = Array.from(
+                        new Map(aEquiposConEstacion.map(item => [JSON.stringify(item), item])).values()
+                    );
+
                     return this._obtenerDescripcionesEquipos(aEquiposUnicos)
                         .then((oDescripcionesEquipos) => {
-                            console.log("✅ [TABLAS] Descripciones obtenidas:", Object.keys(oDescripcionesEquipos).length);
 
-                            // ✅ AGREGAR DESCRIPCIÓN A CADA ITEM
                             arrayOrdenado.forEach(item => {
                                 const sEquipoNormalizado = (item.Equnr || "").trim();
                                 item.DescEquipo = oDescripcionesEquipos[sEquipoNormalizado] || "";
@@ -1542,11 +1560,10 @@ sap.ui.define([
                             oLicencesModel.setData(arrayOrdenado);
                             Utils.onCountItems(oView, arrayOrdenado);
 
-                            // ✅ CLONAR Y AGREGAR DESCRIPCIONES TAMBIÉN AL CLON
+                            //CLONAR Y AGREGAR DESCRIPCIONES TAMBIÉN AL CLON
                             const arrayClonado = JSON.parse(JSON.stringify(arrayOrdenado));
                             arrayClonado.forEach(item => {
                                 item.isEditable = bIsEditable;
-                                // Las descripciones ya están en arrayOrdenado, se copian automáticamente con JSON
                             });
 
                             // Modelo que usa la tabla cronológica
@@ -5476,7 +5493,7 @@ sap.ui.define([
                     }
 
                     this.hideGlobalBusy();
-                    MessageToast.show(`Reporte cargado: ${arrayOrdenado.length} registros`);
+                    MessageToast.show(`Reporte cargado`);
                 })
                 .catch((error) => {
                     this.hideGlobalBusy();
@@ -5671,10 +5688,8 @@ sap.ui.define([
         },
 
         // ------------------------------------------------ DESCRIPCIONES PARA EQUIPOS ------------------------------------------------------------------------
-
         _obtenerDescripcionesEquipos: function (aEquipos) {
-            return new Promise((resolve, reject) => {
-
+            return new Promise((resolve) => {
                 if (!aEquipos || aEquipos.length === 0) {
                     resolve({});
                     return;
@@ -5683,28 +5698,45 @@ sap.ui.define([
                 const oDataModel = this.getView().getModel();
                 const sEntity = "/EquiposRolesSet";
 
-                const aFilters = [
-                    new Filter("Estacion", FilterOperator.EQ, "AT"),
-                    new Filter("Rol", FilterOperator.EQ, "hab_Aprobacion_habilitaciones"),
-                    new Filter("Empresa", FilterOperator.EQ, "100")
-                ];
+                const estacionesUnicas = [...new Set(aEquipos.map(e => e.Tplnr).filter(Boolean))];
 
-                oDataModel.read(sEntity, {
-                    filters: aFilters,
-                    success: (oData) => {
+                const aPromises = estacionesUnicas.map((sTplnr) => {
+                    return new Promise((resolveEstacion) => {
+                        const aFilters = [
+                            new Filter("Estacion", FilterOperator.EQ, sTplnr),
+                            new Filter("Rol", FilterOperator.EQ, "hab_Aprobacion_habilitaciones"),
+                            new Filter("Empresa", FilterOperator.EQ, "100")
+                        ];
+
+                        oDataModel.read(sEntity, {
+                            filters: aFilters,
+                            success: (oData) => {
+                                resolveEstacion(oData.results || []);
+                            },
+                            error: () => {
+                                resolveEstacion([]);
+                            }
+                        });
+                    });
+                });
+
+                Promise.all(aPromises)
+                    .then((aResultadosPorEstacion) => {
+                        const todosLosEquipos = aResultadosPorEstacion.flat();
+
                         const oMapaDescripciones = {};
-
-                        oData.results.forEach(equipo => {
-                            const sCodigoNormalizado = (equipo.CodigoEquipo || "").trim();
-                            oMapaDescripciones[sCodigoNormalizado] = equipo.DescEquipo || "";
+                        todosLosEquipos.forEach(equipo => {
+                            const sCodigo = (equipo.CodigoEquipo || "").trim();
+                            if (sCodigo) {
+                                oMapaDescripciones[sCodigo] = equipo.DescEquipo || "";
+                            }
                         });
 
                         resolve(oMapaDescripciones);
-                    },
-                    error: (oError) => {
+                    })
+                    .catch(() => {
                         resolve({});
-                    }
-                });
+                    });
             });
         },
     });

@@ -375,7 +375,7 @@
 
                                     <t:Column
                                         id="equipment"
-                                        width="250px"
+                                        width="300px"
                                         class="customColumnBackground"
                                         hAlign="Center"
                                         sortProperty="Equnr"
@@ -630,7 +630,7 @@
                                     <!-- Columna de Equipo con icono de expansión -->
                                     <t:Column
                                         id="equipmentCrono"
-                                        width="250px"
+                                        width="350px"
                                         class="customColumnBackground"
                                         hAlign="Center"
                                     >
