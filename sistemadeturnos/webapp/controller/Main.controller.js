@@ -18,16 +18,18 @@ sap.ui.define([
     "transener/sistemadeturnos/services/TurnosService",
     "transener/sistemadeturnos/services/TipoEquipoService",
     "transener/sistemadeturnos/services/InterventionTypesService",
+    "transener/sistemadeturnos/services/MailService",
     "transener/sistemadeturnos/model/HardCodeModel",
     "transener/sistemadeturnos/utils/TreeTableHelper",
-    "transener/sistemadeturnos/services/TramitacionService"
+    "transener/sistemadeturnos/services/TramitacionService",
+    "transener/sistemadeturnos/services/ETMailService"
 
 
 ], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, Spreadsheet,
     //utils
     ModelHelper, FormatHelper, Utils,
     //services
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel, TreeTableHelper, TramitacionService
+    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, MailService, HardCodeModel, TreeTableHelper, TramitacionService , ETMailService
 ) {
     "use strict";
     let oDialog = null
@@ -85,11 +87,11 @@ sap.ui.define([
         },
 
         onOpenAccionEntregaPopover: function (oEvent) {
-            const oButton = oEvent.getSource();
+            const oMenuItem = oEvent.getSource();
             const oView = this.getView();
 
-            // Obtener el contexto de la fila (licencia)
-            const oBindingContext = oButton.getBindingContext("LicencesJsonModel");
+            // Obtener el contexto de la fila (licencia) desde el MenuItem
+            const oBindingContext = oMenuItem.getBindingContext("LicencesJsonModel");
             if (!oBindingContext) {
                 MessageToast.show("No se pudo obtener el contexto de la fila");
                 return;
@@ -119,8 +121,53 @@ sap.ui.define([
                 // Inicializar checkboxes según acciones ya seleccionadas
                 this._initializeCheckBoxesEntrega();
 
-                oPopover.openBy(oButton);
+                // Obtener la fila de la tabla desde el binding context
+                var oRow = this._getTableRowFromBindingContext(oBindingContext);
+                var oTarget = oRow || oMenuItem;
+                oPopover.openBy(oTarget);
             }.bind(this));
+        },
+
+        _getTableRowFromControl: function (oControl) {
+            var oRow = oControl;
+            // Buscar el padre hasta encontrar la fila (sap.ui.table.Row)
+            while (oRow && !(oRow instanceof sap.ui.table.Row)) {
+                oRow = oRow.getParent();
+                // Protección contra loops infinitos
+                if (!oRow || oRow === oControl) {
+                    break;
+                }
+            }
+            return oRow instanceof sap.ui.table.Row ? oRow : null;
+        },
+
+        _getTableRowFromBindingContext: function (oBindingContext) {
+            if (!oBindingContext) {
+                return null;
+            }
+
+            // Obtener la tabla
+            var oTable = this.byId("turnosTable");
+            if (!oTable) {
+                return null;
+            }
+
+            // Obtener el path del binding context
+            var sPath = oBindingContext.getPath();
+
+            // Obtener todas las filas de la tabla
+            var aRows = oTable.getRows();
+
+            // Buscar la fila que tiene el mismo binding context
+            for (var i = 0; i < aRows.length; i++) {
+                var oRow = aRows[i];
+                var oRowContext = oRow.getBindingContext("LicencesJsonModel");
+                if (oRowContext && oRowContext.getPath() === sPath) {
+                    return oRow;
+                }
+            }
+
+            return null;
         },
 
         _initializeCheckBoxesEntrega: function () {
@@ -2180,7 +2227,10 @@ sap.ui.define([
 
                 this._initializeCheckBoxes(aAccionesEntregas);
 
-                oPopover.openBy(oButton);
+                // Obtener la fila de la tabla en lugar del botón
+                var oRow = this._getTableRowFromControl(oButton);
+                var oTarget = oRow || oButton;
+                oPopover.openBy(oTarget);
             }.bind(this));
         },
 
@@ -2392,6 +2442,7 @@ sap.ui.define([
 
             this.showGlobalBusy("Guardando turnos...");
 
+            const oComponent = this.getOwnerComponent();
             const aPromises = licencias.map((licencia) => {
                 return new Promise((resolve, reject) => {
                     const license = {
@@ -2405,7 +2456,18 @@ sap.ui.define([
                     };
 
                     oDataService.create(entity, license, {
-                        success: () => resolve(),
+                        success: () => {
+                            // Enviar mail después de guardar exitosamente
+                            MailService.sendLicenseEmail(licencia, oComponent)
+                                .then(() => {
+                                    resolve();
+                                })
+                                .catch((mailError) => {
+                                    // No fallar el guardado si el mail falla, solo loguear
+                                    console.warn("Error al enviar mail para licencia " + licencia.Id + ":", mailError);
+                                    resolve(); // Resolver igual para no bloquear el guardado
+                                });
+                        },
                         error: (oError) => {
                             reject(oError);
                         }
@@ -2489,6 +2551,7 @@ sap.ui.define([
 
             this.showGlobalBusy("Guardando turnos...");
 
+            const oComponent = this.getOwnerComponent();
             const aPromises = licencias.map((licencia) => {
                 return new Promise((resolve, reject) => {
                     const license = {
@@ -2502,7 +2565,18 @@ sap.ui.define([
                     };
 
                     oDataService.create(entity, license, {
-                        success: () => resolve(),
+                        success: () => {
+                            // Enviar mail después de guardar exitosamente
+                            MailService.sendLicenseEmail(licencia, oComponent)
+                                .then(() => {
+                                    resolve();
+                                })
+                                .catch((mailError) => {
+                                    // No fallar el guardado si el mail falla, solo loguear
+                                    console.warn("Error al enviar mail para licencia " + licencia.Id + ":", mailError);
+                                    resolve(); // Resolver igual para no bloquear el guardado
+                                });
+                        },
                         error: (oError) => {
                             console.error("Error al crear turno:", oError);
                             reject(oError);
@@ -5707,5 +5781,100 @@ sap.ui.define([
                 });
             });
         },
+
+        test: function () {
+
+            var oLicense = ModelHelper.getModel("LicenseJsonModel").getData();
+            let promises = [this.getPermisos(oLicense)];
+            promises.push(
+                EtMailService.getPromise(
+                    oLicense.Empresa,
+                    oLicense.Tplnr,
+                    this.getSelectionArea(oLicense.Tipo, "01")
+                )
+            );
+
+            Promise.all(promises).then(res => {
+
+                console.group("🔎 Promise.all results");
+                console.log("res completo:", res);
+                console.log("Permisos (res[0]):", res[0]);
+                console.log("ET Mails (res[1]):", res[1]);
+                console.groupEnd();
+
+                var currentUser = ModelHelper.getModel("CurrentUser").getData();
+                var oUserJson = ModelHelper.getModel("UserJsonModel").getData();
+
+                console.group("👤 Usuario actual");
+                console.log("CurrentUser:", currentUser);
+                console.log("UserJsonModel:", oUserJson);
+                console.groupEnd();
+
+                let emails = [];
+                let hashPermisos = {};
+                let permisos = res[0];
+
+                permisos.forEach(permiso => {
+                    hashPermisos[permiso.Rol] = permiso;
+                });
+
+                console.group("🔐 Hash permisos");
+                console.table(hashPermisos);
+                console.groupEnd();
+
+                emails = [
+                    hashPermisos["Creador"],
+                    hashPermisos["ope_solic-lic_transener"],
+                    hashPermisos["Solicitante_Suplente"],
+                    hashPermisos["Jefe_Trabajo"],
+                    hashPermisos["Jefe_Trabajo_Suplente"],
+                    hashPermisos["Solicitante_Suplente_Auxiliar"]
+                ].map(permiso => permiso && permiso.Mail);
+
+                console.group("📧 Emails armados");
+                console.log("Array emails:", emails);
+                console.log("Emails string:", emails.join(","));
+                console.groupEnd();
+
+                let usuariosAsignados = {
+                    Coordinador: currentUser.Legajo + ", " + oUserJson.nombre + ", " + oUserJson.apellido,
+                    Creador: hashPermisos["Creador"]
+                        ? hashPermisos["Creador"].Legajo + ", " + hashPermisos["Creador"].Nombre
+                        : "",
+                    Solicitante: hashPermisos["ope_solic-lic_transener"]
+                        ? hashPermisos["ope_solic-lic_transener"].Legajo + ", " + hashPermisos["ope_solic-lic_transener"].Nombre
+                        : "",
+                    SolicitanteSuplente: hashPermisos["Solicitante_Suplente"]
+                        ? hashPermisos["Solicitante_Suplente"].Legajo + ", " + hashPermisos["Solicitante_Suplente"].Nombre
+                        : "",
+                    Jefe: hashPermisos["Jefe_Trabajo"]
+                        ? hashPermisos["Jefe_Trabajo"].Legajo + ", " + hashPermisos["Jefe_Trabajo"].Nombre
+                        : "",
+                    JefeSuplente: hashPermisos["Jefe_Trabajo_Suplente"]
+                        ? hashPermisos["Jefe_Trabajo_Suplente"].Legajo + ", " + hashPermisos["Jefe_Trabajo_Suplente"].Nombre
+                        : "",
+                    SolSuplenteAux: hashPermisos["Solicitante_Suplente_Auxiliar"]
+                        ? hashPermisos["Solicitante_Suplente_Auxiliar"].Legajo + ", " + hashPermisos["Solicitante_Suplente_Auxiliar"].Nombre
+                        : ""
+                };
+
+                console.group("👥 Usuarios asignados");
+                console.table(usuariosAsignados);
+                console.groupEnd();
+
+                let sEmailEt =
+                    res[1].results && res[1].results.length
+                        ? res[1].results.map(e => e.Mail).join(",")
+                        : "";
+
+                console.group("📨 Email ET");
+                console.log("sEmailEt:", sEmailEt);
+                console.groupEnd();
+
+            }).catch(err => {
+                console.error("❌ Error en Promise.all:", err);
+            });
+        }
+
     });
 });
