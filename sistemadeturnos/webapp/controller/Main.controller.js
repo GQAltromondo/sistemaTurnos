@@ -275,11 +275,13 @@ sap.ui.define([
                     equipo: oLicencia.Equnr,
                     idLicencia: oLicencia.Id,
                     trabajoRealizar: oLicencia.Comments || "Sin descripción",
-                    turno: oLicencia.TurnoAsignado || "Sin turno",
+                    turnoEntrega: oLicencia.TurnoAsignado || "",  
                     estado: oLicencia.Licstat || "",
                     condicion: oLicencia.Jobcond || "",
-                    _licenciaId: oLicencia.Id
+                    _licenciaId: oLicencia.Id,
+                    Attachments: []
                 };
+
                 aAcciones.push(oAccionData);
             });
 
@@ -291,6 +293,24 @@ sap.ui.define([
             const sPath = this._currentBindingContextEntrega.getPath();
             oLicencesModel.setProperty(sPath + "/accionSeleccionada", true);
 
+            // GUARDAR adjuntos en backend si existen
+            const aAccionesConAdjuntos = aAcciones.filter(a =>
+                a.Attachments && a.Attachments.length > 0
+            );
+
+            if (aAccionesConAdjuntos.length > 0) {
+
+                this._saveAccionAttachments(aAccionesConAdjuntos)
+                    .then(() => {
+                        MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${oLicencia.Id}`);
+                    })
+                    .catch((error) => {
+                        MessageToast.show("Advertencia: Las acciones se guardaron pero algunos adjuntos fallaron");
+                    });
+            } else {
+                MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${oLicencia.Id}`);
+            }
+
             // Limpiar temporal
             this._accionesSeleccionadasTemp = {};
 
@@ -298,8 +318,6 @@ sap.ui.define([
             if (this._oAccionEntregaPopover) {
                 this._oAccionEntregaPopover.close();
             }
-
-            MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${oLicencia.Id}`);
         },
 
         _restarUnaHora: function (sTime) {
@@ -329,72 +347,6 @@ sap.ui.define([
             const sMinutosFormateados = iMinutos.toString().padStart(2, "0");
 
             return `${sHorasFormateadas}:${sMinutosFormateados}`;
-        },
-
-
-        onGuardarAccionesEntrega: function () {
-            const oView = this.getView();
-            const oLicencia = this._currentLicenciaEntrega;
-
-            if (!oLicencia) {
-                MessageToast.show("Error: No se pudo obtener la licencia");
-                return;
-            }
-
-            // Obtener acciones seleccionadas
-            const oAccionesTemp = this._accionesSeleccionadasTemp || {};
-            const aCodigosSeleccionados = Object.keys(oAccionesTemp);
-
-            if (aCodigosSeleccionados.length === 0) {
-                MessageToast.show("Debe seleccionar al menos una acción");
-                return;
-            }
-
-            // Obtener modelo de acciones
-            const oAccionesModel = oView.getModel("AccionesEntregaModel");
-            let aAcciones = oAccionesModel.getData();
-
-            // ELIMINAR todas las acciones anteriores de esta licencia
-            aAcciones = aAcciones.filter(a => a.idLicencia !== oLicencia.Id);
-
-            // Obtener turno original y calcular turno de entrega
-            const sTurnoOriginal = oLicencia.TurnoAsignado || "07:00";
-            const sTurnoEntrega = this._restarUnaHora(sTurnoOriginal);
-
-            // AGREGAR las nuevas acciones seleccionadas
-            aCodigosSeleccionados.forEach(sCodigo => {
-                const oAccionData = {
-                    accion: sCodigo,
-                    descripcion: oAccionesTemp[sCodigo].descripcion,
-                    equipo: oLicencia.Equnr,
-                    idLicencia: oLicencia.Id,
-                    trabajoRealizar: oLicencia.Comments || "Sin descripción",
-                    turno: sTurnoOriginal,
-                    turnoEntrega: sTurnoEntrega,
-                    estado: oLicencia.Licstat || "",
-                    condicion: oLicencia.Jobcond || "",
-                    _licenciaId: oLicencia.Id
-                };
-                aAcciones.push(oAccionData);
-            });
-
-            // Actualizar modelo
-            oAccionesModel.setData(aAcciones);
-
-            // Marcar licencia como seleccionada (ícono azul)
-            const oLicencesModel = oView.getModel("LicencesJsonModel");
-            const sPath = this._currentBindingContextEntrega.getPath();
-            oLicencesModel.setProperty(sPath + "/accionSeleccionada", true);
-
-            // Limpiar temporal
-            this._accionesSeleccionadasTemp = {};
-
-            // Cerrar popover
-            if (this._oAccionEntregaPopover) {
-                this._oAccionEntregaPopover.close();
-            }
-
-            MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${oLicencia.Id}`);
         },
 
         onTurnoEntregaChange: function (oEvent) {
@@ -773,6 +725,8 @@ sap.ui.define([
                     this.hideGlobalBusy();
                 }
             });
+
+            this._oFechaTurnoCreado = null;
         },
 
 
@@ -1188,6 +1142,8 @@ sap.ui.define([
             const oView = this.getView();
             const oDataService = oView.getModel();
 
+            this._oFechaTurnoCreado = oDateValue;
+
             const sFormattedDate = FormatHelper.formatDate(oDateValue);
             ModelHelper.getModel("LicencesTurnoJsonModel", oView).setProperty("/FechaTurno", sFormattedDate);
 
@@ -1220,9 +1176,21 @@ sap.ui.define([
                                         btnEnviar: true
                                     });
 
-                                    this.successSelectTurno(oData)
-                                        .catch((err) => console.error("Error en successSelectTurno:", err))
-                                        .finally(() => this.hideGlobalBusy());
+                                    const oDatePicker = this.byId("date");
+                                    if (oDatePicker) {
+                                        oDatePicker.setDateValue(oDateValue);
+                                    }
+
+                                    this._validateAndProcessLicenses(aRes, oDateValue)
+                                        .then((aLicenciasProcesadas) => {
+                                            return this.successSelectTurno({ results: aLicenciasProcesadas });
+                                        })
+                                        .catch((err) => {
+                                            return this.successSelectTurno(oData);
+                                        })
+                                        .finally(() => {
+                                            this.hideGlobalBusy();
+                                        });
                                 }
                             }
                         });
@@ -1233,11 +1201,15 @@ sap.ui.define([
 
                     this.hideGlobalBusy();
                     this._resetDefaultTurnoModel();
+
+                    const oDatePicker = this.byId("date");
+                    if (oDatePicker && oDateValue) {
+                        oDatePicker.setDateValue(oDateValue);
+                    }
+
                     this._doSearchTurnos(oDateValue);
                 },
                 error: (oError) => {
-                    console.error(oError);
-
                     const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
                     oLicencesModel.setData([]);
                     oLicencesModel.refresh();
@@ -1348,18 +1320,54 @@ sap.ui.define([
                         item.isEditable = bIsEditable;
                     });
 
-                    oLicencesModel.setData(data);
-                    oLicencesModel.refresh();
-                    oTable.setBusy(false);
-                    Utils.onCountItems(this.getView(), data);
+                    // ✅ OBTENER DESCRIPCIONES DE EQUIPOS
+                    const aEquiposUnicos = data
+                        .map(item => ({
+                            Equnr: (item.Equnr || "").trim(),
+                            Tplnr: (item.Tplnr || "").trim()
+                        }))
+                        .filter(item => item.Equnr && item.Tplnr);
 
-                    this._updateEditableState();
+                    const aEquiposUnicosDedup = Array.from(
+                        new Map(aEquiposUnicos.map(item => [JSON.stringify(item), item])).values()
+                    );
+
+                    if (aEquiposUnicosDedup.length === 0) {
+                        // Sin equipos, cargar sin descripciones
+                        oLicencesModel.setData(data);
+                        oLicencesModel.refresh();
+                        oTable.setBusy(false);
+                        Utils.onCountItems(this.getView(), data);
+                        this._updateEditableState();
+                        return;
+                    }
+
+                    // Obtener descripciones
+                    this._obtenerDescripcionesEquipos(aEquiposUnicosDedup)
+                        .then((oDescripcionesEquipos) => {
+                            // Agregar descripciones
+                            data.forEach(item => {
+                                const sEquipoNormalizado = (item.Equnr || "").trim();
+                                item.DescEquipo = oDescripcionesEquipos[sEquipoNormalizado] || "";
+                                item.EquipoCompleto = item.DescEquipo
+                                    ? item.Equnr + " - " + item.DescEquipo
+                                    : item.Equnr;
+                            });
+
+                            oLicencesModel.setData(data);
+                            oLicencesModel.refresh();
+                            oTable.setBusy(false);
+                            Utils.onCountItems(this.getView(), data);
+                            this._updateEditableState();
+                        })
+                        .catch((error) => {
+                            oLicencesModel.setData(data);
+                            oLicencesModel.refresh();
+                            oTable.setBusy(false);
+                            Utils.onCountItems(this.getView(), data);
+                            this._updateEditableState();
+                        });
                 })
-                .catch((error) => {
-                    oLicencesModel.setData([]);
-                    oLicencesModel.refresh();
-                    oTable.setBusy(false);
-                });
         },
 
 
@@ -1424,18 +1432,14 @@ sap.ui.define([
                 return Promise.resolve();
             }
 
-            // ✅ FILTRO DE ESTADOS PERMITIDOS
+            // FILTRO DE ESTADOS PERMITIDOS
             // Estados permitidos según requisitos:
-            // 01 = Autorizada
-            // 02 = Observada
-            // 07 = Coordinada
-            // 08 = Entregada
-            // 09 = Generada
-            // 10 = Suspendida
-            // 23 = En Trámite
-            const ESTADOS_PERMITIDOS = ["01", "02", "07", "08", "09", "10", "23"];
-
-            console.log("✅ Estados permitidos:", ESTADOS_PERMITIDOS);
+            // 01 = Autorizada 
+            // 07 = Coordinada 
+            // 08 = Entregada 
+            // 10 = Suspendida 
+            // 23 = En Trámite 
+            const ESTADOS_PERMITIDOS = ["01", "07", "08", "10", "23"];
 
             const aPromises = aResults.map((turnoLicencia) => {
                 return new Promise((resolve, reject) => {
@@ -1467,7 +1471,7 @@ sap.ui.define([
                                 tramitacionEstado: turnoLicencia.tramitacionEstado || null,
                                 tramitacionDetalles: turnoLicencia.tramitacionDetalles || [],
                                 calendarioCompleto: turnoLicencia.calendarioCompleto || [],
-                                tramitacionPorFecha: turnoLicencia.tramitacionPorFecha || {}  // ✅ AGREGAR ESTA LÍNEA
+                                tramitacionPorFecha: turnoLicencia.tramitacionPorFecha || {}
                             };
 
                             resolve(licenciaCompleta);
@@ -1539,16 +1543,26 @@ sap.ui.define([
 
                     TurnosService.assignShiftsToLicences(arrayOrdenado);
 
-                    // ✅ OBTENER EQUIPOS ÚNICOS
-                    const aEquiposUnicos = [...new Set(arrayOrdenado.map(item => (item.Equnr || "").trim()).filter(Boolean))];
-                    console.log("🔧 [TABLAS] Equipos únicos encontrados:", aEquiposUnicos);
+                    const aEquiposConEstacion = arrayOrdenado
+                        .map(item => {
+                            const oCombo = {
+                                Equnr: (item.Equnr || "").trim(),
+                                Tplnr: (item.Tplnr || "").trim()
+                            };
+                            return oCombo;
+                        })
+                        .filter(item => {
+                            const bTieneAmbos = item.Equnr && item.Tplnr;
+                            return bTieneAmbos;
+                        });
 
-                    // ✅ OBTENER DESCRIPCIONES DE EQUIPOS
+                    const aEquiposUnicos = Array.from(
+                        new Map(aEquiposConEstacion.map(item => [JSON.stringify(item), item])).values()
+                    );
+
                     return this._obtenerDescripcionesEquipos(aEquiposUnicos)
                         .then((oDescripcionesEquipos) => {
-                            console.log("✅ [TABLAS] Descripciones obtenidas:", Object.keys(oDescripcionesEquipos).length);
 
-                            // ✅ AGREGAR DESCRIPCIÓN A CADA ITEM
                             arrayOrdenado.forEach(item => {
                                 const sEquipoNormalizado = (item.Equnr || "").trim();
                                 item.DescEquipo = oDescripcionesEquipos[sEquipoNormalizado] || "";
@@ -1589,11 +1603,10 @@ sap.ui.define([
                             oLicencesModel.setData(arrayOrdenado);
                             Utils.onCountItems(oView, arrayOrdenado);
 
-                            // ✅ CLONAR Y AGREGAR DESCRIPCIONES TAMBIÉN AL CLON
+                            //CLONAR Y AGREGAR DESCRIPCIONES TAMBIÉN AL CLON
                             const arrayClonado = JSON.parse(JSON.stringify(arrayOrdenado));
                             arrayClonado.forEach(item => {
                                 item.isEditable = bIsEditable;
-                                // Las descripciones ya están en arrayOrdenado, se copian automáticamente con JSON
                             });
 
                             // Modelo que usa la tabla cronológica
@@ -1864,14 +1877,37 @@ sap.ui.define([
             const [hours, minutes] = shift.split(":").map(Number);
             return hours * 60 + minutes;
         },
-        onDeletePress: function () {
-            const oTable = this.getView().byId("turnosTable");
-            const aSelectedIndices = oTable.getSelectedIndices();
 
-            // Validar selección
-            if (!aSelectedIndices || aSelectedIndices.length === 0) {
-                MessageToast.show("Por favor, seleccione al menos una fila para eliminar.");
-                return;
+        onDeletePress: function (oEvent) {
+            const oTable = this.getView().byId("turnosTable");
+
+            // Intentar obtener índice del contexto del menú (clic derecho)
+            let aIndicesToDelete = [];
+
+            if (oEvent && oEvent.getSource) {
+                const oMenuItem = oEvent.getSource();
+                const oContextMenu = oMenuItem.getParent();
+
+                // Si viene del menú contextual, obtener la fila del binding context
+                if (oContextMenu && oContextMenu.getBindingContext("LicencesJsonModel")) {
+                    const sPath = oContextMenu.getBindingContext("LicencesJsonModel").getPath();
+                    const iIndex = parseInt(sPath.split("/").pop());
+
+                    if (!isNaN(iIndex)) {
+                        aIndicesToDelete = [iIndex];
+                    }
+                }
+            }
+
+            if (aIndicesToDelete.length === 0) {
+                const aSelectedIndices = oTable.getSelectedIndices();
+
+                if (!aSelectedIndices || aSelectedIndices.length === 0) {
+                    MessageToast.show("Por favor, seleccione al menos una fila para eliminar.");
+                    return;
+                }
+
+                aIndicesToDelete = aSelectedIndices;
             }
 
             // Tomar fecha del turno (para la key Dateturno)
@@ -1893,7 +1929,7 @@ sap.ui.define([
             }
 
             //  Ordenar índices de mayor a menor para eliminar sin problemas
-            const aSortedIndices = aSelectedIndices.slice().sort(function (a, b) {
+            const aSortedIndices = aIndicesToDelete.slice().sort(function (a, b) {
                 return b - a;
             });
 
@@ -1928,54 +1964,72 @@ sap.ui.define([
             oJsonModel.refresh(true);
             oTable.clearSelection();
 
-            // 🔹 Borrado en backend
-            const oDataModel = this.getView().getModel(); // ODataModel v2
+            // 🔹 Llamar al backend para eliminar en TurnosLicenciasSet
+            const oDataService = this.getView().getModel();
+            const entity = "/TurnosLicenciasSet";
 
-            const aPromises = aDataToDelete.map(function (oItem) {
-                return new Promise(function (resolve, reject) {
-                    // Armar path de la entidad con la key
-                    const sPath = oDataModel.createKey("/TurnosLicenciasSet", {
-                        Id: oItem.Id,
-                        Empresa: oItem.Empresa,
-                        Tipo: oItem.Tipo,
-                        Anio: oItem.Anio,
-                        Dateturno: oItem.Dateturno
+            const aDeletePromises = aDataToDelete.map((item) => {
+                return new Promise((resolve, reject) => {
+                    const sKeyPath = oDataService.createKey(entity, {
+                        Id: item.Id,
+                        Empresa: item.Empresa,
+                        Tipo: item.Tipo,
+                        Anio: item.Anio,
+                        Dateturno: item.Dateturno
                     });
 
-                    oDataModel.remove(sPath, {
-                        success: function () {
+                    oDataService.remove("/" + sKeyPath, {
+                        success: () => {
                             resolve();
                         },
-                        error: function (oError) {
+                        error: (oError) => {
                             reject(oError);
                         }
                     });
                 });
             });
 
-            Promise.all(aPromises)
-                .then(function () {
+            Promise.all(aDeletePromises)
+                .then(() => {
+                    Utils.onCountItems(this.getView(), aLicenses);
                     const iCount = aDataToDelete.length;
                     const sMsg = iCount === 1
-                        ? "La licencia seleccionada ha sido eliminada."
+                        ? "Se ha eliminado 1 licencia."
                         : "Se han eliminado " + iCount + " licencias.";
                     MessageToast.show(sMsg);
                 })
-                .catch(function (oError) {
+                .catch((error) => {
                     MessageBox.error("Ocurrió un error al eliminar en backend.");
-                    // console.error(oError); // si querés loguear
                 });
         },
 
 
-        onDetachLicense: function () {
+        onDetachLicense: function (oEvent) {
             var oTable = this.byId("turnosTable");
+            var iSelectedIndex = -1;
 
-            // Check if a row is selected
-            var iSelectedIndex = oTable.getSelectedIndex();
+            if (oEvent && oEvent.getSource) {
+                const oMenuItem = oEvent.getSource();
+                const oContextMenu = oMenuItem.getParent();
+
+                if (oContextMenu && oContextMenu.getBindingContext("LicencesJsonModel")) {
+                    const sPath = oContextMenu.getBindingContext("LicencesJsonModel").getPath();
+                    iSelectedIndex = parseInt(sPath.split("/").pop());
+
+                    if (!isNaN(iSelectedIndex)) {
+                    } else {
+                        iSelectedIndex = -1;
+                    }
+                }
+            }
+
             if (iSelectedIndex === -1) {
-                MessageToast.show("Por favor, seleccione una fila para desacoplar.");
-                return;
+                iSelectedIndex = oTable.getSelectedIndex();
+
+                if (iSelectedIndex === -1) {
+                    MessageToast.show("Por favor, seleccione una fila para desacoplar.");
+                    return;
+                }
             }
 
             var oModel = this.getView().getModel("LicencesJsonModel");
@@ -2033,6 +2087,7 @@ sap.ui.define([
             // Notify the user
             MessageToast.show("Licencia desacoplada, asignada después del último elemento del grupo con nuevo turno y grupo individual.");
         },
+
         _formatTime: function (iMinutes) {
             // Convertir los minutos de nuevo a formato HH:mm
             var iHours = Math.floor(iMinutes / 60);
@@ -2080,7 +2135,6 @@ sap.ui.define([
 
                 })
                 .catch((error) => {
-                    console.error("Error en la búsqueda:", error);
                     oSearchModel.setData([]);
                     oSearchModel.refresh();
                 });
@@ -2150,6 +2204,7 @@ sap.ui.define([
                 oDialog.close();
             }
         },
+
         onPressAdd: function () {
             var oTable = this.byId("idLicensesTable");
             var aSelectedItems = oTable.getSelectedItems();
@@ -2186,9 +2241,44 @@ sap.ui.define([
                 item.isEditable = bIsEditable;
             });
 
-            TurnosService.appendLicencesToModel(aNewData, this.getView());
+            // Extraer combinaciones únicas de Equnr + Tplnr
+            const aEquiposUnicos = aNewData
+                .map(item => ({
+                    Equnr: (item.Equnr || "").trim(),
+                    Tplnr: (item.Tplnr || "").trim()
+                }))
+                .filter(item => item.Equnr && item.Tplnr);
 
-            MessageBox.success("Se han agregado " + aNewData.length + " elementos correctamente.");
+            // Eliminar duplicados
+            const aEquiposUnicosDedup = Array.from(
+                new Map(aEquiposUnicos.map(item => [JSON.stringify(item), item])).values()
+            );
+
+            if (aEquiposUnicosDedup.length === 0) {
+                TurnosService.appendLicencesToModel(aNewData, this.getView());
+                MessageBox.success("Se han agregado " + aNewData.length + " elementos correctamente.");
+                return;
+            }
+
+            // Obtener descripciones
+            this._obtenerDescripcionesEquipos(aEquiposUnicosDedup)
+                .then((oDescripcionesEquipos) => {
+
+                    aNewData.forEach(item => {
+                        const sEquipoNormalizado = (item.Equnr || "").trim();
+                        item.DescEquipo = oDescripcionesEquipos[sEquipoNormalizado] || "";
+                        item.EquipoCompleto = item.DescEquipo
+                            ? item.Equnr + " - " + item.DescEquipo
+                            : item.Equnr;
+                    });
+
+                    TurnosService.appendLicencesToModel(aNewData, this.getView());
+                    MessageBox.success("Se han agregado " + aNewData.length + " elementos correctamente.");
+                })
+                .catch((error) => {
+                    TurnosService.appendLicencesToModel(aNewData, this.getView());
+                    MessageBox.success("Se han agregado " + aNewData.length + " elementos correctamente.");
+                });
         },
 
         // ==================== CÓDIGO CORREGIDO - POPOVER COMBO ====================
@@ -2320,8 +2410,7 @@ sap.ui.define([
         // --------------------------- POP UP CONSOLA ------------
 
         onSaveTurnoPress: function () {
-
-            const Fecha = this.getView().byId('date').getDateValue();
+            let Fecha = this._oFechaTurnoCreado || this.getView().byId('date').getDateValue();
 
             if (!Fecha) {
                 MessageBox.warning("Debe seleccionar una fecha para guardar el turno.");
@@ -2348,8 +2437,6 @@ sap.ui.define([
                             AttachmentSize: att.AttachmentSize
                         });
                     });
-                } else {
-                    console.log(`   ⚠️ Sin adjuntos`);
                 }
             });
 
@@ -2400,13 +2487,14 @@ sap.ui.define([
                                         Anio: oRowData.Anio,
                                         Fecha: Fecha,
                                         Turno: oRowData.TurnoAsignado,
-                                        Comentarios: oRowData.Comentarios
+                                        Comentarios: oRowData.Comentarios,
+                                        Enviado: false
                                     };
 
                                     aData.push(row);
                                 });
 
-                                this.createTurno(aData, aAllLicences);
+                                this.createTurno(aData, aAllLicences, false);
                             })
                             .catch((error) => {
 
@@ -2420,13 +2508,14 @@ sap.ui.define([
                                         Anio: oRowData.Anio,
                                         Fecha: Fecha,
                                         Turno: oRowData.TurnoAsignado,
-                                        Comentarios: oRowData.Comentarios
+                                        Comentarios: oRowData.Comentarios,
+                                        Enviado: false
                                     };
 
                                     aData.push(row);
                                 });
 
-                                this.createTurno(aData, aAllLicences);
+                                this.createTurno(aData, aAllLicences, false);
                             });
 
                     }
@@ -2435,12 +2524,13 @@ sap.ui.define([
         },
 
 
-        createTurno: function (licencias, aAttachments) {
+        createTurno: function (licencias, aAttachments, bEnviado) {
             const entity = "/TurnosLicenciasSet";
             const oDataService = this.getView().getModel();
             const oResourceBundle = this.getView().getModel("i18n").getResourceBundle();
 
-            this.showGlobalBusy("Guardando turnos...");
+            const sMensajeBusy = bEnviado ? "Enviando turno..." : "Guardando cambios...";
+            this.showGlobalBusy(sMensajeBusy);
 
             const oComponent = this.getOwnerComponent();
             const aPromises = licencias.map((licencia) => {
@@ -2452,7 +2542,8 @@ sap.ui.define([
                         "Anio": licencia.Anio,
                         "Dateturno": new Date(licencia.Fecha),
                         "Turno": licencia.Turno,
-                        "Comentarios": licencia.Comentarios
+                        "Comentarios": licencia.Comentarios,
+                        "Enviado": bEnviado !== undefined ? bEnviado : licencia.Enviado
                     };
 
                     oDataService.create(entity, license, {
@@ -2478,7 +2569,10 @@ sap.ui.define([
             Promise.all(aPromises)
                 .then(() => {
 
-                    MessageToast.show(oResourceBundle.getText("saveTurno") + " - Éxito");
+                    const sMensajeExito = bEnviado
+                        ? "Turno enviado exitosamente"
+                        : "Cambios guardados correctamente";
+                    MessageToast.show(sMensajeExito);
                     this._suppressLicenseAlert = true;
 
                     if (licencias && licencias.length > 0) {
@@ -2493,7 +2587,6 @@ sap.ui.define([
                 .catch((error) => {
                     this.hideGlobalBusy();
                     MessageBox.error("Error al guardar los turnos");
-                    console.error(error);
                 });
         },
 
@@ -2537,19 +2630,24 @@ sap.ui.define([
                         });
                 },
                 error: (oError) => {
-                    console.error("Error al recargar datos:", oError);
                     this.hideGlobalBusy();
                     MessageToast.show("Turno guardado (no se pudo recargar automáticamente)");
                 }
             });
         },
 
-        createTurno: function (licencias, aAttachments) {
+        /* createTurno: function (licencias, aAttachments) {
             const entity = "/TurnosLicenciasSet";
             const oDataService = this.getView().getModel();
             const oResourceBundle = this.getView().getModel("i18n").getResourceBundle();
 
-            this.showGlobalBusy("Guardando turnos...");
+            const sMensajeBusy = bEnviado ? "Enviando turno..." : "Guardando cambios...";
+            this.showGlobalBusy(sMensajeBusy);
+
+            const sMensajeExito = bEnviado
+                ? "Turno enviado exitosamente"
+                : "Cambios guardados correctamente";
+            MessageToast.show(sMensajeExito);
 
             const oComponent = this.getOwnerComponent();
             const aPromises = licencias.map((licencia) => {
@@ -2602,7 +2700,7 @@ sap.ui.define([
                     MessageBox.error("Error al guardar los turnos");
                     console.error(error);
                 });
-        },
+        }, */
 
         // ------------ FILTROS AVANZADOS ----------------------------------
         openAdvancedFilters: function () {
@@ -3474,8 +3572,6 @@ sap.ui.define([
 
 
                     MessageToast.show("Archivo agregado: " + file.name);
-                } else {
-                    console.error(" No hay contexto de licencia actual");
                 }
             }.bind(this);
 
@@ -3530,6 +3626,8 @@ sap.ui.define([
                                 alignItems: "Center",
                                 items: [
                                     new sap.m.HBox({
+                                        width: "140px",
+                                        justifyContent: "End",
                                         alignItems: "Center",
                                         items: [
                                             new sap.ui.core.Icon({
@@ -3941,9 +4039,7 @@ sap.ui.define([
 
                                     // Verificar que se asignó
                                     const licenciaActualizada = oLicencesModel.getProperty("/" + iRealIndex);
-                                } else {
-                                    console.warn(`NO SE ENCONTRÓ la licencia en el modelo actual`);
-                                }
+                                } 
                             }
                             resolve();
                         }.bind(this),
@@ -4335,7 +4431,6 @@ sap.ui.define([
                     return this.processReportData(oDataAcumulado, oDateInicio, oDateFin, sReportType);
                 })
                 .catch((err) => {
-                    console.error("Error al procesar datos del reporte:", err);
                     MessageToast.show("Error al procesar los datos del reporte.");
                 })
                 .finally(() => {
@@ -4370,7 +4465,6 @@ sap.ui.define([
                         return result;
                     })
                     .catch(err => {
-                        console.error("Error en FIND para licencia", licencia, err);
                         return null;
                     });
             });
@@ -4402,7 +4496,6 @@ sap.ui.define([
                     }
                 })
                 .catch((error) => {
-                    console.error("Error inesperado en Promise.all:", error);
                     MessageToast.show("Error al procesar las licencias.");
                 });
         },
@@ -4451,7 +4544,6 @@ sap.ui.define([
                 this.onCancelReports();
                 this.clearReportDates();
             } catch (error) {
-                console.error("Error al generar el Excel:", error);
                 MessageBox.error("Error al generar el archivo Excel: " + error.message);
             }
         },
@@ -4602,7 +4694,6 @@ sap.ui.define([
                 this.onCancelReports();
                 this.clearReportDates();
             } catch (error) {
-                console.error("Error al generar el Excel de maniobras:", error);
                 MessageBox.error("Error al generar el archivo Excel: " + error.message);
             }
         },
@@ -5550,7 +5641,7 @@ sap.ui.define([
                     }
 
                     this.hideGlobalBusy();
-                    MessageToast.show(`Reporte cargado: ${arrayOrdenado.length} registros`);
+                    MessageToast.show(`Reporte cargado`);
                 })
                 .catch((error) => {
                     this.hideGlobalBusy();
@@ -5745,10 +5836,8 @@ sap.ui.define([
         },
 
         // ------------------------------------------------ DESCRIPCIONES PARA EQUIPOS ------------------------------------------------------------------------
-
         _obtenerDescripcionesEquipos: function (aEquipos) {
-            return new Promise((resolve, reject) => {
-
+            return new Promise((resolve) => {
                 if (!aEquipos || aEquipos.length === 0) {
                     resolve({});
                     return;
@@ -5757,29 +5846,616 @@ sap.ui.define([
                 const oDataModel = this.getView().getModel();
                 const sEntity = "/EquiposRolesSet";
 
-                const aFilters = [
-                    new Filter("Estacion", FilterOperator.EQ, "AT"),
-                    new Filter("Rol", FilterOperator.EQ, "hab_Aprobacion_habilitaciones"),
-                    new Filter("Empresa", FilterOperator.EQ, "100")
-                ];
+                const estacionesUnicas = [...new Set(aEquipos.map(e => e.Tplnr).filter(Boolean))];
 
-                oDataModel.read(sEntity, {
-                    filters: aFilters,
-                    success: (oData) => {
+                const aPromises = estacionesUnicas.map((sTplnr) => {
+                    return new Promise((resolveEstacion) => {
+                        const aFilters = [
+                            new Filter("Estacion", FilterOperator.EQ, sTplnr),
+                            new Filter("Rol", FilterOperator.EQ, "hab_Aprobacion_habilitaciones"),
+                            new Filter("Empresa", FilterOperator.EQ, "100")
+                        ];
+
+                        oDataModel.read(sEntity, {
+                            filters: aFilters,
+                            success: (oData) => {
+                                resolveEstacion(oData.results || []);
+                            },
+                            error: () => {
+                                resolveEstacion([]);
+                            }
+                        });
+                    });
+                });
+
+                Promise.all(aPromises)
+                    .then((aResultadosPorEstacion) => {
+                        const todosLosEquipos = aResultadosPorEstacion.flat();
+
                         const oMapaDescripciones = {};
-
-                        oData.results.forEach(equipo => {
-                            const sCodigoNormalizado = (equipo.CodigoEquipo || "").trim();
-                            oMapaDescripciones[sCodigoNormalizado] = equipo.DescEquipo || "";
+                        todosLosEquipos.forEach(equipo => {
+                            const sCodigo = (equipo.CodigoEquipo || "").trim();
+                            if (sCodigo) {
+                                oMapaDescripciones[sCodigo] = equipo.DescEquipo || "";
+                            }
                         });
 
                         resolve(oMapaDescripciones);
-                    },
-                    error: (oError) => {
+                    })
+                    .catch(() => {
                         resolve({});
+                    });
+            });
+        },
+
+        // ----------------------------------------------------- ENVIAR ----------------------------------------------------------------
+
+        onSendEmailPress: function () {
+            const Fecha = this._oFechaTurnoCreado || this.getView().byId('date').getDateValue();
+
+            if (!Fecha) {
+                MessageBox.warning("Debe seleccionar una fecha para enviar el turno.");
+                return;
+            }
+
+            const oModel = this.getView().getModel("LicencesJsonModel");
+            const aAllLicences = oModel.getProperty("/") || [];
+
+            if (!aAllLicences || aAllLicences.length === 0) {
+                MessageBox.warning("No hay datos para enviar.");
+                return;
+            }
+
+            const aLicenciasSinHorario = aAllLicences.filter(lic => {
+                const turno = lic.TurnoAsignado;
+                return !turno || turno.trim() === "";
+            });
+
+            if (aLicenciasSinHorario.length > 0) {
+                const sLicenciasDetalle = aLicenciasSinHorario
+                    .map(lic => `• Licencia ${lic.Id} (${lic.Equnr || 'Sin equipo'})`)
+                    .join("\n");
+
+                MessageBox.error(
+                    `No se puede enviar el turno porque hay ${aLicenciasSinHorario.length} licencia(s) sin horario asignado:\n\n${sLicenciasDetalle}\n\nPor favor, asigne un horario a todas las licencias antes de enviar.`,
+                    {
+                        title: "Horarios sin asignar",
+                        styleClass: "sapUiSizeCompact"
                     }
+                );
+                return;
+            }
+
+            const aLicenciasAEnviar = aAllLicences.filter(lic => lic.Enviado !== true);
+
+            if (aLicenciasAEnviar.length === 0) {
+                MessageBox.information("Todas las licencias ya fueron enviadas. No hay cambios pendientes.");
+                return;
+            }
+
+            // Preparar datos SOLO de las licencias a enviar
+            const aData = [];
+            aLicenciasAEnviar.forEach(function (oRowData) {
+                const row = {
+                    Id: oRowData.Id,
+                    Empresa: oRowData.Empresa,
+                    Tipo: oRowData.Tipo,
+                    Anio: oRowData.Anio,
+                    Fecha: Fecha,
+                    Turno: oRowData.TurnoAsignado,
+                    Comentarios: oRowData.Comentarios,
+                    Enviado: true
+                };
+                aData.push(row);
+            });
+
+            this.createTurno(aData, aLicenciasAEnviar, true);
+        },
+
+        //-------------------------------------------- ADJUNTAR EN TAB ACCIONES  ------------------------------------------------
+
+        onAttachFileAccion: function (oEvent) {
+            // Guardar el contexto de la acción
+            this._currentAccionAttachmentContext = oEvent.getSource().getBindingContext("AccionesEntregaModel");
+
+            if (!this._currentAccionAttachmentContext) {
+                MessageToast.show("No se pudo obtener la acción");
+                return;
+            }
+
+            const oAccion = this._currentAccionAttachmentContext.getObject();
+
+            // Crear input de archivo si no existe
+            if (!this._fileInputAccion) {
+                this._fileInputAccion = document.createElement("input");
+                this._fileInputAccion.type = "file";
+                this._fileInputAccion.accept = ".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.txt";
+                this._fileInputAccion.style.display = "none";
+
+                this._fileInputAccion.addEventListener("change", function (e) {
+                    this._handleFileSelectionAccion(e);
+                }.bind(this));
+
+                document.body.appendChild(this._fileInputAccion);
+            }
+
+            this._fileInputAccion.value = null;
+            this._fileInputAccion.click();
+        },
+
+
+        _handleFileSelectionAccion: function (oEvent) {
+            const file = oEvent.target.files[0];
+
+            if (!file) {
+                return;
+            }
+
+            const maxSize = 10 * 1024 * 1024; // 10MB
+            if (file.size > maxSize) {
+                MessageBox.error("El archivo es demasiado grande. Máximo 10MB");
+                return;
+            }
+
+            // Convertir a base64
+            this._convertFileToBase64Accion(file);
+        },
+
+        _convertFileToBase64Accion: function (file) {
+            const reader = new FileReader();
+
+            reader.onload = function (e) {
+                const base64String = e.target.result;
+
+                if (this._currentAccionAttachmentContext) {
+                    const oAccion = this._currentAccionAttachmentContext.getObject();
+
+                    // Inicializar array de adjuntos si no existe
+                    if (!oAccion.Attachments) {
+                        oAccion.Attachments = [];
+                    }
+
+                    // Obtener fecha del turno
+                    const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+
+                    // Crear nuevo adjunto con estructura de CatalogoEntregasSet
+                    const nuevoAdjunto = {
+                        // Keys
+                        Id: oAccion.idLicencia,
+                        Empresa: "100",
+                        Tipo: "L",
+                        Anio: new Date().getFullYear().toString(),
+                        Dateturno: oFechaTurno,
+                        CodigoAccion: oAccion.accion || "",
+
+                        // Campos adicionales
+                        Descripcion: oAccion.descripcion || "",
+                        Equnr: oAccion.equipo || "",
+                        Equstat: oAccion.estado || "",
+                        Jobcond: oAccion.condicion || "",
+                        Turnoentrega: oAccion.turnoEntrega || "",
+                        Comments: "",
+                        Licstat: oAccion.estado || "",
+                        Attachment: base64String.split(',')[1], // Solo la parte base64, sin el prefijo data:
+
+                        // Metadata para UI
+                        AttachmentName: file.name,
+                        AttachmentSize: file.size,
+                        AttachmentType: file.type,
+                        Timestamp: new Date().getTime()
+                    };
+
+                    oAccion.Attachments.push(nuevoAdjunto);
+
+                    // Refrescar modelo
+                    const oModel = this.getView().getModel("AccionesEntregaModel");
+                    oModel.refresh(true);
+
+                    MessageToast.show("Archivo agregado: " + file.name);
+                } 
+            }.bind(this);
+
+            reader.onerror = function () {
+                MessageBox.error("Error al leer el archivo");
+            };
+
+            reader.readAsDataURL(file);
+        },
+
+        onViewAttachmentAccion: function (oEvent) {
+            const oContext = oEvent.getSource().getBindingContext("AccionesEntregaModel");
+
+            if (!oContext) {
+                MessageToast.show("No se pudo obtener la acción");
+                return;
+            }
+
+            const oAccion = oContext.getObject();
+
+            // Verificar si hay adjuntos
+            if (!oAccion.Attachments || oAccion.Attachments.length === 0) {
+                MessageToast.show("No hay archivos adjuntos");
+                return;
+            }
+
+            this._showAttachmentSelectorAccion(oAccion, oContext);
+        },
+
+        _showAttachmentSelectorAccion: function (oAccion, oContext) {
+            const oView = this.getView();
+
+            // Guardar el contexto
+            this._currentAccionAttachmentContext = oContext;
+            this._currentAccionForAttachments = oAccion;
+
+            // Destruir diálogo anterior si existe
+            if (this._attachmentSelectorDialogAccion) {
+                this._attachmentSelectorDialogAccion.destroy();
+                this._attachmentSelectorDialogAccion = null;
+            }
+
+            const oList = new sap.m.List({
+                mode: "None",
+                items: {
+                    path: "/attachments",
+                    template: new sap.m.CustomListItem({
+                        content: [
+                            new sap.m.HBox({
+                                width: "100%",
+                                justifyContent: "SpaceBetween",
+                                alignItems: "Center",
+                                items: [
+                                    new sap.m.HBox({
+                                        alignItems: "Center",
+                                        items: [
+                                            new sap.ui.core.Icon({
+                                                src: "{icon}",
+                                                size: "2rem",
+                                                color: "#0854a0"
+                                            }).addStyleClass("sapUiSmallMarginEnd"),
+                                            new sap.m.VBox({
+                                                items: [
+                                                    new sap.m.Text({
+                                                        text: "{name}",
+                                                        maxLines: 1
+                                                    }).addStyleClass("sapUiSmallMarginBottom"),
+                                                    new sap.m.Text({
+                                                        text: "{info}",
+                                                        maxLines: 1
+                                                    }).addStyleClass("sapUiTinyText")
+                                                ]
+                                            })
+                                        ]
+                                    }),
+                                    // Botones de acción
+                                    new sap.m.HBox({
+                                        items: [
+                                            // Botón Ver
+                                            new sap.m.Button({
+                                                icon: "sap-icon://show",
+                                                type: "Emphasized",
+                                                tooltip: "Ver archivo",
+                                                press: function (oEvent) {
+                                                    const oItem = oEvent.getSource().getParent().getParent().getParent();
+                                                    const iIndex = oList.indexOfItem(oItem);
+                                                    const oAttachment = oAccion.Attachments[iIndex];
+                                                    this._openAttachmentAccion(oAttachment);
+                                                }.bind(this)
+                                            }).addStyleClass("sapUiTinyMarginEnd"),
+
+                                            // Botón Eliminar
+                                            new sap.m.Button({
+                                                icon: "sap-icon://delete",
+                                                type: "Reject",
+                                                tooltip: "Eliminar archivo",
+                                                width: "2.5rem",  
+                                                press: function (oEvent) {
+                                                    const oItem = oEvent.getSource().getParent().getParent().getParent();
+                                                    const iIndex = oList.indexOfItem(oItem);
+                                                    const oAttachment = oAccion.Attachments[iIndex];
+                                                    this._deleteAttachmentFromListAccion(oAttachment, iIndex);
+                                                }.bind(this)
+                                            })
+                                        ]
+                                    })
+                                ]
+                            }).addStyleClass("sapUiSmallMargin")
+                        ]
+                    })
+                }
+            });
+
+            const aListData = oAccion.Attachments.map((att, idx) => ({
+                name: att.AttachmentName,
+                info: this._formatSize(att.AttachmentSize) + " • " + this._getFileTypeName(att.AttachmentType),
+                icon: this.getFileIcon(att.AttachmentType),
+                index: idx
+            }));
+
+            const oDialogModel = new sap.ui.model.json.JSONModel({
+                attachments: aListData
+            });
+
+            this._attachmentSelectorDialogAccion = new sap.m.Dialog({
+                title: "Archivos Adjuntos - Acción: " + oAccion.accion,
+                contentWidth: "850px",
+                contentHeight: "500px",
+                resizable: true,
+                draggable: true,
+                content: [oList],
+                beginButton: new sap.m.Button({
+                    text: "Cerrar",
+                    press: function () {
+                        this._attachmentSelectorDialogAccion.close();
+                    }.bind(this)
+                }),
+                afterClose: function () {
+                    this._attachmentSelectorDialogAccion.destroy();
+                    this._attachmentSelectorDialogAccion = null;
+                }.bind(this)
+            });
+
+            // Establecer modelo
+            this._attachmentSelectorDialogAccion.setModel(oDialogModel);
+
+            // Agregar a la vista
+            oView.addDependent(this._attachmentSelectorDialogAccion);
+
+            // Abrir
+            this._attachmentSelectorDialogAccion.open();
+        },
+
+        _downloadAttachmentAccion: function (oAttachment) {
+            try {
+                // Reconstruir data URL completa si es necesario
+                let dataUrl = oAttachment.Attachment;
+
+                // Si no tiene el prefijo data:, agregarlo
+                if (!dataUrl.startsWith('data:')) {
+                    const mimeType = oAttachment.AttachmentType || 'application/octet-stream';
+                    dataUrl = `data:${mimeType};base64,${dataUrl}`;
+                }
+
+                const link = document.createElement('a');
+                link.href = dataUrl;
+                link.download = oAttachment.AttachmentName;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                MessageToast.show("Descargando: " + oAttachment.AttachmentName);
+            } catch (error) {
+                MessageBox.error("Error al descargar el archivo");
+            }
+        },
+
+        _deleteAttachmentFromListAccion: function (oAttachment, iIndex) {
+            MessageBox.confirm(
+                "¿Desea eliminar el archivo '" + oAttachment.AttachmentName + "'?",
+                {
+                    title: "Confirmar eliminación",
+                    actions: [MessageBox.Action.DELETE, MessageBox.Action.CANCEL],
+                    emphasizedAction: MessageBox.Action.DELETE,
+                    onClose: function (sAction) {
+                        if (sAction === MessageBox.Action.DELETE) {
+                            this._deleteAttachmentAccion(oAttachment, iIndex);
+                        }
+                    }.bind(this)
+                }
+            );
+        },
+
+        _deleteAttachmentAccion: function (oAttachment, iIndex) {
+            const oAccion = this._currentAccionForAttachments;
+
+            if (!oAccion || !oAccion.Attachments) {
+                MessageToast.show("Error: No se pudo encontrar la acción");
+                return;
+            }
+
+            // Eliminar del array
+            oAccion.Attachments.splice(iIndex, 1);
+
+            // Actualizar modelo
+            const oModel = this.getView().getModel("AccionesEntregaModel");
+            oModel.updateBindings(true);
+
+            MessageToast.show("Archivo eliminado: " + oAttachment.AttachmentName);
+
+            // Cerrar diálogo
+            if (this._attachmentSelectorDialogAccion) {
+                this._attachmentSelectorDialogAccion.close();
+            }
+
+            // Mensaje si no quedan archivos
+            if (oAccion.Attachments.length === 0) {
+                MessageToast.show("Todos los archivos fueron eliminados");
+            }
+        },
+
+        _openAttachmentAccion: function (oAttachment) {
+            const sType = oAttachment.AttachmentType;
+
+            // ✅ CORRECCIÓN: Reconstruir data URL completa
+            let sDataUrl = oAttachment.Attachment;
+
+            // Si no tiene el prefijo data:, agregarlo
+            if (!sDataUrl.startsWith('data:')) {
+                const mimeType = sType || 'application/octet-stream';
+                sDataUrl = `data:${mimeType};base64,${sDataUrl}`;
+            }
+
+            console.log("🔍 [ACCION] Abriendo archivo:", {
+                nombre: oAttachment.AttachmentName,
+                tipo: sType,
+                tienePrefijo: sDataUrl.startsWith('data:'),
+                longitudBase64: sDataUrl.length
+            });
+
+            // Para PDFs
+            if (sType === "application/pdf") {
+                this._openPDFViewer(sDataUrl);
+                return;
+            }
+
+            // Para imágenes - ✅ USAR OBJETO CON AttachmentData
+            if (sType && sType.startsWith("image/")) {
+                // Crear objeto compatible con _openImageViewer
+                const oImageAttachment = {
+                    AttachmentData: sDataUrl,  
+                    AttachmentName: oAttachment.AttachmentName
+                };
+                this._openImageViewer(oImageAttachment);
+                return;
+            }
+
+            // Para otros archivos, descargar
+            this._downloadAttachmentAccion(oAttachment);
+        },
+
+        _saveAccionAttachments: function (aAcciones) {
+            const oDataService = this.getView().getModel();
+            const sEntity = "/CatalogoEntregasSet";
+
+            // Recolectar todos los adjuntos de todas las acciones
+            const aAllAttachments = [];
+
+            aAcciones.forEach(accion => {
+                if (accion.Attachments && accion.Attachments.length > 0) {
+                    accion.Attachments.forEach(att => {
+                        aAllAttachments.push(att);
+                    });
+                }
+            });
+
+            if (aAllAttachments.length === 0) {
+                return Promise.resolve();
+            }
+
+            const aPromises = aAllAttachments.map((att) => {
+                return new Promise((resolve, reject) => {
+                    // Asegurarse de que Attachment sea solo base64 (sin prefijo)
+                    let base64Data = att.Attachment;
+                    if (base64Data.includes(',')) {
+                        base64Data = base64Data.split(',')[1];
+                    }
+
+                    const payload = {
+                        // Keys
+                        Id: att.Id,
+                        Empresa: att.Empresa,
+                        Tipo: att.Tipo,
+                        Anio: att.Anio,
+                        Dateturno: att.Dateturno,
+                        CodigoAccion: att.CodigoAccion,
+
+                        // Campos adicionales
+                        Descripcion: att.Descripcion || "",
+                        Equnr: att.Equnr || "",
+                        Equstat: att.Equstat || "",
+                        Jobcond: att.Jobcond || "",
+                        Turnoentrega: att.Turnoentrega || "",
+                        Comments: att.Comments || "",
+                        Licstat: att.Licstat || "",
+                        Attachment: base64Data
+                    };
+
+                    console.log("💾 [ACCION] Guardando adjunto:", {
+                        Id: payload.Id,
+                        CodigoAccion: payload.CodigoAccion,
+                        AttachmentName: att.AttachmentName
+                    });
+
+                    oDataService.create(sEntity, payload, {
+                        success: () => {;
+                            resolve();
+                        },
+                        error: (oError) => {
+                            reject(oError);
+                        }
+                    });
                 });
             });
+
+            return Promise.all(aPromises);
+        },
+
+        onGuardarAccionesBackend: function () {
+            const oAccionesModel = this.getView().getModel("AccionesEntregaModel");
+            const aAcciones = oAccionesModel.getData() || [];
+
+            if (aAcciones.length === 0) {
+                MessageBox.information("No hay acciones para guardar.");
+                return;
+            }
+
+            // Validar que todas las acciones tengan turnoEntrega
+            const aAccionesSinTurno = aAcciones.filter(acc => !acc.turnoEntrega || acc.turnoEntrega.trim() === "");
+
+            if (aAccionesSinTurno.length > 0) {
+                const sDetalle = aAccionesSinTurno
+                    .map(acc => `• Acción ${acc.accion} (Licencia ${acc.idLicencia})`)
+                    .join("\n");
+
+                MessageBox.warning(
+                    `Hay ${aAccionesSinTurno.length} acción(es) sin turno de entrega:\n\n${sDetalle}\n\nPor favor, asigne un turno a todas las acciones antes de guardar.`,
+                    {
+                        title: "Turnos sin asignar",
+                        styleClass: "sapUiSizeCompact"
+                    }
+                );
+                return;
+            }
+
+            // Confirmar antes de guardar
+            MessageBox.confirm(
+                `Se guardarán ${aAcciones.length} acción(es) con sus adjuntos en el backend.\n\n¿Desea continuar?`,
+                {
+                    title: "Guardar acciones",
+                    actions: [MessageBox.Action.OK, MessageBox.Action.CANCEL],
+                    emphasizedAction: MessageBox.Action.OK,
+                    onClose: (sAction) => {
+                        if (sAction === MessageBox.Action.OK) {
+                            this._executeGuardarAcciones(aAcciones);
+                        }
+                    }
+                }
+            );
+        },
+
+        _executeGuardarAcciones: function (aAcciones) {
+            this.showGlobalBusy("Guardando acciones...");
+
+            this._saveAccionAttachments(aAcciones)
+                .then(() => {
+                    this.hideGlobalBusy();
+
+                    const iTotalAdjuntos = aAcciones.reduce((sum, acc) => {
+                        return sum + (acc.Attachments ? acc.Attachments.length : 0);
+                    }, 0);
+
+
+                    MessageBox.success(
+                        `Se guardaron exitosamente:\n\n` +
+                        `• ${aAcciones.length} acción(es)\n` +
+                        `• ${iTotalAdjuntos} adjunto(s)`,
+                        {
+                            title: "Guardado exitoso"
+                        }
+                    );
+                })
+                .catch((error) => {
+                    this.hideGlobalBusy();
+
+                    MessageBox.error(
+                        "Ocurrió un error al guardar las acciones.\n\n" +
+                        "Por favor, intente nuevamente o contacte al administrador.",
+                        {
+                            title: "Error al guardar",
+                            details: error.message || error.toString()
+                        }
+                    );
+                });
         },
 
         test: function () {

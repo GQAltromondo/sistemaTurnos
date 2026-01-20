@@ -94,9 +94,9 @@ sap.ui.define([
                 // 09 = Generada
                 // 10 = Suspendida
                 // 23 = En Tramite
-                estadosPermitidos = ["01", "02", "07", "08", "09", "10", "23"];
+                estadosPermitidos = ["01", "07", "08", "10", "23"];
             } else {
-                estadosPermitidos = ["01", "07", "08", "09", "10", "23"];
+                estadosPermitidos = ["01", "07", "08", "10", "23"];
             }
 
             // 🔍 LOG INICIAL
