@@ -296,15 +296,6 @@
                                             enabled="{editableModel>/isEditable}"
                                         />
 
-                                        <!-- Eliminar adjunto -->
-                                        <MenuItem
-                                            text="Eliminar adjunto"
-                                            icon="sap-icon://delete"
-                                            press="onDeleteAttachment"
-                                            visible="{= ${LicencesJsonModel>Attachments} &amp;&amp; ${LicencesJsonModel>Attachments}.length > 0 }"
-                                            enabled="{editableModel>/isEditable}"
-                                        />
-
                                         <!-- Agregar Licencia (nuevo - por implementar) -->
                                         <MenuItem
                                             text="Agregar Licencia"
@@ -392,7 +383,7 @@
                                                     content="&lt;div class='groupColorBar' style='background-color:{LicencesJsonModel>ColorGrupo}'&gt;&lt;/div&gt;"
                                                 />
                                                 <Text
-                                                     text="{LicencesJsonModel>EquipoCompleto}" 
+                                                    text="{LicencesJsonModel>EquipoCompleto}"
                                                     wrapping="false"
                                                     class="{= ${firstItem} ? 'text-bold' : '' }"
                                                 />
@@ -823,7 +814,27 @@
                                 selectionMode="None"
                                 alternateRowColors="true"
                             >
+                                <!-- ✅ MENÚ CONTEXTUAL -->
+                                <t:contextMenu>
+                                    <Menu>
+                                        <!-- Adjuntar archivo -->
+                                        <MenuItem
+                                            text="Adjuntar archivo"
+                                            icon="sap-icon://attachment"
+                                            press="onAttachFileAccion"
+                                        />
+
+                                        <!-- Eliminar acción -->
+                                        <MenuItem
+                                            text="Eliminar acción"
+                                            icon="sap-icon://delete"
+                                            press="onRemoveAccionEntrega"
+                                        />
+                                    </Menu>
+                                </t:contextMenu>
+
                                 <t:columns>
+                                    <!-- Columna Acción -->
                                     <t:Column width="150px">
                                         <Label text="Acción" />
                                         <t:template>
@@ -834,6 +845,7 @@
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Columna Descripción -->
                                     <t:Column width="400px">
                                         <Label text="Descripción" />
                                         <t:template>
@@ -844,6 +856,7 @@
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Columna Equipo -->
                                     <t:Column width="120px">
                                         <Label text="Equipo" />
                                         <t:template>
@@ -854,6 +867,7 @@
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Columna IdLicencia -->
                                     <t:Column width="150px">
                                         <Label text="IdLicencia" />
                                         <t:template>
@@ -864,6 +878,7 @@
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Columna Trabajo a Realizar -->
                                     <t:Column width="300px">
                                         <Label text="{i18n>conditionWork}" />
                                         <t:template>
@@ -875,6 +890,7 @@
                                         </t:template>
                                     </t:Column>
 
+                                    <!-- Columna Turno -->
                                     <t:Column width="120px">
                                         <Label text="Turno" />
                                         <t:template>
@@ -888,19 +904,49 @@
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column width="75px">
-                                        <Label text="Acciones" />
+                                    <!-- ✅ NUEVA COLUMNA: Ver Adjuntos (Badge) -->
+                                    <t:Column width="100px">
+                                        <Label text="Adjuntos" />
                                         <t:template>
-                                            <Button
-                                                icon="sap-icon://delete"
-                                                type="Reject"
-                                                press="onRemoveAccionEntrega"
-                                                tooltip="Eliminar acción"
-                                            />
+                                            <HBox
+                                                justifyContent="Center"
+                                                alignItems="Center"
+                                            >
+                                                <Button
+                                                    icon="sap-icon://document"
+                                                    type="Transparent"
+                                                    press="onViewAttachmentAccion"
+                                                    tooltip="Ver adjuntos"
+                                                    visible="{= ${AccionesEntregaModel>Attachments} &amp;&amp; ${AccionesEntregaModel>Attachments}.length > 0 }"
+                                                >
+                                                    <layoutData>
+                                                        <FlexItemData
+                                                            growFactor="0"
+                                                        />
+                                                    </layoutData>
+                                                    <customData>
+                                                        <core:CustomData
+                                                            key="badge"
+                                                            value="{= ${AccionesEntregaModel>Attachments} ? ${AccionesEntregaModel>Attachments}.length : 0 }"
+                                                        />
+                                                    </customData>
+                                                </Button>
+                                            </HBox>
                                         </t:template>
                                     </t:Column>
                                 </t:columns>
                             </t:Table>
+
+                            <OverflowToolbar class="sapUiSmallMarginTop">
+                                <ToolbarSpacer />
+                                <Button
+                                    text="Guardar Acciones"
+                                    icon="sap-icon://save"
+                                    type="Emphasized"
+                                    press="onGuardarAccionesBackend"
+                                    tooltip="Guardar todas las acciones en el backend"
+                                />
+                            </OverflowToolbar>
                         </IconTabFilter>
 
                         <!-- TAB REPORTES MANIOBRAS -->
@@ -1027,6 +1073,7 @@
                             press="onAddLicense"
                             text="{i18n>altaTurno}"
                             class="sapUiSmallMarginEnd"
+                            enabled="{editableModel>/isEditable}"
                         />
                         <ToolbarSpacer />
                         <Text
