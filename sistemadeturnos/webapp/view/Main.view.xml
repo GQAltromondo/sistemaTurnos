@@ -296,12 +296,12 @@
                                             enabled="{editableModel>/isEditable}"
                                         />
 
-                                        <!-- Agregar Licencia (nuevo - por implementar) -->
+                                        <!-- Agregar Licencia -->
                                         <MenuItem
                                             text="Agregar Licencia"
                                             icon="sap-icon://add"
                                             press="onAgregarLicencia"
-                                            enabled="false"
+                                            enabled="{editableModel>/isEditable}"
                                         />
 
                                         <!-- Eliminar Licencia -->
@@ -880,7 +880,7 @@
 
                                     <!-- Columna Trabajo a Realizar -->
                                     <t:Column width="300px">
-                                        <Label text="{i18n>conditionWork}" />
+                                        <Label text="{i18n>toDoWork}" />
                                         <t:template>
                                             <Text
                                                 text="{AccionesEntregaModel>trabajoRealizar}"
@@ -939,6 +939,7 @@
 
                             <OverflowToolbar class="sapUiSmallMarginTop">
                                 <ToolbarSpacer />
+
                                 <Button
                                     text="Guardar Acciones"
                                     icon="sap-icon://save"

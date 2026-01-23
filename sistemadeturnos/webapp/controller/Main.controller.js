@@ -20,14 +20,17 @@ sap.ui.define([
     "transener/sistemadeturnos/services/InterventionTypesService",
     "transener/sistemadeturnos/model/HardCodeModel",
     "transener/sistemadeturnos/utils/TreeTableHelper",
-    "transener/sistemadeturnos/services/TramitacionService"
+    "transener/sistemadeturnos/services/TramitacionService",
+    "transener/sistemadeturnos/utils/RoleHelper",
+    "transener/sistemadeturnos/utils/AppManagementHelper",
+    "transener/sistemadeturnos/services/UserService"
 
 
 ], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, Spreadsheet,
     //utils
     ModelHelper, FormatHelper, Utils,
     //services
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel, TreeTableHelper, TramitacionService
+    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel, TreeTableHelper, TramitacionService, RoleHelper, AppManagementHelper, UserService
 ) {
     "use strict";
     let oDialog = null
@@ -36,9 +39,11 @@ sap.ui.define([
 
         onInit: function () {
 
+            this.getBaseURL();
+            UserService.loadModel(this.onUserLoaded.bind(this));
+
             this._pBusyDialog = null;
             this.getVersion();
-            this.getBaseURL();
             this.cargarModelos()
             this._suppressLicenseAlert = false;
 
@@ -47,8 +52,182 @@ sap.ui.define([
             const oTreeModel = new JSONModel([]);
             this.getView().setModel(oTreeModel, "listCronoTreeModel");
 
+            var oViewModel = new JSONModel({
+                busy: false,
+                delay: 0
+            });
+            this.getView().setModel(oViewModel, "viewModel");
+
             const oReporteModel = new JSONModel([]);
             this.getView().setModel(oReporteModel, "ReporteModel");
+
+            // Cargar catálogo después de que el modelo OData esté listo
+            const oModel = this.getOwnerComponent().getModel();
+            if (oModel) {
+                oModel.metadataLoaded().then(() => {
+                    this._cargarCatalogoCodigosDesdeBackend();
+                });
+            }
+        },
+
+        getBaseURL: function () {
+            var appId = this.getOwnerComponent().getManifestEntry("/sap.app/id");
+
+            // Guardar el appId en un modelo por si se necesita
+            var appModel = new JSONModel();
+            appModel.setData(appId);
+            sap.ui.getCore().setModel(appModel, "appId");
+
+            // Construir el path del módulo
+            var appPath = appId.replaceAll(".", "/");
+            var appModulePath = jQuery.sap.getModulePath(appPath);
+
+            // Crear o actualizar el modelo appCurrentInfo
+            var jsonModel = sap.ui.getCore().getModel("appCurrentInfo");
+            if (!jsonModel) {
+                jsonModel = new JSONModel();
+                jsonModel.setSizeLimit(9999);
+                sap.ui.getCore().setModel(jsonModel, "appCurrentInfo");
+            }
+
+            // Setear la URL en el modelo
+            jsonModel.setData({
+                appUrl: appModulePath
+            });
+
+            console.log("URL base de la aplicación configurada:", appModulePath);
+
+            return appModulePath;
+        },
+
+        onUserLoaded: function () {
+            console.log("Usuario cargado");
+
+            // aplicar permisos basados en roles
+            this._aplicarPermisosPorRol();
+        },
+
+        // Aplica permisos de visualización/edición según el rol del usuario
+
+        _aplicarPermisosPorRol: function () {
+            var bEsEditor = RoleHelper.isEditor();
+
+            console.log("Aplicando permisos. Es editor?", bEsEditor);
+
+            // Botón Crear Solicitud
+            var btnCrear = this.byId("btnCrearSolicitud");
+            if (btnCrear) {
+                btnCrear.setVisible(bEsEditor);
+                btnCrear.setEnabled(bEsEditor);
+            }
+
+            // Botón Guardar
+            var btnGuardar = this.byId("btnGuardar");
+            if (btnGuardar) {
+                btnGuardar.setVisible(bEsEditor);
+                btnGuardar.setEnabled(bEsEditor);
+            }
+
+            // Botón Enviar
+            var btnEnviar = this.byId("btnEnviar");
+            if (btnEnviar) {
+                btnEnviar.setVisible(bEsEditor);
+                btnEnviar.setEnabled(bEsEditor);
+            }
+
+            // Botón Editar
+            var btnEditar = this.byId("btnEditar");
+            if (btnEditar) {
+                btnEditar.setVisible(bEsEditor);
+                btnEditar.setEnabled(bEsEditor);
+            }
+
+            // Botón Eliminar
+            var btnEliminar = this.byId("btnEliminar");
+            if (btnEliminar) {
+                btnEliminar.setVisible(bEsEditor);
+                btnEliminar.setEnabled(bEsEditor);
+            }
+
+            // === COLUMNAS DE LA TABLA ===
+            // Columna Comentarios
+            var colComentarios = this.byId("colComentarios");
+            if (colComentarios) {
+                colComentarios.setVisible(bEsEditor);
+            }
+
+            // Columna Adjuntar
+            var colAdjuntar = this.byId("colAdjuntar");
+            if (colAdjuntar) {
+                colAdjuntar.setVisible(bEsEditor);
+            }
+
+            // Columna Horario Turno
+            var colHorarioTurno = this.byId("colHorarioTurno");
+            if (colHorarioTurno) {
+                colHorarioTurno.setVisible(bEsEditor);
+            }
+
+            // Columna Agregar Licencias (botón +)
+            var colAgregarLicencias = this.byId("colAgregarLic");
+            if (colAgregarLicencias) {
+                colAgregarLicencias.setVisible(bEsEditor);
+            }
+
+            // === CAMPOS DE INPUTS
+            // Input Instalación
+            var inputInstalacion = this.byId("inputInstalacion");
+            if (inputInstalacion) {
+                inputInstalacion.setEditable(bEsEditor);
+            }
+
+            // Input Equipo
+            var inputEquipo = this.byId("inputEquipo");
+            if (inputEquipo) {
+                inputEquipo.setEditable(bEsEditor);
+            }
+
+            // Input Trabajos a Realizar
+            var inputTrabajos = this.byId("inputTrabajos");
+            if (inputTrabajos) {
+                inputTrabajos.setEditable(bEsEditor);
+            }
+
+            // DateTimePicker Inicio Programado
+            var dtpInicioProg = this.byId("dtpInicioProgramado");
+            if (dtpInicioProg) {
+                dtpInicioProg.setEditable(bEsEditor);
+            }
+
+            // DateTimePicker Fin Programado
+            var dtpFinProg = this.byId("dtpFinProgramado");
+            if (dtpFinProg) {
+                dtpFinProg.setEditable(bEsEditor);
+            }
+
+            // Select Empresa
+            var selectEmpresa = this.byId("selectEmpresa");
+            if (selectEmpresa) {
+                selectEmpresa.setEnabled(bEsEditor);
+            }
+
+            // Select Categoría Licencia
+            var selectCategoria = this.byId("selectCategoriaLicencia");
+            if (selectCategoria) {
+                selectCategoria.setEnabled(bEsEditor);
+            }
+
+            // Select Área Solicitante
+            var selectAreaSolic = this.byId("selectAreaSolicitante");
+            if (selectAreaSolic) {
+                selectAreaSolic.setEnabled(bEsEditor);
+            }
+
+            // Checkbox Requiere PAT
+            var chkPAT = this.byId("chkRequierePAT");
+            if (chkPAT) {
+                chkPAT.setEnabled(bEsEditor);
+            }
         },
         // ----------------------------------- TURNOS EDITABLES ----------------------------------------
         _updateEditableState: function () {
@@ -85,13 +264,49 @@ sap.ui.define([
         },
 
         onOpenAccionEntregaPopover: function (oEvent) {
-            const oButton = oEvent.getSource();
             const oView = this.getView();
+            const oTable = this.byId("turnosTable");
 
-            // Obtener el contexto de la fila (licencia)
-            const oBindingContext = oButton.getBindingContext("LicencesJsonModel");
+            let oBindingContext = null;
+
+            // Intento 1: Desde el source (MenuItem)
+            oBindingContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
+
+            // Intento 2: Desde el parent (Context Menu)
             if (!oBindingContext) {
-                MessageToast.show("No se pudo obtener el contexto de la fila");
+                const oMenuItem = oEvent.getSource();
+                const oContextMenu = oMenuItem.getParent();
+
+                if (oContextMenu) {
+                    oBindingContext = oContextMenu.getBindingContext("LicencesJsonModel");
+                }
+            }
+
+            // Intento 3: Desde el path del context menu (como onDeletePress)
+            if (!oBindingContext) {
+                const oMenuItem = oEvent.getSource();
+                const oContextMenu = oMenuItem.getParent();
+
+                if (oContextMenu && oContextMenu.getBindingContext("LicencesJsonModel")) {
+                    const sPath = oContextMenu.getBindingContext("LicencesJsonModel").getPath();
+                    const iIndex = parseInt(sPath.split("/").pop());
+
+                    if (!isNaN(iIndex)) {
+                        oBindingContext = oTable.getContextByIndex(iIndex);
+                    }
+                }
+            }
+
+            // Intento 4: Fallback a índice seleccionado
+            if (!oBindingContext) {
+                const iSelectedIndex = oTable.getSelectedIndex();
+                if (iSelectedIndex >= 0) {
+                    oBindingContext = oTable.getContextByIndex(iSelectedIndex);
+                }
+            }
+
+            if (!oBindingContext) {
+                MessageToast.show("No se pudo obtener el contexto de la fila. Por favor, seleccione una fila.");
                 return;
             }
 
@@ -119,7 +334,26 @@ sap.ui.define([
                 // Inicializar checkboxes según acciones ya seleccionadas
                 this._initializeCheckBoxesEntrega();
 
-                oPopover.openBy(oButton);
+                // Buscar la fila visual que corresponde al binding context
+                const aRows = oTable.getRows();
+                let oTargetRow = null;
+
+                for (let i = 0; i < aRows.length; i++) {
+                    const oRowContext = aRows[i].getBindingContext("LicencesJsonModel");
+                    if (oRowContext && oRowContext.getPath() === oBindingContext.getPath()) {
+                        oTargetRow = aRows[i];
+                        break;
+                    }
+                }
+
+                // Abrir el popover
+                if (oTargetRow && oTargetRow.getDomRef()) {
+                    oPopover.openBy(oTargetRow);
+                } else {
+                    // Fallback: usar la tabla
+                    oPopover.openBy(oTable);
+                }
+
             }.bind(this));
         },
 
@@ -137,36 +371,46 @@ sap.ui.define([
 
             this._accionesSeleccionadasTemp = {};
 
-            // Lista de todos los checkboxes con sus datos
-            const aCheckBoxesData = [
-                { id: "checkboxSOL_COC", key: "SOL_COC", descripcion: "Solicitud COC" },
-                { id: "checkboxSOL_TEC", key: "SOL_TEC", descripcion: "Confirmación Técnico" },
-                { id: "checkboxAUT_COC", key: "AUT_COC", descripcion: "Autorización COC" },
-                { id: "checkboxINI_MAN", key: "INI_MAN", descripcion: "Comienzo Maniobras" },
-                { id: "checkboxFIN_MAN", key: "FIN_MAN", descripcion: "Finalización Maniobras" },
-                { id: "checkboxCOL_PAT", key: "COL_PAT", descripcion: "Confirmación PAT" },
-                { id: "checkboxFIN_LT", key: "FIN_LT", descripcion: "Finalización LT" },
-                { id: "checkboxRET_PAT", key: "RET_PAT", descripcion: "Retiro PAT" },
-                { id: "checkboxMAN_PES", key: "MAN_PES", descripcion: "Maniobras PES" },
-                { id: "checkboxPES", key: "PES", descripcion: "PES" }
-            ];
+            setTimeout(() => {
+                // Obtener el List del popover
+                const oList = this.byId("listaAccionesEntrega");
 
-            // Marcar los checkboxes correspondientes y llenar el objeto temporal
-            aCheckBoxesData.forEach(oCheckboxData => {
-                const oCheckBox = this.byId(oCheckboxData.id);
-                if (oCheckBox) {
-                    const bSelected = aCodigosSeleccionados.includes(oCheckboxData.key);
-                    oCheckBox.setSelected(bSelected);
-
-                    // Si está seleccionado, agregarlo al objeto temporal
-                    if (bSelected) {
-                        this._accionesSeleccionadasTemp[oCheckboxData.key] = {
-                            codigo: oCheckboxData.key,
-                            descripcion: oCheckboxData.descripcion
-                        };
-                    }
+                if (!oList) {
+                    return;
                 }
-            });
+
+                // Recorrer los items del List (que son los CustomListItem generados dinámicamente)
+                const aItems = oList.getItems();
+
+                aItems.forEach(oItem => {
+                    // Dentro de cada CustomListItem hay un CheckBox
+                    const oCheckBox = oItem.getContent()[0];
+
+                    if (oCheckBox && oCheckBox.isA("sap.m.CheckBox")) {
+                        const sKey = oCheckBox.data("key");
+                        const sDescripcion = oCheckBox.data("descripcion");
+
+                        // Verificar si este código está en los ya seleccionados
+                        const bSelected = aCodigosSeleccionados.includes(sKey);
+                        oCheckBox.setSelected(bSelected);
+
+                        // Si está seleccionado, agregarlo al objeto temporal
+                        if (bSelected) {
+                            this._accionesSeleccionadasTemp[sKey] = {
+                                codigo: sKey,
+                                descripcion: sDescripcion
+                            };
+                        }
+                    }
+                });
+
+            }, 100);
+        },
+
+        formatCodigoAccion: function (sCodigo, sAccion) {
+            if (!sCodigo) return "";
+            if (!sAccion) return sCodigo;
+            return sCodigo + " - " + sAccion;
         },
 
         onCheckBoxSelectEntrega: function (oEvent) {
@@ -195,6 +439,70 @@ sap.ui.define([
             }
         },
 
+        onGuardarAccionesBackend: function () {
+            const oAccionesModel = this.getView().getModel("AccionesEntregaModel");
+            const aTodasLasAcciones = oAccionesModel.getData() || [];
+
+            if (aTodasLasAcciones.length === 0) {
+                MessageToast.show("No hay acciones para guardar");
+                return;
+            }
+
+            const aAccionesSinTurno = aTodasLasAcciones.filter(acc =>
+                !acc.turnoEntrega || acc.turnoEntrega.trim() === ""
+            );
+
+            if (aAccionesSinTurno.length > 0) {
+                MessageBox.warning(
+                    `Hay ${aAccionesSinTurno.length} acción(es) sin turno de entrega.`,
+                    { title: "Turnos sin asignar" }
+                );
+                return;
+            }
+
+            this.showGlobalBusy("Guardando acciones...");
+
+            this._verificarAccionesExistentes(aTodasLasAcciones)
+                .then((resultado) => {
+                    resultado.acciones.forEach(accion => {
+                        console.log(`  - ${accion.accion} (${accion.idLicencia}):`, {
+                            tieneAdjuntos: accion.Attachments && accion.Attachments.length > 0,
+                            cantidadAdjuntos: accion.Attachments ? accion.Attachments.length : 0
+                        });
+                    });
+
+                    if (resultado.acciones.length === 0) {
+                        this.hideGlobalBusy();
+                        MessageToast.show("Todas las acciones ya están guardadas");
+                        return Promise.reject("skip");
+                    }
+
+                    return this._saveAccionesEnBackend(resultado.acciones, resultado.timestamp);
+                })
+                .then(() => {
+                    this.hideGlobalBusy();
+                    MessageToast.show("Acciones guardadas correctamente");
+                })
+                .catch((error) => {
+                    this.hideGlobalBusy();
+
+                    if (error !== "skip") {
+                        if (error.responseText) {
+                            try {
+                                const errorObj = JSON.parse(error.responseText);
+                                if (errorObj.error && errorObj.error.message) {
+                                    console.error("Mensaje del backend:", errorObj.error.message.value);
+                                }
+                            } catch (e) {
+                                console.error("No se pudo parsear responseText");
+                            }
+                        }
+
+                        MessageToast.show("Error al guardar acciones", { duration: 3000 });
+                    }
+                });
+        },
+
         onGuardarAccionesEntrega: function () {
             const oView = this.getView();
             const oLicencia = this._currentLicenciaEntrega;
@@ -204,7 +512,6 @@ sap.ui.define([
                 return;
             }
 
-            // Obtener acciones seleccionadas
             const oAccionesTemp = this._accionesSeleccionadasTemp || {};
             const aCodigosSeleccionados = Object.keys(oAccionesTemp);
 
@@ -213,64 +520,99 @@ sap.ui.define([
                 return;
             }
 
-            // Obtener modelo de acciones
             const oAccionesModel = oView.getModel("AccionesEntregaModel");
             let aAcciones = oAccionesModel.getData();
 
-            // ELIMINAR todas las acciones anteriores de esta licencia
             aAcciones = aAcciones.filter(a => a.idLicencia !== oLicencia.Id);
 
-            // AGREGAR las nuevas acciones seleccionadas
             aCodigosSeleccionados.forEach(sCodigo => {
-                const oAccionData = {
+                aAcciones.push({
                     accion: sCodigo,
                     descripcion: oAccionesTemp[sCodigo].descripcion,
-                    equipo: oLicencia.Equnr,
                     idLicencia: oLicencia.Id,
+                    equipo: oLicencia.Equnr,
+                    equipoCompleto: oLicencia.EquipoCompleto || oLicencia.Equnr,
                     trabajoRealizar: oLicencia.Comments || "Sin descripción",
-                    turnoEntrega: oLicencia.TurnoAsignado || "",  
+                    turnoEntrega: oLicencia.TurnoAsignado || "",
                     estado: oLicencia.Licstat || "",
                     condicion: oLicencia.Jobcond || "",
+                    equstat: oLicencia.Equstat || "A",
+                    empresa: oLicencia.Empresa || "100",
+                    tipo: oLicencia.Tipo || "L",
+                    anio: oLicencia.Anio || new Date().getFullYear().toString(),
                     _licenciaId: oLicencia.Id,
                     Attachments: []
-                };
-
-                aAcciones.push(oAccionData);
+                });
             });
 
-            // Actualizar modelo
             oAccionesModel.setData(aAcciones);
 
-            // Marcar licencia como seleccionada (ícono azul)
             const oLicencesModel = oView.getModel("LicencesJsonModel");
             const sPath = this._currentBindingContextEntrega.getPath();
             oLicencesModel.setProperty(sPath + "/accionSeleccionada", true);
 
-            // GUARDAR adjuntos en backend si existen
-            const aAccionesConAdjuntos = aAcciones.filter(a =>
-                a.Attachments && a.Attachments.length > 0
-            );
+            MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${oLicencia.Id}`);
 
-            if (aAccionesConAdjuntos.length > 0) {
-
-                this._saveAccionAttachments(aAccionesConAdjuntos)
-                    .then(() => {
-                        MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${oLicencia.Id}`);
-                    })
-                    .catch((error) => {
-                        MessageToast.show("Advertencia: Las acciones se guardaron pero algunos adjuntos fallaron");
-                    });
-            } else {
-                MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${oLicencia.Id}`);
-            }
-
-            // Limpiar temporal
-            this._accionesSeleccionadasTemp = {};
-
-            // Cerrar popover
             if (this._oAccionEntregaPopover) {
                 this._oAccionEntregaPopover.close();
             }
+        },
+
+        _verificarAccionesExistentes: function (aAcciones) {
+            return new Promise((resolve) => {
+                const oDataService = this.getView().getModel();
+                const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+
+                if (!oFechaTurno) {
+                    resolve({ acciones: aAcciones, timestamp: null });
+                    return;
+                }
+
+                const year = oFechaTurno.getFullYear();
+                const month = oFechaTurno.getMonth();
+                const day = oFechaTurno.getDate();
+                const timestampMs = new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).getTime();
+                const odataTimestamp = `/Date(${timestampMs})/`;
+
+                const aFilters = [
+                    new Filter("Dateturno", FilterOperator.EQ, new Date(timestampMs)),
+                    new Filter("Empresa", FilterOperator.EQ, "100")
+                ];
+
+                oDataService.read("/CatalogoEntregaSet", {
+                    filters: aFilters,
+                    success: (oData) => {
+                        const setExistentes = new Set();
+                        (oData.results || []).forEach(item => {
+                            setExistentes.add(`${item.Id}_${item.Codigo}`);
+                        });
+
+                        const aAccionesNoGuardadas = aAcciones.filter(accion => {
+                            const key = `${accion.idLicencia}_${accion.accion}`;
+                            const yaExiste = setExistentes.has(key);
+
+                            // Si tiene adjuntos, SIEMPRE guardar
+                            if (accion.Attachments && accion.Attachments.length > 0) {
+                                return true;
+                            }
+
+                            // Si NO tiene adjuntos, verificar si ya existe
+                            return !yaExiste;
+                        });
+
+                        resolve({
+                            acciones: aAccionesNoGuardadas,
+                            timestamp: odataTimestamp
+                        });
+                    },
+                    error: () => {
+                        resolve({
+                            acciones: aAcciones,
+                            timestamp: odataTimestamp
+                        });
+                    }
+                });
+            });
         },
 
         _restarUnaHora: function (sTime) {
@@ -439,26 +781,93 @@ sap.ui.define([
                     title: "Confirmar eliminación",
                     onClose: (sAction) => {
                         if (sAction === MessageBox.Action.OK) {
-                            const oAccionesModel = oView.getModel("AccionesEntregaModel");
-                            const aAcciones = oAccionesModel.getData();
-                            aAcciones.splice(iIndex, 1);
-                            oAccionesModel.setData(aAcciones);
+                            const tieneKeysBackend = oAccion._licenciaId &&
+                                oAccion.idLicencia &&
+                                oAccion.accion;
 
-                            // Verificar si quedan más acciones para esta licencia
-                            const bTieneAcciones = aAcciones.some(a => a.idLicencia === oAccion.idLicencia);
+                            if (tieneKeysBackend) {
+                                this.showGlobalBusy("Eliminando acción...");
 
-                            if (!bTieneAcciones) {
-                                const oLicencesModel = oView.getModel("LicencesJsonModel");
-                                const aLicencias = oLicencesModel.getData();
-                                const oLicencia = aLicencias.find(lic => lic.Id === oAccion.idLicencia);
+                                const oDataService = this.getView().getModel();
+                                const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
 
-                                if (oLicencia) {
-                                    oLicencia.accionSeleccionada = false;
-                                    oLicencesModel.refresh();
+                                // Construir la key completa para el backend
+                                const sKey = oDataService.createKey("/CatalogoEntregaSet", {
+                                    Id: oAccion.idLicencia,
+                                    Empresa: oAccion.empresa || "100",
+                                    Tipo: oAccion.tipo || "L",
+                                    Anio: oAccion.anio || new Date().getFullYear().toString(),
+                                    Dateturno: oFechaTurno,
+                                    Codigo: oAccion.accion
+                                });
+
+                                oDataService.remove(sKey, {
+                                    success: () => {
+                                        const oAccionesModel = oView.getModel("AccionesEntregaModel");
+                                        const aAcciones = oAccionesModel.getData();
+                                        aAcciones.splice(iIndex, 1);
+                                        oAccionesModel.setData(aAcciones);
+                                        oAccionesModel.refresh(true);
+
+                                        // Verificar si quedan más acciones para esta licencia
+                                        const bTieneAcciones = aAcciones.some(a => a.idLicencia === oAccion.idLicencia);
+
+                                        if (!bTieneAcciones) {
+                                            const oLicencesModel = oView.getModel("LicencesJsonModel");
+                                            const aLicencias = oLicencesModel.getData();
+                                            const oLicencia = aLicencias.find(lic => lic.Id === oAccion.idLicencia);
+
+                                            if (oLicencia) {
+                                                oLicencia.accionSeleccionada = false;
+                                                oLicencesModel.refresh();
+                                            }
+                                        }
+
+                                        MessageToast.show("Archivo eliminado: " + oAccion.accion);
+                                        this.onGuardarAccionesBackend();
+                                    },
+                                    error: (oError) => {
+                                        this.hideGlobalBusy();
+                                        const bNoEncontrado = oError.statusCode === "404" || oError.statusCode === 404;
+
+                                        if (bNoEncontrado) {
+                                            const oAccionesModel = oView.getModel("AccionesEntregaModel");
+                                            const aAcciones = oAccionesModel.getData();
+                                            aAcciones.splice(iIndex, 1);
+                                            oAccionesModel.setData(aAcciones);
+                                            oAccionesModel.refresh(true);
+
+                                            MessageToast.show("Acción eliminada");
+
+                                            this.onGuardarAccionesBackend();
+                                        } else {
+                                            MessageBox.error("Error al eliminar la acción del backend.");
+                                        }
+                                    }
+                                });
+
+                            } else {
+                                const oAccionesModel = oView.getModel("AccionesEntregaModel");
+                                const aAcciones = oAccionesModel.getData();
+                                aAcciones.splice(iIndex, 1);
+                                oAccionesModel.setData(aAcciones);
+
+                                // Verificar si quedan más acciones para esta licencia
+                                const bTieneAcciones = aAcciones.some(a => a.idLicencia === oAccion.idLicencia);
+
+                                if (!bTieneAcciones) {
+                                    const oLicencesModel = oView.getModel("LicencesJsonModel");
+                                    const aLicencias = oLicencesModel.getData();
+                                    const oLicencia = aLicencias.find(lic => lic.Id === oAccion.idLicencia);
+
+                                    if (oLicencia) {
+                                        oLicencia.accionSeleccionada = false;
+                                        oLicencesModel.refresh();
+                                    }
                                 }
-                            }
 
-                            MessageToast.show("Acción eliminada");
+                                MessageToast.show("Acción eliminada");
+                            }
                         }
                     }
                 }
@@ -602,7 +1011,7 @@ sap.ui.define([
             }
         },
 
-        getBaseURL: function () {
+        /* getBaseURL: function () {
             const appId = this.getOwnerComponent().getManifestEntry("/sap.app/id");
             const appPath = appId.replaceAll(".", "/");
             const appModulePath = jQuery.sap.getModulePath(appPath);
@@ -616,7 +1025,7 @@ sap.ui.define([
             }
 
             return appModulePath;
-        },
+        }, */
         onTabSelect: function (oEvent) {
             const key = oEvent.getParameter("key");
             this.getView().getModel("tabsControl").setProperty("/activeTab", key);
@@ -666,6 +1075,10 @@ sap.ui.define([
                         })
                         .catch((err) => {
                             return this.successSelectTurno(oData);
+                        })
+                        .then(() => {
+                            // ✅ CARGAR ACCIONES después de cargar licencias
+                            return this._cargarAccionesDesdeBackend(sSelectedDate);
                         })
                         .finally(() => {
                             this.hideGlobalBusy();
@@ -1408,7 +1821,10 @@ sap.ui.define([
                             "$expand": "HorariosPorLicencia_nav,CoordinacionesLicencia_nav,ObservacionesLicencia_nav,TramitacionesLicencia_nav,SuspensionLicencia_nav,ReanudacionLicencia_nav,TransferenciaJefeTrabajo_nav,DevolucionLicencia_nav,EntregasLicencia_nav,AttachmentXLicencia_nav,EsquemaUnifilar_nav,TurnosLicencias_nav"
                         },
                         success: (oData) => {
-                            if (!ESTADOS_PERMITIDOS.includes(oData.Licstat)) {
+                            // Si es agregada manualmente, SIEMPRE pasa (sin validar estado)
+                            const bAgrmanual = turnoLicencia.Agrmanual === true;
+
+                            if (!bAgrmanual && !ESTADOS_PERMITIDOS.includes(oData.Licstat)) {
                                 resolve(null);
                                 return;
                             }
@@ -1419,6 +1835,9 @@ sap.ui.define([
                                 Timend: oData.Timend || null,
                                 Gdate: oData.Gdate || null,
                                 TurnoAsignado: turnoLicencia.Turno || "",
+                                Agrmanual: turnoLicencia.Agrmanual || false,
+                                Comentarios: turnoLicencia.Comentarios || oData.Comentarios || "",
+                                Enviado: turnoLicencia.Enviado || false,
                                 tramitacionColor: turnoLicencia.tramitacionColor || null,
                                 tramitacionProblematica: turnoLicencia.tramitacionProblematica || false,
                                 tramitacionEstado: turnoLicencia.tramitacionEstado || null,
@@ -1432,7 +1851,9 @@ sap.ui.define([
                         error: (oError) => {
                             LicenseService.FIND(turnoLicencia, oDataModel)
                                 .then(result => {
-                                    if (!ESTADOS_PERMITIDOS.includes(result.Licstat)) {
+                                    const bAgrmanual = turnoLicencia.Agrmanual === true;
+
+                                    if (!bAgrmanual && !ESTADOS_PERMITIDOS.includes(result.Licstat)) {
                                         resolve(null);
                                         return;
                                     }
@@ -1440,6 +1861,12 @@ sap.ui.define([
                                     if (!result.Timbeg && turnoLicencia.Timbeg) {
                                         result.Timbeg = turnoLicencia.Timbeg;
                                     }
+
+                                    result.Agrmanual = turnoLicencia.Agrmanual || false;
+                                    result.Comentarios = turnoLicencia.Comentarios || result.Comentarios || "";
+                                    result.Enviado = turnoLicencia.Enviado || false;
+                                    result.TurnoAsignado = turnoLicencia.Turno || "";
+
                                     resolve(result);
                                 })
                                 .catch(err => {
@@ -2268,9 +2695,11 @@ sap.ui.define([
                 this._oComboPopover = oPopover;
                 oView.addDependent(oPopover);
 
+                const oCell = oButton.getParent();
+
                 this._initializeCheckBoxes(aAccionesEntregas);
 
-                oPopover.openBy(oButton);
+                oPopover.openBy(oCell);
             }.bind(this));
         },
 
@@ -2362,6 +2791,11 @@ sap.ui.define([
         onSaveTurnoPress: function () {
             let Fecha = this._oFechaTurnoCreado || this.getView().byId('date').getDateValue();
 
+            if (!RoleHelper.isEditor()) {
+                MessageBox.error("No tenés permisos para realizar esta acción");
+                return;
+            }
+
             if (!Fecha) {
                 MessageBox.warning("Debe seleccionar una fecha para guardar el turno.");
                 return;
@@ -2370,14 +2804,12 @@ sap.ui.define([
             const oModel = this.getView().getModel("LicencesJsonModel");
             const aAllLicences = oModel.getProperty("/") || [];
 
-
             if (!aAllLicences || aAllLicences.length === 0) {
                 MessageBox.warning("No hay datos para guardar.");
                 return;
             }
 
             aAllLicences.forEach((lic, idx) => {
-
                 if (lic.Attachments && lic.Attachments.length > 0) {
                     lic.Attachments.forEach((att, attIdx) => {
                         console.log(`   📎 Adjunto ${attIdx + 1}:`, {
@@ -2411,68 +2843,54 @@ sap.ui.define([
                 return;
             }
 
-            // Mensaje informativo: "Acciones para la entrega" NO persiste en backend
-            MessageBox.information(
-                "Los datos ingresados en la columna no se guardarán ni tendrán persistencia en el backend.\n\n" +
-                "Esta información se utiliza únicamente a nivel de interfaz y se encuentra actualmente en desarrollo.",
-                {
-                    title: "Información",
-                    actions: [MessageBox.Action.OK],
-                    emphasizedAction: MessageBox.Action.OK,
-                    onClose: () => {
-
-                        this._checkNewLicensesBeforeSave(Fecha)
-                            .then((bContinue) => {
-                                if (!bContinue) {
-                                    return;
-                                }
-
-                                const aData = [];
-
-                                aAllLicences.forEach(function (oRowData) {
-                                    const row = {
-                                        Id: oRowData.Id,
-                                        Empresa: oRowData.Empresa,
-                                        Tipo: oRowData.Tipo,
-                                        Anio: oRowData.Anio,
-                                        Fecha: Fecha,
-                                        Turno: oRowData.TurnoAsignado,
-                                        Comentarios: oRowData.Comentarios,
-                                        Enviado: false
-                                    };
-
-                                    aData.push(row);
-                                });
-
-                                this.createTurno(aData, aAllLicences, false);
-                            })
-                            .catch((error) => {
-
-                                const aData = [];
-
-                                aAllLicences.forEach(function (oRowData) {
-                                    const row = {
-                                        Id: oRowData.Id,
-                                        Empresa: oRowData.Empresa,
-                                        Tipo: oRowData.Tipo,
-                                        Anio: oRowData.Anio,
-                                        Fecha: Fecha,
-                                        Turno: oRowData.TurnoAsignado,
-                                        Comentarios: oRowData.Comentarios,
-                                        Enviado: false
-                                    };
-
-                                    aData.push(row);
-                                });
-
-                                this.createTurno(aData, aAllLicences, false);
-                            });
-
+            this._checkNewLicensesBeforeSave(Fecha)
+                .then((bContinue) => {
+                    if (!bContinue) {
+                        return;
                     }
-                }
-            );
-        },
 
+                    const aData = [];
+
+                    aAllLicences.forEach(function (oRowData) {
+                        const row = {
+                            Id: oRowData.Id,
+                            Empresa: oRowData.Empresa,
+                            Tipo: oRowData.Tipo,
+                            Anio: oRowData.Anio,
+                            Fecha: Fecha,
+                            Turno: oRowData.TurnoAsignado,
+                            Comentarios: oRowData.Comentarios,
+                            Enviado: false,
+                            Agrmanual: oRowData.Agrmanual || false
+                        };
+
+                        aData.push(row);
+                    });
+
+                    this.createTurno(aData, aAllLicences, false);
+                })
+                .catch((error) => {
+                    const aData = [];
+
+                    aAllLicences.forEach(function (oRowData) {
+                        const row = {
+                            Id: oRowData.Id,
+                            Empresa: oRowData.Empresa,
+                            Tipo: oRowData.Tipo,
+                            Anio: oRowData.Anio,
+                            Fecha: Fecha,
+                            Turno: oRowData.TurnoAsignado,
+                            Comentarios: oRowData.Comentarios,
+                            Enviado: false,
+                            Agrmanual: oRowData.Agrmanual || false
+                        };
+
+                        aData.push(row);
+                    });
+
+                    this.createTurno(aData, aAllLicences, false);
+                });
+        },
 
         createTurno: function (licencias, aAttachments, bEnviado) {
             const entity = "/TurnosLicenciasSet";
@@ -2492,7 +2910,8 @@ sap.ui.define([
                         "Dateturno": new Date(licencia.Fecha),
                         "Turno": licencia.Turno,
                         "Comentarios": licencia.Comentarios,
-                        "Enviado": bEnviado !== undefined ? bEnviado : licencia.Enviado
+                        "Enviado": bEnviado !== undefined ? bEnviado : licencia.Enviado,
+                        "Agrmanual": licencia.Agrmanual || false
                     };
 
                     oDataService.create(entity, license, {
@@ -3460,7 +3879,6 @@ sap.ui.define([
         },
 
         _convertFileToBase64: function (file) {
-
             const reader = new FileReader();
 
             reader.onload = function (e) {
@@ -3471,31 +3889,39 @@ sap.ui.define([
 
                     if (!oLicencia.Attachments) {
                         oLicencia.Attachments = [];
-                    } else {
                     }
 
-                    // Agregar el nuevo archivo al array
+                    // Obtener fecha del turno
+                    const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+
                     const nuevoAdjunto = {
+                        // Keys
                         Id: oLicencia.Id,
-                        Empresa: oLicencia.Empresa,
-                        Anio: oLicencia.Anio,
-                        AttachmentData: base64String,
+                        Empresa: "100",
+                        Tipo: "L",
+                        Anio: new Date().getFullYear().toString(),
+                        Dateturno: oFechaTurno,
+                        Codigo: "",
+
+                        // Campos adicionales
+                        Accion: "",
+                        Descripcion: oLicencia.Comments || "",
+                        Equnr: (oLicencia.Equnr || "").substring(0, 18),
+                        Comments: file.name.substring(0, 255),
+                        Licstat: (oLicencia.Licstat || "01").substring(0, 2),
+                        Attachment: base64String.split(',')[1],
+
+                        // Metadata para UI (NO se envían al backend)
                         AttachmentName: file.name,
                         AttachmentSize: file.size,
                         AttachmentType: file.type,
                         Timestamp: new Date().getTime()
                     };
 
-
                     oLicencia.Attachments.push(nuevoAdjunto);
-
 
                     const oModel = this.getView().getModel("LicencesJsonModel");
                     oModel.refresh(true);
-
-
-                    const oLicenciaVerificacion = this._currentAttachmentContext.getObject();
-
 
                     MessageToast.show("Archivo agregado: " + file.name);
                 }
@@ -3547,12 +3973,10 @@ sap.ui.define([
                     template: new sap.m.CustomListItem({
                         content: [
                             new sap.m.HBox({
-                                width: "100%",
                                 justifyContent: "SpaceBetween",
                                 alignItems: "Center",
                                 items: [
                                     new sap.m.HBox({
-                                        width: "140px",
                                         justifyContent: "End",
                                         alignItems: "Center",
                                         items: [
@@ -3577,6 +4001,8 @@ sap.ui.define([
                                     }),
                                     // Botones de acción
                                     new sap.m.HBox({
+                                        justifyContent: "End",
+                                        alignItems: "Center",
                                         items: [
                                             // Botón Ver
                                             new sap.m.Button({
@@ -3820,7 +4246,6 @@ sap.ui.define([
                     contentHeight: "80%",
                     content: new sap.m.Image({
                         id: this.createId("imageViewer"),
-                        width: "100%",
                         densityAware: false
                     }),
                     endButton: new sap.m.Button({
@@ -3965,7 +4390,7 @@ sap.ui.define([
 
                                     // Verificar que se asignó
                                     const licenciaActualizada = oLicencesModel.getProperty("/" + iRealIndex);
-                                } 
+                                }
                             }
                             resolve();
                         }.bind(this),
@@ -5098,8 +5523,6 @@ sap.ui.define([
                 return;
             }
 
-            this.onClearFilter();
-
             // Recargar datos
             this.showGlobalBusy(oResourceBundle.getText("updatingData") || "Actualizando datos...");
 
@@ -5952,17 +6375,16 @@ sap.ui.define([
                         Tipo: "L",
                         Anio: new Date().getFullYear().toString(),
                         Dateturno: oFechaTurno,
-                        CodigoAccion: oAccion.accion || "",
+                        Codigo: oAccion.accion || "",
 
                         // Campos adicionales
                         Descripcion: oAccion.descripcion || "",
                         Equnr: oAccion.equipo || "",
-                        Equstat: oAccion.estado || "",
                         Jobcond: oAccion.condicion || "",
                         Turnoentrega: oAccion.turnoEntrega || "",
                         Comments: "",
                         Licstat: oAccion.estado || "",
-                        Attachment: base64String.split(',')[1], // Solo la parte base64, sin el prefijo data:
+                        Attachment: base64String.split(',')[1],
 
                         // Metadata para UI
                         AttachmentName: file.name,
@@ -5978,7 +6400,7 @@ sap.ui.define([
                     oModel.refresh(true);
 
                     MessageToast.show("Archivo agregado: " + file.name);
-                } 
+                }
             }.bind(this);
 
             reader.onerror = function () {
@@ -6027,7 +6449,6 @@ sap.ui.define([
                     template: new sap.m.CustomListItem({
                         content: [
                             new sap.m.HBox({
-                                width: "100%",
                                 justifyContent: "SpaceBetween",
                                 alignItems: "Center",
                                 items: [
@@ -6055,6 +6476,8 @@ sap.ui.define([
                                     }),
                                     // Botones de acción
                                     new sap.m.HBox({
+                                        justifyContent: "End",
+                                        alignItems: "Center",
                                         items: [
                                             // Botón Ver
                                             new sap.m.Button({
@@ -6074,7 +6497,6 @@ sap.ui.define([
                                                 icon: "sap-icon://delete",
                                                 type: "Reject",
                                                 tooltip: "Eliminar archivo",
-                                                width: "2.5rem",  
                                                 press: function (oEvent) {
                                                     const oItem = oEvent.getSource().getParent().getParent().getParent();
                                                     const iIndex = oList.indexOfItem(oItem);
@@ -6179,44 +6601,73 @@ sap.ui.define([
                 return;
             }
 
-            // Eliminar del array
-            oAccion.Attachments.splice(iIndex, 1);
+            const tieneKeysBackend = oAttachment.Id && oAttachment.Empresa &&
+                oAttachment.Tipo && oAttachment.Anio &&
+                oAttachment.Dateturno && oAttachment.Codigo;
 
-            // Actualizar modelo
-            const oModel = this.getView().getModel("AccionesEntregaModel");
-            oModel.updateBindings(true);
+            if (tieneKeysBackend) {
+                this.showGlobalBusy("Eliminando adjunto...");
 
-            MessageToast.show("Archivo eliminado: " + oAttachment.AttachmentName);
+                const oDataService = this.getView().getModel();
 
-            // Cerrar diálogo
-            if (this._attachmentSelectorDialogAccion) {
-                this._attachmentSelectorDialogAccion.close();
-            }
+                const sKey = oDataService.createKey("/CatalogoEntregaSet", {
+                    Id: oAttachment.Id,
+                    Empresa: oAttachment.Empresa,
+                    Tipo: oAttachment.Tipo,
+                    Anio: oAttachment.Anio,
+                    Dateturno: oAttachment.Dateturno,
+                    Codigo: oAttachment.Codigo
+                });
 
-            // Mensaje si no quedan archivos
-            if (oAccion.Attachments.length === 0) {
-                MessageToast.show("Todos los archivos fueron eliminados");
+                oDataService.remove(sKey, {
+                    success: () => {
+                        oAccion.Attachments.splice(iIndex, 1);
+
+                        const oModel = this.getView().getModel("AccionesEntregaModel");
+                        oModel.updateBindings(true);
+
+                        if (this._attachmentSelectorDialogAccion) {
+                            this._attachmentSelectorDialogAccion.close();
+                        }
+
+                        MessageToast.show("Archivo eliminado: " + oAttachment.AttachmentName);
+
+                        this.onGuardarAccionesBackend();
+                    },
+                    error: (oError) => {
+                        this.hideGlobalBusy();
+                        MessageBox.error("Error al eliminar el archivo del backend. Intente nuevamente.");
+                    }
+                });
+
+            } else {
+                oAccion.Attachments.splice(iIndex, 1);
+
+                const oModel = this.getView().getModel("AccionesEntregaModel");
+                oModel.updateBindings(true);
+
+                MessageToast.show("Archivo eliminado: " + oAttachment.AttachmentName);
+
+                // Cerrar diálogo
+                if (this._attachmentSelectorDialogAccion) {
+                    this._attachmentSelectorDialogAccion.close();
+                }
+
+                if (oAccion.Attachments.length === 0) {
+                    MessageToast.show("Todos los archivos fueron eliminados. Recuerde guardar los cambios.");
+                }
             }
         },
 
         _openAttachmentAccion: function (oAttachment) {
             const sType = oAttachment.AttachmentType;
 
-            // ✅ CORRECCIÓN: Reconstruir data URL completa
             let sDataUrl = oAttachment.Attachment;
 
-            // Si no tiene el prefijo data:, agregarlo
             if (!sDataUrl.startsWith('data:')) {
                 const mimeType = sType || 'application/octet-stream';
                 sDataUrl = `data:${mimeType};base64,${sDataUrl}`;
             }
-
-            console.log("🔍 [ACCION] Abriendo archivo:", {
-                nombre: oAttachment.AttachmentName,
-                tipo: sType,
-                tienePrefijo: sDataUrl.startsWith('data:'),
-                longitudBase64: sDataUrl.length
-            });
 
             // Para PDFs
             if (sType === "application/pdf") {
@@ -6224,11 +6675,11 @@ sap.ui.define([
                 return;
             }
 
-            // Para imágenes - ✅ USAR OBJETO CON AttachmentData
+            // Para imágenes 
             if (sType && sType.startsWith("image/")) {
                 // Crear objeto compatible con _openImageViewer
                 const oImageAttachment = {
-                    AttachmentData: sDataUrl,  
+                    AttachmentData: sDataUrl,
                     AttachmentName: oAttachment.AttachmentName
                 };
                 this._openImageViewer(oImageAttachment);
@@ -6239,149 +6690,634 @@ sap.ui.define([
             this._downloadAttachmentAccion(oAttachment);
         },
 
-        _saveAccionAttachments: function (aAcciones) {
-            const oDataService = this.getView().getModel();
-            const sEntity = "/CatalogoEntregasSet";
+        // ------------------------ AGREGAR LICENCIAS SIN FILTRO DE ESTADO ------------------------
 
-            // Recolectar todos los adjuntos de todas las acciones
-            const aAllAttachments = [];
+        onAgregarLicencia: function (oEvent) {
+            const oView = this.getView();
 
-            aAcciones.forEach(accion => {
-                if (accion.Attachments && accion.Attachments.length > 0) {
-                    accion.Attachments.forEach(att => {
-                        aAllAttachments.push(att);
+            // Obtener fecha seleccionada
+            const oDatePicker = this.byId("date");
+            const oFechaSeleccionada = oDatePicker.getDateValue();
+
+            if (!oFechaSeleccionada) {
+                MessageBox.warning("Por favor, seleccione una fecha primero.");
+                return;
+            }
+
+            // Mostrar busy
+            this.showGlobalBusy("Cargando licencias disponibles...");
+
+            // Cargar licencias sin filtro de estado
+            this._cargarLicenciasDisponibles(oFechaSeleccionada)
+                .then((aLicencias) => {
+                    this.hideGlobalBusy();
+
+                    if (aLicencias.length === 0) {
+                        MessageBox.information("No hay licencias disponibles para esta fecha.");
+                        return;
+                    }
+
+                    // Crear/Abrir fragment
+                    this._mostrarDialogoAgregarLicencias(aLicencias);
+                })
+                .catch((error) => {
+                    this.hideGlobalBusy();
+                    MessageBox.error("Error al cargar las licencias disponibles.");
+                });
+        },
+
+        _cargarLicenciasDisponibles: function (oFecha) {
+            return new Promise((resolve, reject) => {
+                const oDataModel = this.getView().getModel();
+
+                // Filtros: Solo fecha y empresa, SIN filtro de estado
+                const aFilters = [
+                    new Filter("Solbeg", FilterOperator.LE, oFecha),
+                    new Filter("Solend", FilterOperator.GE, oFecha),
+                    new Filter("Empresa", FilterOperator.EQ, "100"),
+                    new Filter("Tipo", FilterOperator.EQ, "L")
+                ];
+
+
+                oDataModel.read('/LicenciaTrabajoSet', {
+                    filters: aFilters,
+                    success: (oData) => {
+                        const aLicencias = oData.results || [];
+
+                        // Filtrar solo las que ya NO están en la tabla
+                        const aLicenciasFiltradas = this._filtrarLicenciasYaAgregadas(aLicencias);
+
+                        resolve(aLicenciasFiltradas);
+                    },
+                    error: (oError) => {
+                        reject(oError);
+                    }
+                });
+            });
+        },
+
+        _filtrarLicenciasYaAgregadas: function (aLicencias) {
+            const oLicencesModel = this.getView().getModel("LicencesJsonModel");
+            const aLicenciasActuales = oLicencesModel.getData() || [];
+
+            // Set de IDs ya agregados
+            const setIdsActuales = new Set(aLicenciasActuales.map(l => l.Id));
+
+            // Filtrar las que NO están
+            const aDisponibles = aLicencias.filter(lic => !setIdsActuales.has(lic.Id));
+
+            return aDisponibles;
+        },
+
+        _mostrarDialogoAgregarLicencias: function (aLicencias) {
+            const oView = this.getView();
+
+            // Crear modelo para el diálogo
+            const oAgregarLicenciaModel = new sap.ui.model.json.JSONModel(aLicencias);
+            oView.setModel(oAgregarLicenciaModel, "AgregarLicenciaModel");
+
+            // Cargar fragment si no existe
+            if (!this._dialogAgregarLicencia) {
+                Fragment.load({
+                    id: oView.getId(),
+                    name: "transener.sistemadeturnos.fragments.agregarLicenciaDisponible",
+                    controller: this
+                }).then((oDialog) => {
+                    this._dialogAgregarLicencia = oDialog;
+                    oView.addDependent(oDialog);
+                    oDialog.open();
+                });
+            } else {
+                this._dialogAgregarLicencia.open();
+            }
+        },
+
+        onSearchAgregarLicencia: function (oEvent) {
+            const sQuery = oEvent.getParameter("newValue") || "";
+            const oTable = this.byId("tablaAgregarLicencias");
+            const oBinding = oTable.getBinding("items");
+
+            if (!oBinding) return;
+
+            const aFilters = [];
+
+            if (sQuery) {
+                aFilters.push(new Filter({
+                    filters: [
+                        new Filter("Id", FilterOperator.Contains, sQuery),
+                        new Filter("Equnr", FilterOperator.Contains, sQuery),
+                        new Filter("Comments", FilterOperator.Contains, sQuery),
+                        new Filter("Licstat", FilterOperator.Contains, sQuery)
+                    ],
+                    and: false
+                }));
+            }
+
+            oBinding.filter(aFilters);
+
+        },
+
+        onConfirmarAgregarLicencias: function () {
+            const oTable = this.byId("tablaAgregarLicencias");
+            const aSelectedItems = oTable.getSelectedItems();
+
+            if (aSelectedItems.length === 0) {
+                MessageBox.warning("Por favor, seleccione al menos una licencia.");
+                return;
+            }
+
+            // Obtener las licencias seleccionadas
+            const aLicenciasSeleccionadas = aSelectedItems.map(item => {
+                return item.getBindingContext("AgregarLicenciaModel").getObject();
+            });
+
+            // Mostrar busy
+            this.showGlobalBusy("Procesando licencias...");
+
+            this._procesarLicenciasAntesDeAgregar(aLicenciasSeleccionadas)
+                .then((aLicenciasProcesadas) => {
+
+                    // MARCAR como agregadas manualmente
+                    aLicenciasProcesadas.forEach(lic => {
+                        lic.Agrmanual = true;
                     });
+
+                    // Agregar a la tabla
+                    TurnosService.appendLicencesToModel(aLicenciasProcesadas, this.getView());
+
+                    this.hideGlobalBusy();
+
+                    // Mensaje de éxito
+                    MessageToast.show(`${aLicenciasProcesadas.length} licencia(s) agregada(s) correctamente`);
+
+                    // Cerrar diálogo
+                    this._dialogAgregarLicencia.close();
+
+                    // Limpiar selección
+                    oTable.removeSelections();
+                })
+                .catch((error) => {
+                    this.hideGlobalBusy();
+                    MessageBox.error("Error al procesar las licencias.");
+                });
+        },
+
+        _procesarLicenciasAntesDeAgregar: function (aLicencias) {
+            return new Promise((resolve, reject) => {
+                const oView = this.getView();
+
+                // 1. Obtener descripciones de equipos
+                this._obtenerDescripcionesEquiposParaLicencias(aLicencias)
+                    .then((aLicenciasConDescripciones) => {
+
+                        // 2. Asignar consolas
+                        const aLicenciasCompletas = this._asignarConsolasALicencias(aLicenciasConDescripciones);
+
+                        resolve(aLicenciasCompletas);
+                    })
+                    .catch((error) => {
+
+                        // Si falla, al menos asignar consolas
+                        const aLicenciasConConsola = this._asignarConsolasALicencias(aLicencias);
+                        resolve(aLicenciasConConsola);
+                    });
+            });
+        },
+
+        _obtenerDescripcionesEquiposParaLicencias: function (aLicencias) {
+            // Extraer combinaciones únicas de Equnr + Tplnr
+            const aEquiposUnicos = aLicencias
+                .map(item => ({
+                    Equnr: (item.Equnr || "").trim(),
+                    Tplnr: (item.Tplnr || "").trim()
+                }))
+                .filter(item => item.Equnr && item.Tplnr);
+
+            // Deduplicar
+            const aEquiposUnicosDedup = Array.from(
+                new Map(aEquiposUnicos.map(item => [JSON.stringify(item), item])).values()
+            );
+
+            if (aEquiposUnicosDedup.length === 0) {
+                return Promise.resolve(aLicencias);
+            }
+
+            // Llamar a la función existente
+            return this._obtenerDescripcionesEquipos(aEquiposUnicosDedup)
+                .then((oDescripcionesEquipos) => {
+
+                    // Agregar descripciones a las licencias
+                    aLicencias.forEach(lic => {
+                        const sEquipoNormalizado = (lic.Equnr || "").trim();
+                        lic.DescEquipo = oDescripcionesEquipos[sEquipoNormalizado] || "";
+                        lic.EquipoCompleto = lic.DescEquipo
+                            ? lic.Equnr + " - " + lic.DescEquipo
+                            : lic.Equnr;
+                    });
+
+                    return aLicencias;
+                });
+        },
+
+        _asignarConsolasALicencias: function (aLicencias) {
+            const oView = this.getView();
+            const oConsolasModel = ModelHelper.getModel("consolasModel", oView);
+
+            if (!oConsolasModel) {
+                return aLicencias;
+            }
+
+            const oConsolasData = oConsolasModel.getData();
+
+            if (!oConsolasData || typeof oConsolasData !== "object") {
+                return aLicencias;
+            }
+
+            // Asignar consola a cada licencia
+            aLicencias.forEach((licencia) => {
+                for (const grupo in oConsolasData) {
+                    const consolas = oConsolasData[grupo];
+
+                    if (Array.isArray(consolas)) {
+                        const consolaEncontrada = consolas.find((consola) => consola === licencia.Tplnr);
+
+                        if (consolaEncontrada) {
+                            licencia.Consola = grupo;
+                            break;
+                        }
+                    }
+                }
+
+                // Si no se encontró consola, asignar vacío
+                if (!licencia.Consola) {
+                    licencia.Consola = "";
                 }
             });
 
-            if (aAllAttachments.length === 0) {
+            return aLicencias;
+        },
+
+        onCancelarAgregarLicencias: function () {
+            if (this._dialogAgregarLicencia) {
+                this._dialogAgregarLicencia.close();
+
+                // Limpiar selección
+                const oTable = this.byId("tablaAgregarLicencias");
+                if (oTable) {
+                    oTable.removeSelections();
+                }
+            }
+        },
+
+        _saveAccionesEnBackend: function (aAcciones, timestampOData) {
+            const oDataService = this.getView().getModel();
+            const sEntity = "/CatalogoEntregaSet";
+
+            if (aAcciones.length === 0) {
                 return Promise.resolve();
             }
 
-            const aPromises = aAllAttachments.map((att) => {
-                return new Promise((resolve, reject) => {
-                    // Asegurarse de que Attachment sea solo base64 (sin prefijo)
-                    let base64Data = att.Attachment;
-                    if (base64Data.includes(',')) {
-                        base64Data = base64Data.split(',')[1];
-                    }
+            const aPromises = [];
 
-                    const payload = {
-                        // Keys
-                        Id: att.Id,
-                        Empresa: att.Empresa,
-                        Tipo: att.Tipo,
-                        Anio: att.Anio,
-                        Dateturno: att.Dateturno,
-                        CodigoAccion: att.CodigoAccion,
+            aAcciones.forEach(accion => {
+                const bExisteEnBackend = accion._licenciaId && accion.idLicencia && accion.accion;
 
-                        // Campos adicionales
-                        Descripcion: att.Descripcion || "",
-                        Equnr: att.Equnr || "",
-                        Equstat: att.Equstat || "",
-                        Jobcond: att.Jobcond || "",
-                        Turnoentrega: att.Turnoentrega || "",
-                        Comments: att.Comments || "",
-                        Licstat: att.Licstat || "",
-                        Attachment: base64Data
-                    };
+                if (accion.Attachments && accion.Attachments.length > 0) {
+                    // Procesar cada adjunto
+                    accion.Attachments.forEach((att, idx) => {
+                        const bAdjuntoExiste = att.Id && att.Empresa && att.Tipo && att.Anio && att.Dateturno && att.Codigo;
 
-                    console.log("💾 [ACCION] Guardando adjunto:", {
-                        Id: payload.Id,
-                        CodigoAccion: payload.CodigoAccion,
-                        AttachmentName: att.AttachmentName
+                        aPromises.push(
+                            new Promise((resolve, reject) => {
+                                let base64Data = att.Attachment || "";
+                                if (base64Data.includes(',')) {
+                                    base64Data = base64Data.split(',')[1];
+                                }
+
+                                const payload = {
+                                    Id: accion.idLicencia,
+                                    Empresa: accion.empresa || "100",
+                                    Tipo: accion.tipo || "L",
+                                    Anio: accion.anio || new Date().getFullYear().toString(),
+                                    Dateturno: timestampOData,
+                                    Codigo: (accion.accion || "").substring(0, 10),
+                                    Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                                    Descripcion: accion.trabajoRealizar || "Sin descripción",
+                                    Equnr: (accion.equipo || "").substring(0, 18),
+                                    Equstat: accion.equstat || "A",
+                                    Jobcond: (accion.condicion || "01").substring(0, 2),
+                                    Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                                    Comments: (att.AttachmentName || `Adjunto ${idx + 1}`).substring(0, 255),
+                                    Licstat: (accion.estado || "01").substring(0, 2),
+                                    Attachment: base64Data
+                                };
+
+                                if (bAdjuntoExiste) {
+                                    const sKey = oDataService.createKey(sEntity, {
+                                        Id: att.Id,
+                                        Empresa: att.Empresa,
+                                        Tipo: att.Tipo,
+                                        Anio: att.Anio,
+                                        Dateturno: att.Dateturno,
+                                        Codigo: att.Codigo
+                                    });
+
+                                    oDataService.update(sKey, payload, {
+                                        success: () => {
+                                            resolve();
+                                        },
+                                        error: (oError) => {
+                                            // Intentar crear si falla el update
+                                            oDataService.create(sEntity, payload, {
+                                                success: () => {
+                                                    resolve();
+                                                },
+                                                error: () => {
+                                                    resolve();
+                                                }
+                                            });
+                                        }
+                                    });
+                                } else {
+                                    oDataService.create(sEntity, payload, {
+                                        success: () => {
+                                            resolve();
+                                        },
+                                        error: (oError) => {
+                                            const isDuplicado = oError.responseText &&
+                                                oError.responseText.includes("ya existe");
+
+                                            if (isDuplicado) {
+                                                const sKey = oDataService.createKey(sEntity, {
+                                                    Id: payload.Id,
+                                                    Empresa: payload.Empresa,
+                                                    Tipo: payload.Tipo,
+                                                    Anio: payload.Anio,
+                                                    Dateturno: payload.Dateturno,
+                                                    Codigo: payload.Codigo
+                                                });
+
+                                                oDataService.update(sKey, payload, {
+                                                    success: () => {
+                                                        resolve();
+                                                    },
+                                                    error: () => {
+                                                        resolve();
+                                                    }
+                                                });
+                                            } else {
+                                                resolve();
+                                            }
+                                        }
+                                    });
+                                }
+                            })
+                        );
                     });
 
-                    oDataService.create(sEntity, payload, {
-                        success: () => {;
-                            resolve();
-                        },
-                        error: (oError) => {
-                            reject(oError);
-                        }
-                    });
-                });
+                } else {
+
+                    aPromises.push(
+                        new Promise((resolve, reject) => {
+                            const payload = {
+                                Id: accion.idLicencia,
+                                Empresa: accion.empresa || "100",
+                                Tipo: accion.tipo || "L",
+                                Anio: accion.anio || new Date().getFullYear().toString(),
+                                Dateturno: timestampOData,
+                                Codigo: (accion.accion || "").substring(0, 10),
+                                Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                                Descripcion: accion.trabajoRealizar || "Sin descripción",
+                                Equnr: (accion.equipo || "").substring(0, 18),
+                                Equstat: accion.equstat || "A",
+                                Jobcond: (accion.condicion || "01").substring(0, 2),
+                                Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                                Comments: "Sin adjuntos",
+                                Licstat: (accion.estado || "01").substring(0, 2),
+                                Attachment: ""
+                            };
+
+                            if (bExisteEnBackend) {
+                                const sKey = oDataService.createKey(sEntity, {
+                                    Id: accion.idLicencia,
+                                    Empresa: accion.empresa || "100",
+                                    Tipo: accion.tipo || "L",
+                                    Anio: accion.anio || new Date().getFullYear().toString(),
+                                    Dateturno: timestampOData,
+                                    Codigo: accion.accion
+                                });
+
+                                oDataService.update(sKey, payload, {
+                                    success: () => {
+                                        resolve();
+                                    },
+                                    error: (oError) => {
+                                        oDataService.create(sEntity, payload, {
+                                            success: () => {
+                                                resolve();
+                                            },
+                                            error: (oError2) => {
+                                                resolve();
+                                            }
+                                        });
+                                    }
+                                });
+                            } else {
+                                oDataService.create(sEntity, payload, {
+                                    success: () => {
+                                        resolve();
+                                    },
+                                    error: (oError) => {
+                                        const isDuplicado = oError.responseText &&
+                                            oError.responseText.includes("ya existe");
+
+                                        if (isDuplicado) {
+                                            const sKey = oDataService.createKey(sEntity, {
+                                                Id: payload.Id,
+                                                Empresa: payload.Empresa,
+                                                Tipo: payload.Tipo,
+                                                Anio: payload.Anio,
+                                                Dateturno: payload.Dateturno,
+                                                Codigo: payload.Codigo
+                                            });
+
+                                            oDataService.update(sKey, payload, {
+                                                success: () => {
+                                                    resolve();
+                                                },
+                                                error: () => {
+                                                    resolve();
+                                                }
+                                            });
+                                        } else {
+                                            resolve();
+                                        }
+                                    }
+                                });
+                            }
+                        })
+                    );
+                }
             });
 
             return Promise.all(aPromises);
         },
 
-        onGuardarAccionesBackend: function () {
-            const oAccionesModel = this.getView().getModel("AccionesEntregaModel");
-            const aAcciones = oAccionesModel.getData() || [];
+        _convertODataTimestampToDate: function (timestampOData) {
+            if (!timestampOData) return null;
 
-            if (aAcciones.length === 0) {
-                MessageBox.information("No hay acciones para guardar.");
-                return;
+            // Extraer el número del formato /Date(1769040000000)/
+            const match = timestampOData.match(/\/Date\((\d+)\)\//);
+            if (match && match[1]) {
+                return new Date(parseInt(match[1]));
             }
 
-            // Validar que todas las acciones tengan turnoEntrega
-            const aAccionesSinTurno = aAcciones.filter(acc => !acc.turnoEntrega || acc.turnoEntrega.trim() === "");
-
-            if (aAccionesSinTurno.length > 0) {
-                const sDetalle = aAccionesSinTurno
-                    .map(acc => `• Acción ${acc.accion} (Licencia ${acc.idLicencia})`)
-                    .join("\n");
-
-                MessageBox.warning(
-                    `Hay ${aAccionesSinTurno.length} acción(es) sin turno de entrega:\n\n${sDetalle}\n\nPor favor, asigne un turno a todas las acciones antes de guardar.`,
-                    {
-                        title: "Turnos sin asignar",
-                        styleClass: "sapUiSizeCompact"
-                    }
-                );
-                return;
-            }
-
-            // Confirmar antes de guardar
-            MessageBox.confirm(
-                `Se guardarán ${aAcciones.length} acción(es) con sus adjuntos en el backend.\n\n¿Desea continuar?`,
-                {
-                    title: "Guardar acciones",
-                    actions: [MessageBox.Action.OK, MessageBox.Action.CANCEL],
-                    emphasizedAction: MessageBox.Action.OK,
-                    onClose: (sAction) => {
-                        if (sAction === MessageBox.Action.OK) {
-                            this._executeGuardarAcciones(aAcciones);
-                        }
-                    }
-                }
-            );
+            return null;
         },
 
-        _executeGuardarAcciones: function (aAcciones) {
-            this.showGlobalBusy("Guardando acciones...");
+        _cargarAccionesDesdeBackend: function (oFecha) {
+            return new Promise((resolve) => {
+                const oDataService = this.getView().getModel();
 
-            this._saveAccionAttachments(aAcciones)
-                .then(() => {
-                    this.hideGlobalBusy();
+                if (!oFecha) {
+                    resolve();
+                    return;
+                }
 
-                    const iTotalAdjuntos = aAcciones.reduce((sum, acc) => {
-                        return sum + (acc.Attachments ? acc.Attachments.length : 0);
-                    }, 0);
+                const year = oFecha.getFullYear();
+                const month = oFecha.getMonth();
+                const day = oFecha.getDate();
+                const oFechaUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
 
+                const aFilters = [
+                    new Filter("Dateturno", FilterOperator.EQ, oFechaUTC),
+                    new Filter("Empresa", FilterOperator.EQ, "100")
+                ];
 
-                    MessageBox.success(
-                        `Se guardaron exitosamente:\n\n` +
-                        `• ${aAcciones.length} acción(es)\n` +
-                        `• ${iTotalAdjuntos} adjunto(s)`,
-                        {
-                            title: "Guardado exitoso"
+                oDataService.read("/CatalogoEntregaSet", {
+                    filters: aFilters,
+                    success: (oData) => {
+                        const aResultados = oData.results || [];
+
+                        if (aResultados.length > 0) {
+                            this._procesarAccionesCargadas(aResultados);
                         }
-                    );
-                })
-                .catch((error) => {
-                    this.hideGlobalBusy();
 
-                    MessageBox.error(
-                        "Ocurrió un error al guardar las acciones.\n\n" +
-                        "Por favor, intente nuevamente o contacte al administrador.",
-                        {
-                            title: "Error al guardar",
-                            details: error.message || error.toString()
-                        }
-                    );
+                        resolve();
+                    },
+                    error: () => {
+                        resolve();
+                    }
                 });
+            });
+        },
+
+        _procesarAccionesCargadas: function (aResultados) {
+            const oView = this.getView();
+            const oAccionesModel = oView.getModel("AccionesEntregaModel");
+
+            const mAccionesAgrupadas = {};
+
+            aResultados.forEach(item => {
+                const sKey = `${item.Id}_${item.Codigo}`;
+
+                if (!mAccionesAgrupadas[sKey]) {
+                    mAccionesAgrupadas[sKey] = {
+                        accion: item.Codigo,
+                        descripcion: item.Accion || "",
+                        equipo: item.Equnr || "",
+                        idLicencia: item.Id,
+                        trabajoRealizar: item.Descripcion || "Sin descripción",
+                        turnoEntrega: item.Turnoentrega || "",
+                        estado: item.Licstat || "",
+                        condicion: item.Jobcond || "",
+                        equstat: item.Equstat || "A",
+                        empresa: item.Empresa || "100",
+                        tipo: item.Tipo || "L",
+                        anio: item.Anio || "",
+                        _licenciaId: item.Id,
+                        Attachments: []
+                    };
+                }
+
+                const esSinAdjuntos = (item.Comments || "").toLowerCase().includes("sin adjunto");
+
+                if (item.Attachment && item.Attachment.trim() !== "" && !esSinAdjuntos) {
+                    mAccionesAgrupadas[sKey].Attachments.push({
+                        Id: item.Id,
+                        Empresa: item.Empresa,
+                        Tipo: item.Tipo,
+                        Anio: item.Anio,
+                        Dateturno: item.Dateturno,
+                        Codigo: item.Codigo,
+                        Descripcion: item.Descripcion || "",
+                        Equnr: item.Equnr || "",
+                        Equstat: item.Equstat || "",
+                        Jobcond: item.Jobcond || "",
+                        Turnoentrega: item.Turnoentrega || "",
+                        Comments: item.Comments || "",
+                        Licstat: item.Licstat || "",
+                        Attachment: item.Attachment,
+                        AttachmentName: item.Comments || "Adjunto",
+                        AttachmentSize: Math.floor((item.Attachment.length * 3) / 4),
+                        AttachmentType: this._inferirTipoArchivo(item.Attachment),
+                        Timestamp: new Date().getTime()
+                    });
+                }
+            });
+
+            const aAcciones = Object.values(mAccionesAgrupadas);
+
+            oAccionesModel.setData(aAcciones);
+            oAccionesModel.refresh(true);
+
+            if (aAcciones.length > 0) {
+                MessageToast.show(`${aAcciones.length} acción(es) cargada(s)`);
+            }
+        },
+
+        _inferirTipoArchivo: function (base64) {
+            if (!base64) return "application/octet-stream";
+
+            if (base64.startsWith("JVBERi")) return "application/pdf";
+            if (base64.startsWith("/9j/")) return "image/jpeg";
+            if (base64.startsWith("iVBORw")) return "image/png";
+            if (base64.startsWith("UEsD")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+            return "application/octet-stream";
+        },
+
+        //-------------- ACCIONES DESDE SERVIDOR ----------------------------------
+        _cargarCatalogoCodigosDesdeBackend: function () {
+            // Usar getOwnerComponent() en lugar de getView()
+            const oModel = this.getOwnerComponent().getModel();
+
+            if (!oModel) {
+                MessageBox.error("No se pudo cargar el modelo OData");
+                return;
+            }
+
+            oModel.read("/CatalogoCodigosSet", {
+                success: (oData) => {
+                    const aResultados = oData.results || [];
+
+                    // Crear o actualizar el modelo JSON
+                    let oCatalogoModel = this.getView().getModel("CatalogoCodigosModel");
+
+                    if (!oCatalogoModel) {
+                        // Si no existe, crear el modelo
+                        oCatalogoModel = new JSONModel();
+                        this.getView().setModel(oCatalogoModel, "CatalogoCodigosModel");
+                    }
+
+                    // Setear los datos en el modelo
+                    oCatalogoModel.setData(aResultados);
+                    oCatalogoModel.refresh(true);
+                },
+                error: (oError) => {
+                    MessageBox.error("Error al cargar el catálogo de códigos");
+                }
+            });
         },
     });
 });

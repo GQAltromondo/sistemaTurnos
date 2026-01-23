@@ -1,0 +1,127 @@
+<core:FragmentDefinition 
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+    xmlns:f="sap.ui.layout.form">
+    
+    <Dialog 
+        id="dialogAgregarLicencia" 
+        title="Agregar Licencias Disponibles"
+        contentWidth="1200px"
+        contentHeight="700px"
+        resizable="true"
+        draggable="true">
+        
+        <content>
+            <VBox class="sapUiSmallMargin">
+                
+                <!-- FILTROS SUPERIORES -->
+                <Toolbar>
+                    <Title text="Licencias disponibles para el día seleccionado" level="H3"/>
+                    <ToolbarSpacer/>
+                    <Label text="Total:" class="sapUiTinyMarginEnd"/>
+                    <Text 
+                        text="{AgregarLicenciaModel>/length}" 
+                        class="sapUiSmallMarginEnd sapThemeHighlight-asColor"/>
+                    <SearchField
+                        width="20rem"
+                        placeholder="Buscar por ID, Equipo, Trabajo..."
+                        liveChange="onSearchAgregarLicencia"/>
+                </Toolbar>
+
+                <!-- TABLA DE LICENCIAS -->
+                <Table 
+                    id="tablaAgregarLicencias"
+                    items="{AgregarLicenciaModel>/}"
+                    mode="MultiSelect"
+                    growing="true"
+                    growingThreshold="50"
+                    growingScrollToLoad="true"
+                    sticky="ColumnHeaders,HeaderToolbar">
+                    
+                    <columns>
+                        <Column width="12rem">
+                            <header>
+                                <Text text="ID Licencia"/>
+                            </header>
+                        </Column>
+                        
+                        <Column width="8rem">
+                            <header>
+                                <Text text="Equipo"/>
+                            </header>
+                        </Column>
+                        
+                        <Column width="15rem">
+                            <header>
+                                <Text text="Trabajo a Realizar"/>
+                            </header>
+                        </Column>
+                        
+                        <Column width="8rem">
+                            <header>
+                                <Text text="Estado"/>
+                            </header>
+                        </Column>
+                        
+                        <Column width="8rem">
+                            <header>
+                                <Text text="Condición"/>
+                            </header>
+                        </Column>
+                        
+                        <Column width="6rem">
+                            <header>
+                                <Text text="Región"/>
+                            </header>
+                        </Column>
+                    </columns>
+                    
+                    <items>
+                        <ColumnListItem type="Active">
+                            <cells>
+                                <Text text="{AgregarLicenciaModel>Id}" wrapping="false"/>
+                                
+                                <Text text="{AgregarLicenciaModel>Equnr}" wrapping="false"/>
+                                
+                                <Text 
+                                    text="{AgregarLicenciaModel>Comments}" 
+                                    wrapping="true"
+                                    maxLines="2"/>
+                                
+                                <Text 
+                                    text="{path: 'AgregarLicenciaModel>Licstat', formatter: '.formatter.formatLicState'}" 
+                                    wrapping="false"/>
+                                
+                                <Text 
+                                    text="{path: 'AgregarLicenciaModel>Jobcond', formatter: '.formatter.getJobCond'}" 
+                                    wrapping="false"/>
+                                
+                                <Text 
+                                    text="{path: 'AgregarLicenciaModel>Werks', formatter: '.formatter.getRegiones'}" 
+                                    wrapping="false"/>
+                            </cells>
+                        </ColumnListItem>
+                    </items>
+                </Table>
+
+            </VBox>
+        </content>
+        
+        <!-- BOTONES -->
+        <beginButton>
+            <Button 
+                icon="sap-icon://add"
+                text="Agregar Seleccionadas"
+                type="Emphasized"
+                press="onConfirmarAgregarLicencias"/>
+        </beginButton>
+        
+        <endButton>
+            <Button 
+                icon="sap-icon://decline"
+                text="Cancelar"
+                press="onCancelarAgregarLicencias"/>
+        </endButton>
+        
+    </Dialog>
+</core:FragmentDefinition>

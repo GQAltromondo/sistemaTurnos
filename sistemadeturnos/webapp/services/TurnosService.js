@@ -116,7 +116,13 @@ sap.ui.define([
             console.log("Estados encontrados en datos:", estadosEncontrados);
 
             const datosFiltrados = datos.filter(dato => {
-                // 1) Filtrar por estados permitidos
+                // 1) Si es agregada manualmente, SIEMPRE pasa (sin importar estado)
+                if (dato.Agrmanual === true) {
+                    console.log(`✅ [MANUAL] Aceptada ${dato.Id} - Agregada manualmente (Estado: ${dato.Licstat})`);
+                    return true;
+                }
+
+                // 2) Filtrar por estados permitidos
                 if (!estadosPermitidos.includes(dato.Licstat)) {
                     console.log(`❌ Rechazada ${dato.Id} - Estado ${dato.Licstat} NO permitido`);
                     return false;
@@ -231,6 +237,13 @@ sap.ui.define([
 
                         license.TurnoAsignado = nav.Turno;
                         license.Comentarios = nav.Comentarios;
+                        license.Agrmanual = nav.Agrmanual || false;  // ✅ LEER desde backend
+
+                        console.log("📥 [LOAD] Licencia desde backend:", {
+                            Id: license.Id,
+                            Turno: nav.Turno,
+                            Agrmanual: nav.Agrmanual
+                        });
 
                         return;
                     }

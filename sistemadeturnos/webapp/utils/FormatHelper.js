@@ -141,6 +141,12 @@ sap.ui.define([
 					return "En trámite";
                 case "02":
 					return "Observada";
+                case "30":
+					return "Creada";
+                case "03":
+					return "Anulada";
+                case "11":
+					return "Cancelada";
 				default:
 					return sLicstat || "";
 			}

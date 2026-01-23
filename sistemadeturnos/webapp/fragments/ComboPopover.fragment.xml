@@ -5,190 +5,46 @@
     <Popover
         title="{i18n>seleccioneAcciones}"
         contentWidth="400px"
-        placement="Bottom"
+        contentHeight="350px"
+        placement="VerticalPreferredBottom"
         class="popoverAccionesEntrega"
     >
         <content>
             <VBox class="sapUiSmallMargin">
-                <!-- SOL COC -->
-                <CheckBox
-                    id="checkboxSOL_COC"
-                    text="{i18n>SOL_COC}"
-                    select=".onCheckBoxSelectEntrega"
+                <List
+                    id="listaAccionesEntrega"
+                    items="{CatalogoCodigosModel>/}"
+                    showNoData="false"
+                    showSeparators="None"
                 >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="SOL_COC"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_SOL_COC}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- SOL TEC -->
-                <CheckBox
-                    id="checkboxSOL_TEC"
-                    text="{i18n>SOL_TEC}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="SOL_TEC"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_SOL_TEC}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- AUT COC -->
-                <CheckBox
-                    id="checkboxAUT_COC"
-                    text="{i18n>AUT_COC}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="AUT_COC"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_AUT_COC}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- INI MAN -->
-                <CheckBox
-                    id="checkboxINI_MAN"
-                    text="{i18n>INI_MAN}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="INI_MAN"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_INI_MAN}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- FIN MAN -->
-                <CheckBox
-                    id="checkboxFIN_MAN"
-                    text="{i18n>FIN_MAN}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="FIN_MAN"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_FIN_MAN}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- COL PAT -->
-                <CheckBox
-                    id="checkboxCOL_PAT"
-                    text="{i18n>COL_PAT}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="COL_PAT"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_COL_PAT}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- FIN LT -->
-                <CheckBox
-                    id="checkboxFIN_LT"
-                    text="{i18n>FIN_LT}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="FIN_LT"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_FIN_LT}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- RET PAT -->
-                <CheckBox
-                    id="checkboxRET_PAT"
-                    text="{i18n>RET_PAT}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="RET_PAT"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_RET_PAT}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- MAN PES -->
-                <CheckBox
-                    id="checkboxMAN_PES"
-                    text="{i18n>MAN_PES}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="MAN_PES"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_MAN_PES}"
-                        />
-                    </customData>
-                </CheckBox>
-
-                <!-- PES -->
-                <CheckBox
-                    id="checkboxPES"
-                    text="{i18n>PES}"
-                    select=".onCheckBoxSelectEntrega"
-                >
-                    <customData>
-                        <core:CustomData
-                            key="key"
-                            value="PES"
-                        />
-                        <core:CustomData
-                            key="descripcion"
-                            value="{i18n>desc_PES}"
-                        />
-                    </customData>
-                </CheckBox>
+                    <CustomListItem>
+                        <CheckBox
+                            text="{
+        parts: [
+            {path: 'CatalogoCodigosModel>Codigo'},
+            {path: 'CatalogoCodigosModel>Accion'}
+        ],
+        formatter: '.formatCodigoAccion'
+    }"
+                            select=".onCheckBoxSelectEntrega"
+                        >
+                            <customData>
+                                <core:CustomData
+                                    key="key"
+                                    value="{CatalogoCodigosModel>Codigo}"
+                                />
+                                <core:CustomData
+                                    key="descripcion"
+                                    value="{CatalogoCodigosModel>Accion}"
+                                />
+                                <core:CustomData
+                                    key="descripcionCompleta"
+                                    value="{CatalogoCodigosModel>Descripcion}"
+                                />
+                            </customData>
+                        </CheckBox>
+                    </CustomListItem>
+                </List>
             </VBox>
         </content>
         <beginButton>
