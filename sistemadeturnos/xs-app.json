@@ -1,8 +1,25 @@
-
 {
   "welcomeFile": "/index.html",
   "authenticationMethod": "route",
   "routes": [
+    {
+      "source": "^/IAS/(.*)$",
+      "target": "$1",
+      "destination": "IAS",
+      "authenticationType": "none"
+    },
+    {
+      "source": "^/user-api(.*)",
+      "target": "$1",
+      "service": "sap-approuter-userapi"
+    },
+    {
+      "source": "/destinations/SAP_Gateway/(.*)",
+      "target": "$1",
+      "destination": "SAP_Gateway",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
     {
       "source": "^/sap/(.*)$",
       "target": "/sap/$1",
@@ -27,24 +44,6 @@
       "target": "$1",
       "service": "html5-apps-repo-rt",
       "authenticationType": "xsuaa"
-    },
-     {
-      "source": "^/IAS/(.*)$",
-      "target": "$1",
-      "destination": "IAS",
-      "authenticationType": "none"
-    },
-    {
-      "source": "^/user-api(.*)",
-      "target": "$1",
-      "service": "sap-approuter-userapi"
-    },
-    {
-      "source": "/destinations/SAP_Gateway/(.*)$",
-      "target": "$1",
-      "destination": "SAP_Gateway",
-      "authenticationType": "xsuaa",
-      "csrfProtection": false
     }
   ]
 }
