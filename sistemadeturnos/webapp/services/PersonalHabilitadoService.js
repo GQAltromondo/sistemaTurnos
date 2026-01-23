@@ -51,7 +51,6 @@ sap.ui.define([
 				})
 				
 			}).catch(function (e) {
-				console.log("aaaa")
 			})
 		},
 
@@ -146,7 +145,6 @@ sap.ui.define([
 			oDataServices.getModel("TransenerOperaciones").read(this._entitySet, {
 				filters: aFilters,
 				success: function (data) {
-					console.log("Personal", data)
 					var oModel = ModelHelper.getModel("PersonalHabilitadoModel");
 					oModel.setData({
 						Solicitante: _.filter(data.results, {

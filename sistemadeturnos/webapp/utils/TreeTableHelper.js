@@ -18,9 +18,6 @@ sap.ui.define([], function () {
                 return [];
             }
 
-            console.group("🌲 Transformando datos a estructura TreeTable");
-            console.log("📥 Total de licencias recibidas:", aLicencias.length);
-
             // Agrupar por Equipo + Horario
             const grupos = {};
 
@@ -77,12 +74,6 @@ sap.ui.define([], function () {
                 return turnoA.localeCompare(turnoB);
             });
 
-            console.log("📊 Grupos creados:", aTreeData.length);
-            console.log("📋 Detalle de grupos:");
-            aTreeData.forEach(grupo => {
-                console.log(`   ${grupo.Equnr} - Turno ${grupo.TurnoAsignado}: ${grupo._childCount} LLTT`);
-            });
-            console.groupEnd();
 
             return aTreeData;
         },
@@ -99,10 +90,6 @@ sap.ui.define([], function () {
             if (!aFilters || aFilters.length === 0) {
                 return aTreeData;
             }
-
-            console.group("🔍 Aplicando filtros a TreeTable");
-            console.log("📥 Grupos antes de filtrar:", aTreeData.length);
-
             const aFilteredGroups = [];
 
             aTreeData.forEach(grupo => {
@@ -120,9 +107,6 @@ sap.ui.define([], function () {
                     });
                 }
             });
-
-            console.log("📤 Grupos después de filtrar:", aFilteredGroups.length);
-            console.groupEnd();
 
             return aFilteredGroups;
         },

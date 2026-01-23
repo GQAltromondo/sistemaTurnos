@@ -30,11 +30,9 @@ sap.ui.define([
                         "$expand": sExpand
                     },
                     success: (oData) => {
-                        console.log("✓ Licencias con tramitación obtenidas:", oData.results.length);
                         resolve(oData.results);
                     },
                     error: (oError) => {
-                        console.error("❌ Error obteniendo licencias con tramitación:", oError);
                         reject(oError);
                     }
                 });
@@ -122,9 +120,6 @@ sap.ui.define([
          * @returns {Array} Array de licencias con información de validación agregada
          */
         procesarLicenciasConValidacion: function (aLicencias, dFechaSeleccionada) {
-            console.log("═══ Procesando licencias con validación de tramitación");
-            console.log("→ Fecha seleccionada:", dFechaSeleccionada);
-            console.log("→ Total licencias:", aLicencias.length);
 
             let iLicenciasConProblemas = 0;
 
@@ -137,16 +132,8 @@ sap.ui.define([
                 oLicencia.tramitacionEstado = oValidacion.estadoEncontrado;
                 oLicencia.tramitacionDetalles = oValidacion.fechasProblematicas;
 
-                if (oValidacion.tieneProblemas) {
-                    iLicenciasConProblemas++;
-                    console.log(`⚠️ Licencia ${oLicencia.Id} tiene problemas:`, {
-                        color: oValidacion.colorIndicador,
-                        estado: oValidacion.estadoEncontrado
-                    });
-                }
             });
 
-            console.log(`✓ Procesamiento completo: ${iLicenciasConProblemas} licencias con problemas`);
             return aLicencias;
         },
 

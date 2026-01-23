@@ -108,14 +108,10 @@ sap.ui.define([
             jsonModel.setData({
                 appUrl: appModulePath
             });
-
-            console.log("URL base de la aplicación configurada:", appModulePath);
-
             return appModulePath;
         },
 
         onUserLoaded: function () {
-            console.log("Usuario cargado");
 
             // aplicar permisos basados en roles
             this._aplicarPermisosPorRol();
@@ -125,8 +121,6 @@ sap.ui.define([
 
         _aplicarPermisosPorRol: function () {
             var bEsEditor = RoleHelper.isEditor();
-
-            console.log("Aplicando permisos. Es editor?", bEsEditor);
 
             // Botón Crear Solicitud
             var btnCrear = this.byId("btnCrearSolicitud");

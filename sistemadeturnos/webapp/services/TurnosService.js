@@ -99,13 +99,6 @@ sap.ui.define([
                 estadosPermitidos = ["01", "07", "08", "10", "23"];
             }
 
-            // 🔍 LOG INICIAL
-            console.log("🔍 filtrarFechasTipo - INICIO");
-            console.log("Total licencias recibidas:", datos.length);
-            console.log("Estados permitidos:", estadosPermitidos);
-            console.log("isRefresh:", isRefresh);
-
-            // 🔍 LOG: Ver todos los estados que llegan
             const estadosEncontrados = {};
             datos.forEach(d => {
                 if (!estadosEncontrados[d.Licstat]) {
@@ -113,18 +106,15 @@ sap.ui.define([
                 }
                 estadosEncontrados[d.Licstat]++;
             });
-            console.log("Estados encontrados en datos:", estadosEncontrados);
 
             const datosFiltrados = datos.filter(dato => {
                 // 1) Si es agregada manualmente, SIEMPRE pasa (sin importar estado)
                 if (dato.Agrmanual === true) {
-                    console.log(`✅ [MANUAL] Aceptada ${dato.Id} - Agregada manualmente (Estado: ${dato.Licstat})`);
                     return true;
                 }
 
                 // 2) Filtrar por estados permitidos
                 if (!estadosPermitidos.includes(dato.Licstat)) {
-                    console.log(`❌ Rechazada ${dato.Id} - Estado ${dato.Licstat} NO permitido`);
                     return false;
                 }
 
@@ -152,12 +142,6 @@ sap.ui.define([
                 // Otros Period no pasan
                 return false;
             });
-
-            // 🔍 LOG FINAL
-            console.log("✅ Licencias aprobadas:", datosFiltrados.length);
-            console.log("❌ Licencias rechazadas:", datos.length - datosFiltrados.length);
-            console.log("Licencias aprobadas:", datosFiltrados.map(d => ({ Id: d.Id, Estado: d.Licstat, Period: d.Period })));
-
             return datosFiltrados;
         },
 
@@ -237,13 +221,7 @@ sap.ui.define([
 
                         license.TurnoAsignado = nav.Turno;
                         license.Comentarios = nav.Comentarios;
-                        license.Agrmanual = nav.Agrmanual || false;  // ✅ LEER desde backend
-
-                        console.log("📥 [LOAD] Licencia desde backend:", {
-                            Id: license.Id,
-                            Turno: nav.Turno,
-                            Agrmanual: nav.Agrmanual
-                        });
+                        license.Agrmanual = nav.Agrmanual || false; 
 
                         return;
                     }
