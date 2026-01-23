@@ -22,14 +22,14 @@ sap.ui.define([
     "transener/sistemadeturnos/model/HardCodeModel",
     "transener/sistemadeturnos/utils/TreeTableHelper",
     "transener/sistemadeturnos/services/TramitacionService",
-    "transener/sistemadeturnos/services/ETMailService"
+    "transener/sistemadeturnos/services/EtMailService"
 
 
 ], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, Spreadsheet,
     //utils
     ModelHelper, FormatHelper, Utils,
     //services
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, MailService, HardCodeModel, TreeTableHelper, TramitacionService , ETMailService
+    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, MailService, HardCodeModel, TreeTableHelper, TramitacionService , EtMailService
 ) {
     "use strict";
     let oDialog = null
@@ -6550,7 +6550,29 @@ sap.ui.define([
             }).catch(err => {
                 console.error("❌ Error en Promise.all:", err);
             });
-        }
+        },
+        getPermisos: function (oLicense) {
+			var aFilters = [];
+
+			aFilters.push(new sap.ui.model.Filter("Id", sap.ui.model.FilterOperator.EQ, oLicense.Id));
+			aFilters.push(new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, oLicense.Empresa));
+			aFilters.push(new sap.ui.model.Filter("Tipo", sap.ui.model.FilterOperator.EQ, oLicense.Tipo));
+			aFilters.push(new sap.ui.model.Filter("Anio", sap.ui.model.FilterOperator.EQ, oLicense.Anio));
+
+			return new Promise((resolve, reject) => {
+				var entity = "/PermisosLicenciaSet";
+				oDataService.getModel("TransenerOperaciones").read(entity, {
+					filters: aFilters,
+					success: function (data) {
+						resolve(data.results);
+					},
+					error: function (error) {
+						reject(error);
+					}
+				});
+			});
+
+		},
 
     });
 });

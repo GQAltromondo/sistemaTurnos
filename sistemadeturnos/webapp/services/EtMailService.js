@@ -1,7 +1,7 @@
 sap.ui.define([
 	//helpers
-	"Transener/Operaciones/LicenciasTrabajo/services/oDataService",
-	"Transener/Operaciones/LicenciasTrabajo/utils/ModelHelper"
+	"transener/sistemadeturnos/services/oDataService",
+	"transener/sistemadeturnos/utils/ModelHelper"
 ], function ( oDataService, ModelHelper) {
 	"use strict";
 
