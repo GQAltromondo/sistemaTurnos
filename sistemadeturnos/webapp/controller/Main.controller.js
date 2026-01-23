@@ -5574,9 +5574,21 @@ sap.ui.define([
         //-------------------------------- Editar turnos -------------------------
 
         _isEditableTurno: function (fechaTurno) {
+            // Validación de fecha (lógica existente)
+            const bIsEditableByDate = this._checkEditableByDate(fechaTurno);
+
+            // Validación de rol (nueva lógica)
+            const bIsEditableByRole = this._checkEditableByRole();
+
+            // Ambas condiciones deben cumplirse
+            return bIsEditableByDate && bIsEditableByRole;
+        },
+
+        _checkEditableByDate: function (fechaTurno) {
             if (!fechaTurno) {
                 return false;
             }
+
             const oFechaTurno = new Date(fechaTurno);
             const oFechaTurnoNormalizada = new Date(Date.UTC(
                 oFechaTurno.getUTCFullYear(),
@@ -5594,6 +5606,10 @@ sap.ui.define([
             ));
 
             return oFechaTurnoNormalizada.getTime() >= oHoyNormalizada.getTime();
+        },
+
+        _checkEditableByRole: function () {
+            return RoleHelper.isEditor();
         },
 
 

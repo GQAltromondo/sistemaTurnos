@@ -814,7 +814,7 @@
                                 selectionMode="None"
                                 alternateRowColors="true"
                             >
-                                <!-- ✅ MENÚ CONTEXTUAL -->
+                                <!-- MENÚ CONTEXTUAL -->
                                 <t:contextMenu>
                                     <Menu>
                                         <!-- Adjuntar archivo -->
@@ -822,6 +822,7 @@
                                             text="Adjuntar archivo"
                                             icon="sap-icon://attachment"
                                             press="onAttachFileAccion"
+                                            enabled="{editableModel>/isEditable}"
                                         />
 
                                         <!-- Eliminar acción -->
@@ -829,6 +830,7 @@
                                             text="Eliminar acción"
                                             icon="sap-icon://delete"
                                             press="onRemoveAccionEntrega"
+                                            enabled="{editableModel>/isEditable}"
                                         />
                                     </Menu>
                                 </t:contextMenu>
@@ -900,6 +902,7 @@
                                                 displayFormat="HH:mm"
                                                 change="onTurnoEntregaChange"
                                                 width="100%"
+                                                enabled="{editableModel>/isEditable}"
                                             />
                                         </t:template>
                                     </t:Column>
@@ -946,6 +949,8 @@
                                     type="Emphasized"
                                     press="onGuardarAccionesBackend"
                                     tooltip="Guardar todas las acciones en el backend"
+                                    enabled="{editableModel>/isEditable}"
+                                
                                 />
                             </OverflowToolbar>
                         </IconTabFilter>
@@ -1091,18 +1096,20 @@
                         <Button
                             icon="sap-icon://save"
                             text="{i18n>saveTurno}"
-                            enabled="{enabledModel>/btnGuardar}"
+                            enabled="{editableModel>/isEditable}"
                             press="onSaveTurnoPress"
+                            
                         />
                         <Button
                             icon="sap-icon://create-form"
                             text="{i18n>createTurno}"
                             press="onSearch"
+                            enabled="{editableModel>/isEditable}"
                         />
                         <Button
                             icon="sap-icon://email"
                             text="{i18n>sendEmail}"
-                            enabled="{enabledModel>/btnEnviar}"
+                            enabled="{editableModel>/isEditable}"
                             press="onSendEmailPress"
                         />
                     </OverflowToolbar>
