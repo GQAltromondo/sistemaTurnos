@@ -24,7 +24,7 @@ sap.ui.define([], function () {
                 oModel.read(key, {
                     urlParameters: urlParameters,
                     success: function (data) {
-                  
+
                         resolve(data);
                     },
                     error: function (error) {
@@ -33,6 +33,24 @@ sap.ui.define([], function () {
                     }
                 });
             });
-        }
+        }, getSelectionArea: function (Tipo, sLicstat) {
+            var sVal = "";
+            if (Tipo === "S") {
+                if (sLicstat === "09") {
+                    sVal = "COORD"
+                }
+            } else {
+                // Issue 514 - Para los status 09 y 02 se deben enviar a ambos tecnico y coord
+                //				if (sLicstat === "09" || sLicstat === "02")
+                //				sVal = "COORD"
+                //		}
+                // Issue 514 - Se agregaron nuevos status a la condicion
+                if (sLicstat === "01" || sLicstat === "11" || sLicstat === "07" || sLicstat === "06" || sLicstat === "04" || sLicstat === "03") {
+                    sVal = "TECNICO"
+                }
+            }
+            return sVal;
+        },
+
     };
 });

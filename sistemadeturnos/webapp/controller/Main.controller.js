@@ -26,11 +26,12 @@ sap.ui.define([
     "transener/sistemadeturnos/services/EtMailService"
 
 
-], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, 
-        //utils
+], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment,
+    //utils
     ModelHelper, FormatHelper, Utils, DateHelper,
     //services
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel, TreeTableHelper, TramitacionService, RoleHelper,  UserService, EtMailService
+    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel,
+    TreeTableHelper, TramitacionService, RoleHelper, UserService, EtMailService
 ) {
     "use strict";
     let oDialog = null
@@ -7427,7 +7428,7 @@ sap.ui.define([
                 EtMailService.getPromise(
                     oLicense.Empresa,
                     oLicense.Tplnr,
-                    this.getSelectionArea(oLicense.Tipo, "01")
+                    LicenseService.getSelectionArea(oLicense.Tipo, "01")
                 )
             );
 
@@ -7514,7 +7515,7 @@ sap.ui.define([
         },
         getPermisos: function (oLicense) {
             var aFilters = [];
-
+            const oDataService = this.getView().getModel();
             aFilters.push(new sap.ui.model.Filter("Id", sap.ui.model.FilterOperator.EQ, oLicense.Id));
             aFilters.push(new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, oLicense.Empresa));
             aFilters.push(new sap.ui.model.Filter("Tipo", sap.ui.model.FilterOperator.EQ, oLicense.Tipo));
@@ -7522,7 +7523,7 @@ sap.ui.define([
 
             return new Promise((resolve, reject) => {
                 var entity = "/PermisosLicenciaSet";
-                oDataService.getModel("TransenerOperaciones").read(entity, {
+                oDataService.read(entity, {
                     filters: aFilters,
                     success: function (data) {
                         resolve(data.results);
