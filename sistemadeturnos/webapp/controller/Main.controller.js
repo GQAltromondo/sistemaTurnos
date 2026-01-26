@@ -24,7 +24,7 @@ sap.ui.define([
     "transener/sistemadeturnos/utils/RoleHelper",
     "transener/sistemadeturnos/services/UserService",
     "transener/sistemadeturnos/services/EtMailService",
-    "transener/sistemadeturnos/services/WorkflowService"
+    "transener/sistemadeturnos/services/MailService"
 
 
 ], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment,
@@ -32,7 +32,7 @@ sap.ui.define([
     ModelHelper, FormatHelper, Utils, DateHelper,
     //services
     LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel,
-    TreeTableHelper, TramitacionService, RoleHelper, UserService, EtMailService, WorkflowService
+    TreeTableHelper, TramitacionService, RoleHelper, UserService, EtMailService, MailService
 ) {
     "use strict";
     let oDialog = null
@@ -7437,7 +7437,7 @@ sap.ui.define([
         test: function () {
             const oView = this.getView();
             const oModel = this.getView().getModel();
-            var oLicense = ModelHelper.getModel("LicenseJsonModel", oView).getData();
+            var oLicense = ModelHelper.getModel("LicenseJsonModel", oView).getData()[0];
             let promises = [LicenseService.getPermisos(oLicense, oModel)];
             promises.push(
                 EtMailService.getPromise(
@@ -7524,15 +7524,24 @@ sap.ui.define([
                 console.log("sEmailEt:", sEmailEt);
                 console.groupEnd();
 
-                // Enviar mail usando WorkflowService
+                // Enviar mail usando MailService
                 const oComponent = this.getOwnerComponent();
-                const context = {
-                    Destinatario: emails.filter(e => e).join(",") || sEmailEt || "",
-                    IdLicencia: oLicense.Id || "",
-                    Equipo: oLicense.Equnr || "",
-                    Fecha: oLicense.Fecha ? new Date(oLicense.Fecha).toLocaleDateString() : "",
+                const sDestinatario = emails.filter(e => e).join(",") || sEmailEt || "";
+                
+                // Construir objeto licencia con los datos necesarios para el mail
+                const oLicenciaParaMail = {
+                    Destinatario: sDestinatario,
+                    Email: sDestinatario,
+                    Id: oLicense.Id || "",
+                    Equnr: oLicense.Equnr || "",
+                    Equstat: oLicense.Equstat || "",
+                    Jobcond: oLicense.Jobcond || "",
+                    Fecha: oLicense.Fecha || "",
                     Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
+                    TurnoAsignado: oLicense.TurnoAsignado || "",
+                    Comments: oLicense.Comentarios || "",
                     Comentarios: oLicense.Comentarios || "",
+                    DescEquipo: oLicense.DescEquipo || "",
                     DescripcionEquipo: oLicense.DescEquipo || "",
                     Consola: oLicense.Consola || "",
                     Empresa: oLicense.Empresa || "",
@@ -7540,23 +7549,19 @@ sap.ui.define([
                     Anio: oLicense.Anio || ""
                 };
 
-                console.group("📤 Enviando mail con WorkflowService");
-                console.log("Context:", context);
+                console.group("📤 Enviando mail con MailService");
+                console.log("Licencia para mail:", oLicenciaParaMail);
                 console.groupEnd();
 
-                WorkflowService.startWorkflowInstance({
-                    definitionId: "transener.wfturnos",
-                    context: context,
-                    oComponent: oComponent,
-                    onSuccess: (result) => {
+                MailService.sendLicenseEmail(oLicenciaParaMail, oComponent)
+                    .then((result) => {
                         console.log("✅ Mail enviado correctamente:", result);
                         MessageToast.show("Mail enviado correctamente");
-                    },
-                    onError: (error) => {
+                    })
+                    .catch((error) => {
                         console.error("❌ Error al enviar mail:", error);
                         MessageBox.error("Error al enviar mail: " + (error.message || error));
-                    }
-                });
+                    });
 
             }).catch(err => {
                 console.error("❌ Error en Promise.all:", err);
