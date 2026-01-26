@@ -23,7 +23,8 @@ sap.ui.define([
     "transener/sistemadeturnos/services/TramitacionService",
     "transener/sistemadeturnos/utils/RoleHelper",
     "transener/sistemadeturnos/services/UserService",
-    "transener/sistemadeturnos/services/EtMailService"
+    "transener/sistemadeturnos/services/EtMailService",
+    "transener/sistemadeturnos/services/WorkflowService"
 
 
 ], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment,
@@ -31,7 +32,7 @@ sap.ui.define([
     ModelHelper, FormatHelper, Utils, DateHelper,
     //services
     LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel,
-    TreeTableHelper, TramitacionService, RoleHelper, UserService, EtMailService
+    TreeTableHelper, TramitacionService, RoleHelper, UserService, EtMailService, WorkflowService
 ) {
     "use strict";
     let oDialog = null
@@ -2934,16 +2935,7 @@ sap.ui.define([
 
                     oDataService.create(entity, license, {
                         success: () => {
-                            // Enviar mail después de guardar exitosamente
-                            MailService.sendLicenseEmail(licencia, oComponent)
-                                .then(() => {
-                                    resolve();
-                                })
-                                .catch((mailError) => {
-                                    // No fallar el guardado si el mail falla, solo loguear
-                                    console.warn("Error al enviar mail para licencia " + licencia.Id + ":", mailError);
-                                    resolve(); // Resolver igual para no bloquear el guardado
-                                });
+                            resolve();
                         },
                         error: (oError) => {
                             reject(oError);
@@ -3050,16 +3042,38 @@ sap.ui.define([
 
                     oDataService.create(entity, license, {
                         success: () => {
-                            // Enviar mail después de guardar exitosamente
-                            MailService.sendLicenseEmail(licencia, oComponent)
-                                .then(() => {
+                            // Enviar mail después de guardar exitosamente usando WorkflowService
+                            const context = {
+                                Destinatario: licencia.Destinatario || licencia.Email || "",
+                                IdLicencia: licencia.Id || "",
+                                Equipo: licencia.Equnr || "",
+                                Fecha: licencia.Fecha ? new Date(licencia.Fecha).toLocaleDateString() : "",
+                                Turno: licencia.Turno || licencia.TurnoAsignado || "",
+                                Comentarios: licencia.Comentarios || "",
+                                DescripcionEquipo: licencia.DescEquipo || "",
+                                Consola: licencia.Consola || "",
+                                Empresa: licencia.Empresa || "",
+                                Tipo: licencia.Tipo || "L",
+                                Anio: licencia.Anio || ""
+                            };
+
+                            WorkflowService.startWorkflowInstance({
+                                definitionId: "transener.wfturnos",
+                                context: context,
+                                oComponent: oComponent,
+                                onSuccess: () => {
                                     resolve();
-                                })
-                                .catch((mailError) => {
+                                },
+                                onError: (error) => {
                                     // No fallar el guardado si el mail falla, solo loguear
-                                    console.warn("Error al enviar mail para licencia " + licencia.Id + ":", mailError);
+                                    console.warn("Error al enviar mail para licencia " + licencia.Id + ":", error);
                                     resolve(); // Resolver igual para no bloquear el guardado
-                                });
+                                }
+                            }).catch((mailError) => {
+                                // No fallar el guardado si el mail falla, solo loguear
+                                console.warn("Error al enviar mail para licencia " + licencia.Id + ":", mailError);
+                                resolve(); // Resolver igual para no bloquear el guardado
+                            });
                         },
                         error: (oError) => {
                             console.error("Error al crear turno:", oError);
@@ -7421,9 +7435,10 @@ sap.ui.define([
         },
 
         test: function () {
-
-            var oLicense = ModelHelper.getModel("LicenseJsonModel").getData();
-            let promises = [this.getPermisos(oLicense)];
+            const oView = this.getView();
+            const oModel = this.getView().getModel();
+            var oLicense = ModelHelper.getModel("LicenseJsonModel", oView).getData();
+            let promises = [LicenseService.getPermisos(oLicense, oModel)];
             promises.push(
                 EtMailService.getPromise(
                     oLicense.Empresa,
@@ -7440,8 +7455,8 @@ sap.ui.define([
                 console.log("ET Mails (res[1]):", res[1]);
                 console.groupEnd();
 
-                var currentUser = ModelHelper.getModel("CurrentUser").getData();
-                var oUserJson = ModelHelper.getModel("UserJsonModel").getData();
+                var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
+                var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
 
                 console.group("👤 Usuario actual");
                 console.log("CurrentUser:", currentUser);
@@ -7509,31 +7524,43 @@ sap.ui.define([
                 console.log("sEmailEt:", sEmailEt);
                 console.groupEnd();
 
+                // Enviar mail usando WorkflowService
+                const oComponent = this.getOwnerComponent();
+                const context = {
+                    Destinatario: emails.filter(e => e).join(",") || sEmailEt || "",
+                    IdLicencia: oLicense.Id || "",
+                    Equipo: oLicense.Equnr || "",
+                    Fecha: oLicense.Fecha ? new Date(oLicense.Fecha).toLocaleDateString() : "",
+                    Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
+                    Comentarios: oLicense.Comentarios || "",
+                    DescripcionEquipo: oLicense.DescEquipo || "",
+                    Consola: oLicense.Consola || "",
+                    Empresa: oLicense.Empresa || "",
+                    Tipo: oLicense.Tipo || "L",
+                    Anio: oLicense.Anio || ""
+                };
+
+                console.group("📤 Enviando mail con WorkflowService");
+                console.log("Context:", context);
+                console.groupEnd();
+
+                WorkflowService.startWorkflowInstance({
+                    definitionId: "transener.wfturnos",
+                    context: context,
+                    oComponent: oComponent,
+                    onSuccess: (result) => {
+                        console.log("✅ Mail enviado correctamente:", result);
+                        MessageToast.show("Mail enviado correctamente");
+                    },
+                    onError: (error) => {
+                        console.error("❌ Error al enviar mail:", error);
+                        MessageBox.error("Error al enviar mail: " + (error.message || error));
+                    }
+                });
+
             }).catch(err => {
                 console.error("❌ Error en Promise.all:", err);
             });
-        },
-        getPermisos: function (oLicense) {
-            var aFilters = [];
-            const oDataService = this.getView().getModel();
-            aFilters.push(new sap.ui.model.Filter("Id", sap.ui.model.FilterOperator.EQ, oLicense.Id));
-            aFilters.push(new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, oLicense.Empresa));
-            aFilters.push(new sap.ui.model.Filter("Tipo", sap.ui.model.FilterOperator.EQ, oLicense.Tipo));
-            aFilters.push(new sap.ui.model.Filter("Anio", sap.ui.model.FilterOperator.EQ, oLicense.Anio));
-
-            return new Promise((resolve, reject) => {
-                var entity = "/PermisosLicenciaSet";
-                oDataService.read(entity, {
-                    filters: aFilters,
-                    success: function (data) {
-                        resolve(data.results);
-                    },
-                    error: function (error) {
-                        reject(error);
-                    }
-                });
-            });
-
         },
 
     });
