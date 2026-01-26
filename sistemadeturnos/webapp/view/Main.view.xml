@@ -1033,6 +1033,12 @@
                                 </Toolbar>
                             </VBox>
                         </IconTabFilter>
+                           <IconTabFilter
+                            text="Grafico"
+                            key="Grafico"
+                        >
+                        <VBox id="chartContainer" width="100%" />
+                        </IconTabFilter>
                     </items>
                 </IconTabBar>
 

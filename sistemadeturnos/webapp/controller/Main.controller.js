@@ -38,7 +38,21 @@ sap.ui.define([
         formatter: FormatHelper,
 
         onInit: function () {
+            var oData = {
+                data: [
+                    { Mes: "Ene", Linea1: 10, Linea2: 15 },
+                    { Mes: "Feb", Linea1: 12, Linea2: 18 },
+                    { Mes: "Mar", Linea1: 8, Linea2: 14 },
+                    { Mes: "Abr", Linea1: 15, Linea2: 20 },
+                    { Mes: "May", Linea1: 18, Linea2: 22 },
+                    { Mes: "Jun", Linea1: 20, Linea2: 25 }
+                ]
+            };
 
+            var oChartModel = new sap.ui.model.json.JSONModel(oData);
+            this.getView().setModel(oChartModel, "chartModel");
+
+            this._loadChartFragment();
             this.getBaseURL();
             UserService.loadModel(this.onUserLoaded.bind(this));
 
@@ -7318,6 +7332,20 @@ sap.ui.define([
                     MessageBox.error("Error al cargar el catálogo de códigos");
                 }
             });
-        },
+        }, _loadChartFragment: function () {
+            var oView = this.getView();
+
+            if (!this._oChartFragment) {
+                this._oChartFragment = sap.ui.xmlfragment(
+                    oView.getId(),
+                    "transener.sistemadeturnos.fragments.LineChart",
+                    this
+                );
+                oView.addDependent(this._oChartFragment);
+            }
+
+            // lo agregás donde quieras
+            this.byId("chartContainer").addItem(this._oChartFragment);
+        }
     });
 });
