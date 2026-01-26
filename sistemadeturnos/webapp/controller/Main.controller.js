@@ -7437,8 +7437,8 @@ sap.ui.define([
         test: function () {
             const oView = this.getView();
             const oModel = this.getView().getModel();
-            var oLicense = ModelHelper.getModel("LicenseJsonModel", oView).getData()[0];
-            let promises = [LicenseService.getPermisos(oLicense, oModel)];
+            var oLicense = ModelHelper.getModel("LicencesJsonModel", oView).getData();
+            let promises = [LicenseService.getPermisos(oLicense[0], oModel)];
             promises.push(
                 EtMailService.getPromise(
                     oLicense.Empresa,
