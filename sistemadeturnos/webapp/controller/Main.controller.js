@@ -7352,18 +7352,24 @@ sap.ui.define([
             const oModel = this.getView().getModel();
             var oLicenseTurno = ModelHelper.getModel("LicencesJsonModel", oView).getData();
 
-           const oLicense = LicenseService.FIND(oLicenseTurno, oDataModel)
+            // Esperar la respuesta del FIND antes de continuar
+            LicenseService.FIND(oLicenseTurno, oDataModel)
+                .then((oLicense) => {
+                    let promises = [LicenseService.getPermisos(oLicense, oModel)];
+                    promises.push(
+                        EtMailService.getPromise(
+                            oLicense.Empresa,
+                            oLicense.Tplnr,
+                            LicenseService.getSelectionArea(oLicense.Tipo, "01")
+                        )
+                    );
 
-            let promises = [LicenseService.getPermisos(oLicense, oModel)];
-            promises.push(
-                EtMailService.getPromise(
-                    oLicense.Empresa,
-                    oLicense.Tplnr,
-                    LicenseService.getSelectionArea(oLicense.Tipo, "01")
-                )
-            );
-
-            Promise.all(promises).then(res => {
+                    return Promise.all(promises).then(res => {
+                        // Retornar tanto los resultados como la licencia
+                        return { res: res, oLicense: oLicense };
+                    });
+                })
+                .then(({ res, oLicense }) => {
 
                 console.group("🔎 Promise.all results");
                 console.log("res completo:", res);
@@ -7479,9 +7485,11 @@ sap.ui.define([
                         MessageBox.error("Error al enviar mail: " + (error.message || error));
                     });
 
-            }).catch(err => {
-                console.error("❌ Error en Promise.all:", err);
-            });
+                })
+                .catch(err => {
+                    console.error("❌ Error en FIND o Promise.all:", err);
+                    MessageBox.error("Error al obtener datos de la licencia: " + (err.message || err));
+                });
         },
 
     });
