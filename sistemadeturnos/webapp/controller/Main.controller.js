@@ -10,7 +10,6 @@ sap.ui.define([
     "sap/ui/model/FilterOperator",
     "sap/ui/model/json/JSONModel",
     "sap/ui/core/Fragment",
-    "sap/ui/export/Spreadsheet",
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/FormatHelper",
     "transener/sistemadeturnos/utils/Utils",
@@ -18,23 +17,19 @@ sap.ui.define([
     "transener/sistemadeturnos/services/TurnosService",
     "transener/sistemadeturnos/services/TipoEquipoService",
     "transener/sistemadeturnos/services/InterventionTypesService",
-    "transener/sistemadeturnos/services/MailService",
     "transener/sistemadeturnos/model/HardCodeModel",
     "transener/sistemadeturnos/utils/TreeTableHelper",
     "transener/sistemadeturnos/services/TramitacionService",
     "transener/sistemadeturnos/utils/RoleHelper",
-    "transener/sistemadeturnos/utils/AppManagementHelper",
-    "transener/sistemadeturnos/services/UserService"
-    "transener/sistemadeturnos/services/TramitacionService",
+    "transener/sistemadeturnos/services/UserService",
     "transener/sistemadeturnos/services/EtMailService"
 
 
-], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, Spreadsheet,
-    //utils
+], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, 
+        //utils
     ModelHelper, FormatHelper, Utils,
     //services
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel, TreeTableHelper, TramitacionService, RoleHelper, AppManagementHelper, UserService
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, MailService, HardCodeModel, TreeTableHelper, TramitacionService , EtMailService
+    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel, TreeTableHelper, TramitacionService, RoleHelper,  UserService, EtMailService
 ) {
     "use strict";
     let oDialog = null
@@ -293,7 +288,7 @@ sap.ui.define([
 
             // Intento 2: Desde el parent (Context Menu)
             // Obtener el contexto de la fila (licencia) desde el MenuItem
-            const oBindingContext = oMenuItem.getBindingContext("LicencesJsonModel");
+            oBindingContext = oMenuItem.getBindingContext("LicencesJsonModel");
             if (!oBindingContext) {
                 const oMenuItem = oEvent.getSource();
                 const oContextMenu = oMenuItem.getParent();
@@ -7413,7 +7408,8 @@ sap.ui.define([
                     MessageBox.error("Error al cargar el catálogo de códigos");
                 }
             });
-        }, _loadChartFragment: function () {
+        },
+        _loadChartFragment: function () {
             var oView = this.getView();
 
             if (!this._oChartFragment) {
@@ -7427,9 +7423,17 @@ sap.ui.define([
 
             // lo agregás donde quieras
             this.byId("chartContainer").addItem(this._oChartFragment);
-        }
+        },
+        onGuardarAccionesBackend: function () {
+            const oAccionesModel = this.getView().getModel("AccionesEntregaModel");
+            const aAcciones = oAccionesModel.getData() || [];
+
+            if (aAcciones.length === 0) {
+                MessageBox.information("No hay acciones para guardar.");
+                return;
+            }
             // Validar que todas las acciones tengan turnoEntrega
-            const aAccionesSinTurno = aAcciones.filter(acc => !acc.turnoEntrega || acc.turnoEntrega.trim() === "");
+            const aAccionesSinTurno = aAcciones.filter(acc => !acc.turnoEntrega || acc.turnoEntrega.trim() === "")
 
             if (aAccionesSinTurno.length > 0) {
                 const sDetalle = aAccionesSinTurno
@@ -7591,27 +7595,27 @@ sap.ui.define([
             });
         },
         getPermisos: function (oLicense) {
-			var aFilters = [];
+            var aFilters = [];
 
-			aFilters.push(new sap.ui.model.Filter("Id", sap.ui.model.FilterOperator.EQ, oLicense.Id));
-			aFilters.push(new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, oLicense.Empresa));
-			aFilters.push(new sap.ui.model.Filter("Tipo", sap.ui.model.FilterOperator.EQ, oLicense.Tipo));
-			aFilters.push(new sap.ui.model.Filter("Anio", sap.ui.model.FilterOperator.EQ, oLicense.Anio));
+            aFilters.push(new sap.ui.model.Filter("Id", sap.ui.model.FilterOperator.EQ, oLicense.Id));
+            aFilters.push(new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, oLicense.Empresa));
+            aFilters.push(new sap.ui.model.Filter("Tipo", sap.ui.model.FilterOperator.EQ, oLicense.Tipo));
+            aFilters.push(new sap.ui.model.Filter("Anio", sap.ui.model.FilterOperator.EQ, oLicense.Anio));
 
-			return new Promise((resolve, reject) => {
-				var entity = "/PermisosLicenciaSet";
-				oDataService.getModel("TransenerOperaciones").read(entity, {
-					filters: aFilters,
-					success: function (data) {
-						resolve(data.results);
-					},
-					error: function (error) {
-						reject(error);
-					}
-				});
-			});
+            return new Promise((resolve, reject) => {
+                var entity = "/PermisosLicenciaSet";
+                oDataService.getModel("TransenerOperaciones").read(entity, {
+                    filters: aFilters,
+                    success: function (data) {
+                        resolve(data.results);
+                    },
+                    error: function (error) {
+                        reject(error);
+                    }
+                });
+            });
 
-		},
+        },
 
     });
 });
