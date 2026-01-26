@@ -13,6 +13,7 @@ sap.ui.define([
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/FormatHelper",
     "transener/sistemadeturnos/utils/Utils",
+    "transener/sistemadeturnos/utils/DateHelper",
     "transener/sistemadeturnos/services/LicenseService",
     "transener/sistemadeturnos/services/TurnosService",
     "transener/sistemadeturnos/services/TipoEquipoService",
@@ -27,7 +28,7 @@ sap.ui.define([
 
 ], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, 
         //utils
-    ModelHelper, FormatHelper, Utils,
+    ModelHelper, FormatHelper, Utils, DateHelper,
     //services
     LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel, TreeTableHelper, TramitacionService, RoleHelper,  UserService, EtMailService
 ) {
@@ -260,14 +261,6 @@ sap.ui.define([
         },
         //---------------------------------------------------------------------------------------------
         // ------------------------------------ Acciones para la entrega ------------------------------------------------------
-        _initAccionesEntregaModel: function () {
-            const oView = this.getView();
-
-            // Crear modelo para almacenar las acciones seleccionadas
-            const oAccionesModel = new JSONModel([]);
-            oView.setModel(oAccionesModel, "AccionesEntregaModel");
-        },
-
         _initAccionesEntregaModel: function () {
             const oView = this.getView();
 
@@ -1206,8 +1199,8 @@ sap.ui.define([
                         }
 
                         aResults.forEach(r => {
-                            const fechaFormateada = this._formatDateYYYYMMDD(r.Fecha);
-                            const desc = this._getEstadoDescription(r.Estado);
+                            const fechaFormateada = DateHelper.formatDateYYYYMMDD(r.Fecha);
+                            const desc = TramitacionService.getEstadoDescripcion(r.Estado);
                         });
 
                         let tramitacionColor = null;
@@ -1220,7 +1213,7 @@ sap.ui.define([
                             if (item.Estado === 'AS' || item.Estado === 'NA' || item.Estado === 'CD' || item.Estado === 'CC') {
                                 aEstadosProblematicos.push(item);
 
-                                const fechaItem = this._formatDateYYYYMMDD(item.Fecha);
+                                const fechaItem = DateHelper.formatDateYYYYMMDD(item.Fecha);
 
                                 if (item.Estado === 'AS' || item.Estado === 'NA') {
                                     tramitacionPorFecha[fechaItem] = 'red';
@@ -1234,7 +1227,7 @@ sap.ui.define([
 
                         if (aEstadosProblematicos.length > 0) {
                             aEstadosProblematicos.forEach(item => {
-                                const fechaFormateada = this._formatDateYYYYMMDD(item.Fecha);
+                                const fechaFormateada = DateHelper.formatDateYYYYMMDD(item.Fecha);
                             });
                         }
 
@@ -1299,59 +1292,16 @@ sap.ui.define([
                 return null;
             }
 
-            const sFechaTurno = this._formatDateYYYYMMDD(dFechaTurno);
+            const sFechaTurno = DateHelper.formatDateYYYYMMDD(dFechaTurno);
 
             const color = oLicencia.tramitacionPorFecha[sFechaTurno] || null;
 
             return color;
         },
 
-        _formatDateYYYYMMDD: function (date) {
-            if (!date) return "";
-
-            let oDate;
-
-            if (date instanceof Date) {
-                oDate = date;
-            }
-            else if (typeof date === "string" && !date.startsWith("/Date(")) {
-                oDate = new Date(date);
-            }
-            else if (typeof date === "string" && date.startsWith("/Date(")) {
-                const timestamp = parseInt(date.match(/\d+/)[0]);
-                oDate = new Date(timestamp);
-            }
-            else if (typeof date === "object" && date.__edmType === "Edm.DateTime") {
-                oDate = new Date(date);
-            }
-            else {
-                try {
-                    oDate = new Date(date);
-                } catch (e) {
-                    return "";
-                }
-            }
-
-            if (isNaN(oDate.getTime())) {
-                return "";
-            }
-
-            const year = oDate.getFullYear();
-            const month = String(oDate.getMonth() + 1).padStart(2, "0");
-            const day = String(oDate.getDate()).padStart(2, "0");
-
-            return `${year}-${month}-${day}`;
-        },
-
-        _getEstadoDescription: function (estado) {
-            const estados = {
-                "AS": "(Anulada Solicitante)",
-                "NA": "(No Autorizada)",
-                "CD": "(Condicionada)",
-                "AU": "(Autorizada)"
-            };
-            return estados[estado] || "";
-        },
+        // Funciones movidas a servicios/helpers:
+        // - _formatDateYYYYMMDD -> DateHelper.formatDateYYYYMMDD
+        // - _getEstadoDescription -> TramitacionService.getEstadoDescripcion
 
         onOpenCalendarioTramitacion: function (oEvent) {
             const oButton = oEvent.getSource();
@@ -1433,7 +1383,7 @@ sap.ui.define([
             const oView = this.getView();
 
             const aCalendarioData = oLicencia.calendarioCompleto.map(item => {
-                const fechaFormateada = this._formatDateYYYYMMDD(item.Fecha);
+                const fechaFormateada = DateHelper.formatDateYYYYMMDD(item.Fecha);
 
                 return {
                     FechaDisplay: this._formatDateToDisplay(item.Fecha),
@@ -1530,7 +1480,7 @@ sap.ui.define([
         },
 
         _formatDateToDisplay: function (date) {
-            const formatted = this._formatDateYYYYMMDD(date);
+            const formatted = DateHelper.formatDateYYYYMMDD(date);
             if (!formatted) return "";
 
             const [year, month, day] = formatted.split('-');
@@ -4183,35 +4133,6 @@ sap.ui.define([
             );
         },
 
-        _deleteAttachment: function (oAttachment, iIndex) {
-            const oLicencia = this._currentLicenciaForAttachments;
-
-            if (!oLicencia || !oLicencia.Attachments) {
-                MessageToast.show("Error: No se pudo encontrar la licencia");
-                return;
-            }
-
-            // Eliminar del array
-            oLicencia.Attachments.splice(iIndex, 1);
-
-            const oModel = this.getView().getModel("LicencesJsonModel");
-            oModel.updateBindings(true);
-
-            if (oAttachment.Attindex) {
-                this._deleteAttachmentFromBackend(oAttachment);
-            } else {
-                MessageToast.show("Archivo eliminado: " + oAttachment.AttachmentName);
-            }
-
-            if (this._attachmentSelectorDialog) {
-                this._attachmentSelectorDialog.close();
-            }
-
-            if (oLicencia.Attachments.length === 0) {
-                MessageToast.show("Todos los archivos fueron eliminados");
-            }
-        },
-
         // ==================== FIN SOLUCIÓN BOTÓN ELIMINAR ====================
 
         /**
@@ -5892,9 +5813,6 @@ sap.ui.define([
         },
 
         // ------------------------------ AGREGAR LICENCIA --------------------------------------
-        onAgregarLicencia: function (oEvent) {
-            MessageToast.show("Funcionalidad en desarrollo");
-        },
 
         // ------------------------------- TAB REPORTES ------------------------------------------
 
