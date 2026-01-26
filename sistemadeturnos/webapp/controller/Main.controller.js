@@ -7348,9 +7348,13 @@ sap.ui.define([
 
         test: function () {
             const oView = this.getView();
+            const oDataModel = this.getView().getModel();
             const oModel = this.getView().getModel();
-            var oLicense = ModelHelper.getModel("LicencesJsonModel", oView).getData();
-            let promises = [LicenseService.getPermisos(oLicense[0], oModel)];
+            var oLicenseTurno = ModelHelper.getModel("LicencesJsonModel", oView).getData();
+
+           const oLicense = LicenseService.FIND(oLicenseTurno, oDataModel)
+
+            let promises = [LicenseService.getPermisos(oLicense, oModel)];
             promises.push(
                 EtMailService.getPromise(
                     oLicense.Empresa,
@@ -7438,9 +7442,9 @@ sap.ui.define([
 
                 // Enviar mail usando MailService
                 const oComponent = this.getOwnerComponent();
-                const sDestinatario = emails.filter(e => e).join(",") || sEmailEt || "";
-                
-                // Construir objeto licencia con los datos necesarios para el mail
+                const sDestinatarioReales = emails.filter(e => e).join(",") || sEmailEt || "";
+                const sDestinatario = "guillermo.quattrocchi@altromondo.com.ar"
+
                 const oLicenciaParaMail = {
                     Destinatario: sDestinatario,
                     Email: sDestinatario,
