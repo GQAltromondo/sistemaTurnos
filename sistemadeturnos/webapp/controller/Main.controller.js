@@ -7518,7 +7518,7 @@ sap.ui.define([
                 let sEmailEt =
                     res[1].results && res[1].results.length
                         ? res[1].results.map(e => e.Mail).join(",")
-                        : "";
+                        : "guillermo.quattrocchi@altromondo.com.ar";
 
                 console.group("📨 Email ET");
                 console.log("sEmailEt:", sEmailEt);
