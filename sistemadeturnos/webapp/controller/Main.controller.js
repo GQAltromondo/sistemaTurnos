@@ -2925,13 +2925,33 @@ sap.ui.define([
                     let oFechaDate = licencia.Fecha;
                     if (!(oFechaDate instanceof Date)) {
                         if (typeof oFechaDate === 'string') {
-                            oFechaDate = new Date(oFechaDate);
+                            // Intentar parsear formato DD/MM/YYYY o DD-MM-YYYY
+                            const dateMatch = oFechaDate.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+                            if (dateMatch) {
+                                // Formato DD/MM/YYYY o DD-MM-YYYY
+                                const day = parseInt(dateMatch[1], 10);
+                                const month = parseInt(dateMatch[2], 10) - 1; // Los meses en Date son 0-indexados
+                                const year = parseInt(dateMatch[3], 10);
+                                oFechaDate = new Date(year, month, day, 0, 0, 0, 0);
+                            } else {
+                                // Intentar parseo estándar
+                                oFechaDate = new Date(oFechaDate);
+                            }
                         } else if (oFechaDate && typeof oFechaDate.getTime === 'function') {
                             // Es un objeto tipo Date (como SAP UI5 Date)
                             oFechaDate = new Date(oFechaDate.getTime());
                         } else {
                             oFechaDate = new Date();
                         }
+                    }
+                    
+                    // Asegurar que la fecha tenga hora 00:00:00 UTC para formato OData
+                    if (oFechaDate instanceof Date && !isNaN(oFechaDate.getTime())) {
+                        // Normalizar a UTC con hora 00:00:00
+                        const year = oFechaDate.getFullYear();
+                        const month = oFechaDate.getMonth();
+                        const day = oFechaDate.getDate();
+                        oFechaDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
                     }
 
                     const license = {
