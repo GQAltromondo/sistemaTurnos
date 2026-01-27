@@ -7444,10 +7444,6 @@ sap.ui.define([
                 return;
             }
 
-            console.group("📋 Procesando licencias del modelo");
-            console.log("Total de licencias:", aLicencias.length);
-            console.groupEnd();
-
             const oComponent = this.getOwnerComponent();
             var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
             var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
@@ -7472,16 +7468,15 @@ sap.ui.define([
             // Procesar cada licencia del modelo
             csrfTokenPromise.then((csrfToken) => {
                 currentCsrfToken = csrfToken;
-                console.log("✅ Token CSRF obtenido, reutilizando para", aLicencias.length, "envíos");
+          
 
                 const aPromises = aLicencias.map((oLicense) => {
                 return new Promise((resolve, reject) => {
-                    console.group(`📄 Procesando licencia ${oLicense.Id || 'N/A'}`);
+                  
 
                     // Verificar si ya fue enviado - evitar reenviar mails
                     if (oLicense.Enviado === true) {
-                        console.log(`⏭️ Licencia ${oLicense.Id} ya fue enviada (Enviado = true), saltando envío de mail`);
-                        console.groupEnd();
+                    
                         resolve({ success: true, licenciaId: oLicense.Id, skipped: true, reason: "Ya enviado" });
                         return;
                     }
@@ -7548,27 +7543,23 @@ sap.ui.define([
                                 Period: oFormatter.getPeriod(oLicense.Period),
                             };
 
-                            console.log("📤 Enviando mail para licencia:", oLicense.Id);
                             console.log("Destinatario:", sDestinatario);
 
                             // Enviar mail usando MailService con el token CSRF reutilizado
                             // Si el token expira, se renovará automáticamente mediante el callback
                             MailService.sendLicenseEmail(oLicenciaParaMail, oComponent, currentCsrfToken, renewToken)
                                 .then((result) => {
-                                    console.log(`✅ Mail enviado correctamente para licencia ${oLicense.Id}:`, result);
-                                    console.groupEnd();
+                                
                                     resolve({ success: true, licenciaId: oLicense.Id });
                                 })
                                 .catch((error) => {
-                                    console.error(`❌ Error al enviar mail para licencia ${oLicense.Id}:`, error);
-                                    console.groupEnd();
+                                  
                                     // No rechazar para que continúe con las demás licencias
                                     resolve({ success: false, licenciaId: oLicense.Id, error: error });
                                 });
                         })
                         .catch(err => {
-                            console.error(`❌ Error al obtener permisos/emails para licencia ${oLicense.Id}:`, err);
-                            console.groupEnd();
+                        
                             // No rechazar para que continúe con las demás licencias
                             resolve({ success: false, licenciaId: oLicense.Id, error: err });
                         });
@@ -7583,11 +7574,7 @@ sap.ui.define([
                 const aSaltadas = results.filter(r => r.skipped);
                 const aFallidos = results.filter(r => !r.success && !r.skipped);
 
-                console.group("📊 Resumen de procesamiento");
-                console.log(`Total procesadas: ${results.length}`);
-                console.log(`Exitosas (mails enviados): ${aExitosos.length}`);
-                console.log(`Saltadas (ya enviadas): ${aSaltadas.length}`);
-                console.log(`Fallidas: ${aFallidos.length}`);
+              
                 if (aSaltadas.length > 0) {
                     console.log("Licencias saltadas (ya enviadas):", aSaltadas.map(r => r.licenciaId));
                 }
@@ -7619,14 +7606,12 @@ sap.ui.define([
                         };
                     });
 
-                    console.group("💾 Guardando turnos con Enviado = true");
-                    console.log(`Guardando ${aDataParaGuardar.length} turno(s)`);
-                    console.groupEnd();
+                  
 
-                    // Guardar usando createTurno con bEnviado = true
+                 
                     this.createTurno(aDataParaGuardar, aLicenciasExitosas, true);
                 } else {
-                    MessageBox.warning("No se pudo enviar ningún mail. No se guardarán los turnos.");
+                    MessageBox.warning("No se realizaron modificaciones en el turno, ni se reenviaron mails ya enviados.");
                 }
 
                 if (aFallidos.length > 0) {

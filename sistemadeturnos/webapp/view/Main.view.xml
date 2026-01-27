@@ -375,7 +375,7 @@
                                         <Label text="{i18n>equipment}" />
                                         <t:template>
                                             <HBox
-                                                alignItems="Center"
+                                                alignItems="Start"
                                                 justifyContent="Center"
                                                 width="100%"
                                             >

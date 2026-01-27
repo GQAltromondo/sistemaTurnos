@@ -5,14 +5,7 @@ sap.ui.define([
     "use strict";
 
     return {
-        /**
-         * Envía un email para una licencia usando workflow
-         * @param {Object} oLicencia - Datos de la licencia
-         * @param {Object} oComponent - Componente de la aplicación
-         * @param {String} [csrfToken] - Token CSRF opcional. Si no se proporciona, se obtiene automáticamente
-         * @param {Function} [onTokenExpired] - Callback opcional que se llama cuando el token expira. Debe retornar una Promise con el nuevo token
-         * @returns {Promise} Promise que se resuelve cuando el mail se envía correctamente
-         */
+      
         sendLicenseEmail: function (oLicencia, oComponent, csrfToken, onTokenExpired) {
             if (!oLicencia || !oComponent) {
                 return Promise.reject(new Error("Datos de licencia o componente faltantes"));
@@ -66,9 +59,9 @@ sap.ui.define([
                             let errorMessage = "Error al enviar mail";
                             let isTokenExpired = false;
                             
-                            // Detectar si el token CSRF expiró
+                          
                             if (jqXHR) {
-                                // Error 403 generalmente indica token expirado o inválido
+                             
                                 if (jqXHR.status === 403) {
                                     isTokenExpired = true;
                                 }
@@ -98,11 +91,11 @@ sap.ui.define([
                             error.isTokenExpired = isTokenExpired;
                             error.statusCode = jqXHR ? jqXHR.status : null;
                             
-                            // Si el token expiró y hay un callback para renovarlo, intentar renovar y reintentar
+                          
                             if (isTokenExpired && onTokenExpired && typeof onTokenExpired === 'function') {
                                 onTokenExpired()
                                     .then((newToken) => {
-                                        // Reintentar con el nuevo token
+                                     
                                         return this.sendLicenseEmail(oLicencia, oComponent, newToken);
                                     })
                                     .then(resolve)
@@ -116,13 +109,7 @@ sap.ui.define([
             });
         },
 
-        /**
-         * Envía múltiples emails reutilizando el mismo token CSRF
-         * Obtiene el token una sola vez y lo reutiliza para todos los envíos
-         * @param {Array} aLicencias - Array de objetos con datos de licencias
-         * @param {Object} oComponent - Componente de la aplicación
-         * @returns {Promise<Array>} Promise que se resuelve con un array de resultados {success: boolean, licenciaId: string, result?: Object, error?: Error}
-         */
+     
         sendMultipleLicenseEmails: function (aLicencias, oComponent) {
             if (!aLicencias || !Array.isArray(aLicencias) || aLicencias.length === 0) {
                 return Promise.reject(new Error("Se requiere un array de licencias válido"));
