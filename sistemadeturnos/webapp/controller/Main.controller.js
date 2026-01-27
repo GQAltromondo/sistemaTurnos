@@ -4295,27 +4295,7 @@ sap.ui.define([
 
         _loadAttachmentsForLicensesAsync: function (aLicencias) {
 
-            const oDataModel = this.getView().getModel();
             const oLicencesModel = this.getView().getModel("LicencesJsonModel");
-
-            // Función helper para normalizar adjuntos desde formato OData expandido
-            const normalizeAttachments = (attachments) => {
-                if (!attachments || !Array.isArray(attachments) || attachments.length === 0) {
-                    return [];
-                }
-
-                return attachments.map(att => ({
-                    Id: att.Id,
-                    Empresa: att.Empresa,
-                    Anio: att.Anio,
-                    AttachmentData: att.Attachment ? ("data:" + att.Doctype + ";base64," + att.Attachment) : att.AttachmentData,
-                    AttachmentName: att.Filename || att.AttachmentName,
-                    AttachmentType: att.Doctype || att.AttachmentType,
-                    AttachmentSize: att.Size || att.AttachmentSize,
-                    Attindex: att.Attindex,
-                    Timestamp: att.Timestamp || new Date().getTime() + Math.random()
-                }));
-            };
 
             const aPromises = aLicencias.map((licencia, idx) => {
 
@@ -4325,49 +4305,20 @@ sap.ui.define([
                                                licencia.AttachmentXLicencia_nav || 
                                                null;
 
-                    if (expandedAttachments && Array.isArray(expandedAttachments) && expandedAttachments.length > 0) {
-                        // Los datos expandidos ya están en AttachmentXLicencia_nav.results
-                        // No necesitamos transformarlos ni asignarlos, ya están disponibles
-                        console.log(`✅ Adjuntos expandidos disponibles para licencia ${licencia.Id} (${expandedAttachments.length} adjuntos)`);
+                    if (expandedAttachments && Array.isArray(expandedAttachments)) {
+                        // Los datos expandidos ya están disponibles
+                        if (expandedAttachments.length > 0) {
+                            console.log(`✅ Adjuntos expandidos disponibles para licencia ${licencia.Id} (${expandedAttachments.length} adjuntos)`);
+                        }
+                        // Si el array existe pero está vacío, significa que no hay adjuntos
                         resolve();
                         return;
                     }
 
-                    // Si no hay datos expandidos, hacer la llamada OData
-                    console.log(`📡 Cargando adjuntos desde OData para licencia ${licencia.Id}`);
-                    const aFilters = [
-                        new Filter("Id", FilterOperator.EQ, licencia.Id),
-                        new Filter("Empresa", FilterOperator.EQ, licencia.Empresa),
-                        new Filter("Anio", FilterOperator.EQ, licencia.Anio)
-                    ];
-
-                    oDataModel.read("/AttachmentLicenciasSet", {
-                        filters: aFilters,
-                        success: function (oData) {
-                            if (oData.results && oData.results.length > 0) {
-                                // Asignar los adjuntos a AttachmentXLicencia_nav.results para consistencia
-                                const aLicenciasActuales = oLicencesModel.getData();
-                                const iRealIndex = aLicenciasActuales.findIndex(lic =>
-                                    lic.Id === licencia.Id &&
-                                    lic.Empresa === licencia.Empresa &&
-                                    lic.Anio === licencia.Anio
-                                );
-
-                                if (iRealIndex !== -1) {
-                                    // Crear estructura AttachmentXLicencia_nav si no existe
-                                    if (!aLicenciasActuales[iRealIndex].AttachmentXLicencia_nav) {
-                                        oLicencesModel.setProperty("/" + iRealIndex + "/AttachmentXLicencia_nav", {});
-                                    }
-                                    oLicencesModel.setProperty("/" + iRealIndex + "/AttachmentXLicencia_nav/results", oData.results);
-                                }
-                            }
-                            resolve();
-                        }.bind(this),
-                        error: function (oError) {
-                            console.warn(`⚠️ Error al cargar adjuntos para licencia ${licencia.Id}:`, oError);
-                            resolve(); // Resolver igual para no bloquear otras licencias
-                        }
-                    });
+                    // Si no hay datos expandidos, significa que no existen adjuntos
+                    // No hacemos llamada OData innecesaria
+                    console.log(`ℹ️ No hay adjuntos expandidos para licencia ${licencia.Id} - no se realizará llamada OData`);
+                    resolve();
                 });
             });
 
