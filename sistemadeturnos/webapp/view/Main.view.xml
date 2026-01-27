@@ -327,6 +327,13 @@
                                             press="onOpenAccionEntregaPopover"
                                             enabled="{editableModel>/isEditable}"
                                         />
+
+                                        <!-- Gráfico -->
+                                        <MenuItem
+                                            text="Ver Gráfico"
+                                            icon="sap-icon://line-chart"
+                                            press="onNavigateToGrafico"
+                                        />
                                     </Menu>
                                 </t:contextMenu>
 
@@ -950,7 +957,6 @@
                                     press="onGuardarAccionesBackend"
                                     tooltip="Guardar todas las acciones en el backend"
                                     enabled="{editableModel>/isEditable}"
-                                
                                 />
                             </OverflowToolbar>
                         </IconTabFilter>
@@ -1038,11 +1044,14 @@
                                 </Toolbar>
                             </VBox>
                         </IconTabFilter>
-                           <IconTabFilter
+                        <IconTabFilter
                             text="Grafico"
                             key="Grafico"
                         >
-                        <VBox id="chartContainer" width="100%" />
+                            <VBox
+                                id="chartContainer"
+                                width="100%"
+                            />
                         </IconTabFilter>
                     </items>
                 </IconTabBar>
@@ -1098,7 +1107,6 @@
                             text="{i18n>saveTurno}"
                             enabled="{editableModel>/isEditable}"
                             press="onSaveTurnoPress"
-                            
                         />
                         <Button
                             icon="sap-icon://create-form"

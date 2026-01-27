@@ -40,12 +40,14 @@ sap.ui.define([
         onInit: function () {
             var oData = {
                 data: [
-                    { Mes: "Ene", Linea1: 10, Linea2: 15 },
-                    { Mes: "Feb", Linea1: 12, Linea2: 18 },
-                    { Mes: "Mar", Linea1: 8, Linea2: 14 },
-                    { Mes: "Abr", Linea1: 15, Linea2: 20 },
-                    { Mes: "May", Linea1: 18, Linea2: 22 },
-                    { Mes: "Jun", Linea1: 20, Linea2: 25 }
+                    { Accion: "Solicitud del equipo al COC", TiempoPrevisto: 1.5, TiempoReal: 2.0 },
+                    { Accion: "Autorización desde el COC", TiempoPrevisto: 2.0, TiempoReal: 2.5 },
+                    { Accion: "Comienzo de maniobras", TiempoPrevisto: 2.5, TiempoReal: 3.0 },
+                    { Accion: "Colocación de PAT", TiempoPrevisto: 3.0, TiempoReal: 4.0 },
+                    { Accion: "Entrega de LT", TiempoPrevisto: 8.0, TiempoReal: 12.0 },
+                    { Accion: "Finalización de LT", TiempoPrevisto: 9.0, TiempoReal: 12.0 },
+                    { Accion: "Retiro de PAT", TiempoPrevisto: 9.5, TiempoReal: 11.5 },
+                    { Accion: "Maniobras para la PES", TiempoPrevisto: 10.0, TiempoReal: 11.0 }
                 ]
             };
 
@@ -7342,7 +7344,27 @@ sap.ui.define([
                     MessageBox.error("Error al cargar el catálogo de códigos");
                 }
             });
-        }, _loadChartFragment: function () {
+        },
+
+        onNavigateToGrafico: function () {
+            // ✅ ID CORRECTO: mainTabBar (no idIconTabBar)
+            var oIconTabBar = this.byId("mainTabBar");
+
+            if (oIconTabBar) {
+                // ✅ KEY CORRECTO: "Grafico" (con G mayúscula, sin tilde)
+                oIconTabBar.setSelectedKey("Grafico");
+
+                // Cargar el gráfico si aún no está cargado
+                this._loadReporteFragment();
+
+                sap.m.MessageToast.show("📊 Mostrando gráfico");
+            } else {
+                console.error("No se encontró el IconTabBar con id 'mainTabBar'");
+                sap.m.MessageBox.error("No se pudo encontrar la pestaña de gráfico");
+            }
+        },
+
+        _loadChartFragment: function () {
             var oView = this.getView();
 
             if (!this._oChartFragment) {
@@ -7356,6 +7378,54 @@ sap.ui.define([
 
             // lo agregás donde quieras
             this.byId("chartContainer").addItem(this._oChartFragment);
-        }
+        },
+
+        onChartDataSelect: function (oEvent) {
+            var aData = oEvent.getParameter("data");
+
+            if (!aData || aData.length === 0) {
+                return;
+            }
+
+            var oSelectedData = aData[0].data;
+
+            var sAccion = oSelectedData.Accion || oSelectedData.Mes || oSelectedData["Accion"] || "";
+
+            if (!sAccion) {
+                sap.m.MessageToast.show("Error: No se pudo identificar la acción");
+                return;
+            }
+
+            var oChartModel = this.getView().getModel("chartModel");
+            var aAllData = oChartModel.getProperty("/data");
+
+            var oCompleteData = aAllData.find(function (item) {
+                return item.Accion === sAccion || item.Mes === sAccion;
+            });
+
+            if (!oCompleteData) {
+                sap.m.MessageToast.show("No se encontraron datos completos");
+                return;
+            }
+
+            // Usar las propiedades correctas según lo que tenga el modelo
+            var fTiempoPrevisto = oCompleteData.TiempoPrevisto || oCompleteData.Linea1;
+            var fTiempoReal = oCompleteData.TiempoReal || oCompleteData.Linea2;
+
+            // Calcular el desvío
+            var fDesvio = fTiempoReal - fTiempoPrevisto;
+            var fDesvioPorc = ((fDesvio / fTiempoPrevisto) * 100).toFixed(1);
+
+            // Mostrar información completa
+            var sDetalles = "Acción: " + sAccion + "\n\n" +
+                "Tiempo Previsto: " + fTiempoPrevisto + " hs\n" +
+                "Tiempo Real: " + fTiempoReal + " hs\n\n" +
+                "Desvío: " + fDesvio.toFixed(1) + " hs (" + fDesvioPorc + "%)\n"
+
+            sap.m.MessageBox.information(sDetalles, {
+                title: "Detalle de la Acción",
+                styleClass: "sapUiSizeCompact"
+            });
+        },
     });
 });

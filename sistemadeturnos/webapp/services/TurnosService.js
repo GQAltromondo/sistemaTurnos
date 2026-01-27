@@ -67,9 +67,11 @@ sap.ui.define([
                     error: (error) => {
                         MessageBox.show("No se encontraron datos en las fechas seleccionadas", {
                             icon: MessageBox.Icon.WARNING,
-                            title: "Alerta"
+                            title: "Alerta",
+                            onClose: function () {
+                                reject(error);
+                            }
                         });
-                        reject(error);
                     }
                 });
             });
@@ -221,7 +223,7 @@ sap.ui.define([
 
                         license.TurnoAsignado = nav.Turno;
                         license.Comentarios = nav.Comentarios;
-                        license.Agrmanual = nav.Agrmanual || false; 
+                        license.Agrmanual = nav.Agrmanual || false;
 
                         return;
                     }
