@@ -2948,15 +2948,14 @@ sap.ui.define([
 
                     // Si bEnviado es true, primero intentar actualizar el turno existente
                     if (bEnviado === true) {
-                        // La clave primaria incluye: Id, Empresa, Tipo, Anio, Dateturno
-                        // license.Dateturno ya es un Date nativo
-                        const sDateturnoISO = license.Dateturno.toISOString();
-                        const sKey = entity + 
-                            "(Empresa='" + license.Empresa + 
-                            "',Id='" + license.Id + 
-                            "',Tipo='" + license.Tipo + 
-                            "',Anio='" + license.Anio + 
-                            "',Dateturno=datetime'" + sDateturnoISO + "')";
+                        // Usar createKey del modelo OData para construir la key automáticamente desde el metadata
+                        const sKey = oDataService.createKey(entity, {
+                            Id: license.Id,
+                            Empresa: license.Empresa,
+                            Tipo: license.Tipo,
+                            Anio: license.Anio,
+                            Dateturno: license.Dateturno
+                        });
 
                         // Intentar actualizar primero
                         oDataService.update(sKey, license, {
