@@ -7368,8 +7368,14 @@ sap.ui.define([
             var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
             var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
 
+            // Obtener el token CSRF una sola vez para todos los envíos
+            const csrfTokenPromise = MailService.getCSRFToken(oComponent);
+
             // Procesar cada licencia del modelo
-            const aPromises = aLicencias.map((oLicense) => {
+            csrfTokenPromise.then((csrfToken) => {
+                console.log("✅ Token CSRF obtenido, reutilizando para", aLicencias.length, "envíos");
+
+                const aPromises = aLicencias.map((oLicense) => {
                 return new Promise((resolve, reject) => {
                     console.group(`📄 Procesando licencia ${oLicense.Id || 'N/A'}`);
 
@@ -7438,8 +7444,8 @@ sap.ui.define([
                             console.log("📤 Enviando mail para licencia:", oLicense.Id);
                             console.log("Destinatario:", sDestinatario);
 
-                            // Enviar mail usando MailService
-                            MailService.sendLicenseEmail(oLicenciaParaMail, oComponent)
+                            // Enviar mail usando MailService con el token CSRF reutilizado
+                            MailService.sendLicenseEmail(oLicenciaParaMail, oComponent, csrfToken)
                                 .then((result) => {
                                     console.log(`✅ Mail enviado correctamente para licencia ${oLicense.Id}:`, result);
                                     console.groupEnd();
@@ -7459,34 +7465,35 @@ sap.ui.define([
                             resolve({ success: false, licenciaId: oLicense.Id, error: err });
                         });
                 });
-            });
-
-            // Esperar a que se procesen todas las licencias
-            Promise.all(aPromises)
-                .then((results) => {
-                    const aExitosos = results.filter(r => r.success);
-                    const aFallidos = results.filter(r => !r.success);
-
-                    console.group("📊 Resumen de procesamiento");
-                    console.log(`Total procesadas: ${results.length}`);
-                    console.log(`Exitosas: ${aExitosos.length}`);
-                    console.log(`Fallidas: ${aFallidos.length}`);
-                    if (aFallidos.length > 0) {
-                        console.log("Licencias con errores:", aFallidos.map(r => r.licenciaId));
-                    }
-                    console.groupEnd();
-
-                    if (aExitosos.length > 0) {
-                        MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente`);
-                    }
-                    if (aFallidos.length > 0) {
-                        MessageBox.warning(`${aFallidos.length} licencia(s) tuvieron errores al enviar el mail`);
-                    }
-                })
-                .catch(err => {
-                    console.error("❌ Error general en el procesamiento:", err);
-                    MessageBox.error("Error al procesar las licencias: " + (err.message || err));
                 });
+
+                // Esperar a que se procesen todas las licencias
+                return Promise.all(aPromises);
+            })
+            .then((results) => {
+                const aExitosos = results.filter(r => r.success);
+                const aFallidos = results.filter(r => !r.success);
+
+                console.group("📊 Resumen de procesamiento");
+                console.log(`Total procesadas: ${results.length}`);
+                console.log(`Exitosas: ${aExitosos.length}`);
+                console.log(`Fallidas: ${aFallidos.length}`);
+                if (aFallidos.length > 0) {
+                    console.log("Licencias con errores:", aFallidos.map(r => r.licenciaId));
+                }
+                console.groupEnd();
+
+                if (aExitosos.length > 0) {
+                    MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente`);
+                }
+                if (aFallidos.length > 0) {
+                    MessageBox.warning(`${aFallidos.length} licencia(s) tuvieron errores al enviar el mail`);
+                }
+            })
+            .catch(err => {
+                console.error("❌ Error al obtener token CSRF o procesar las licencias:", err);
+                MessageBox.error("Error al procesar las licencias: " + (err.message || err));
+            });
         },
 
     });
