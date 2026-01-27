@@ -2921,12 +2921,25 @@ sap.ui.define([
             const oComponent = this.getOwnerComponent();
             const aPromises = licencias.map((licencia) => {
                 return new Promise((resolve, reject) => {
+                    // Convertir Fecha a Date nativo si es necesario
+                    let oFechaDate = licencia.Fecha;
+                    if (!(oFechaDate instanceof Date)) {
+                        if (typeof oFechaDate === 'string') {
+                            oFechaDate = new Date(oFechaDate);
+                        } else if (oFechaDate && typeof oFechaDate.getTime === 'function') {
+                            // Es un objeto tipo Date (como SAP UI5 Date)
+                            oFechaDate = new Date(oFechaDate.getTime());
+                        } else {
+                            oFechaDate = new Date();
+                        }
+                    }
+
                     const license = {
                         "Id": licencia.Id,
                         "Empresa": licencia.Empresa,
                         "Tipo": licencia.Tipo || "L",
                         "Anio": licencia.Anio,
-                        "Dateturno": new Date(licencia.Fecha),
+                        "Dateturno": oFechaDate,
                         "Turno": licencia.Turno,
                         "Comentarios": licencia.Comentarios,
                         "Enviado": bEnviado !== undefined ? bEnviado : licencia.Enviado,
@@ -2936,8 +2949,8 @@ sap.ui.define([
                     // Si bEnviado es true, primero intentar actualizar el turno existente
                     if (bEnviado === true) {
                         // La clave primaria incluye: Id, Empresa, Tipo, Anio, Dateturno
-                        const oDateturno = license.Dateturno || new Date(licencia.Fecha);
-                        const sDateturnoISO = oDateturno.toISOString();
+                        // license.Dateturno ya es un Date nativo
+                        const sDateturnoISO = license.Dateturno.toISOString();
                         const sKey = entity + 
                             "(Empresa='" + license.Empresa + 
                             "',Id='" + license.Id + 
