@@ -584,7 +584,7 @@
                                                 type="Emphasized"
                                                 tooltip="{i18n>viewFile}"
                                                 press="onViewAttachment"
-                                                visible="{= !!${LicencesJsonModel>Attachments/length} }"
+                                                visible="{= !!${LicencesJsonModel>AttachmentXLicencia_nav/results/length} || !!${LicencesJsonModel>Attachments/length} }"
                                                 class="sapUiTinyMarginEnd whiteIconButton"
                                             />
                                         </t:template>

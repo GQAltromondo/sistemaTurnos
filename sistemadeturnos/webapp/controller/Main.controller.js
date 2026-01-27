@@ -3854,7 +3854,12 @@ sap.ui.define([
                 if (this._currentAttachmentContext) {
                     const oLicencia = this._currentAttachmentContext.getObject();
 
-                    if (!oLicencia.Attachments) {
+                    // Asegurar que existe el array de adjuntos (puede venir de AttachmentXLicencia_nav o Attachments)
+                    if (!oLicencia.Attachments && !oLicencia.AttachmentXLicencia_nav) {
+                        oLicencia.Attachments = [];
+                    } else if (oLicencia.AttachmentXLicencia_nav && !oLicencia.AttachmentXLicencia_nav.results) {
+                        oLicencia.AttachmentXLicencia_nav.results = [];
+                    } else if (!oLicencia.Attachments) {
                         oLicencia.Attachments = [];
                     }
 
@@ -3911,8 +3916,9 @@ sap.ui.define([
 
             const oLicencia = oContext.getObject();
 
-            // Verificar si hay adjuntos
-            if (!oLicencia.Attachments || oLicencia.Attachments.length === 0) {
+            // Verificar si hay adjuntos usando función normalizada
+            const aAttachments = this._getNormalizedAttachments(oLicencia);
+            if (!aAttachments || aAttachments.length === 0) {
                 MessageToast.show("No hay archivos adjuntos");
                 return;
             }
@@ -3979,7 +3985,8 @@ sap.ui.define([
                                                 press: function (oEvent) {
                                                     const oItem = oEvent.getSource().getParent().getParent().getParent();
                                                     const iIndex = oList.indexOfItem(oItem);
-                                                    const oAttachment = oLicencia.Attachments[iIndex];
+                                                    const aAttachments = this._getNormalizedAttachments(oLicencia);
+                                                    const oAttachment = aAttachments[iIndex];
                                                     this._openAttachment(oAttachment);
                                                 }.bind(this)
                                             }).addStyleClass("sapUiTinyMarginEnd"),
@@ -3991,7 +3998,8 @@ sap.ui.define([
                                                 press: function (oEvent) {
                                                     const oItem = oEvent.getSource().getParent().getParent().getParent();
                                                     const iIndex = oList.indexOfItem(oItem);
-                                                    const oAttachment = oLicencia.Attachments[iIndex];
+                                                    const aAttachments = this._getNormalizedAttachments(oLicencia);
+                                                    const oAttachment = aAttachments[iIndex];
                                                     this._deleteAttachmentFromList(oAttachment, iIndex);
                                                 }.bind(this)
                                             })
@@ -4004,7 +4012,9 @@ sap.ui.define([
                 }
             });
 
-            const aListData = oLicencia.Attachments.map((att, idx) => ({
+            // Usar adjuntos normalizados
+            const aAttachments = this._getNormalizedAttachments(oLicencia);
+            const aListData = aAttachments.map((att, idx) => ({
                 name: att.AttachmentName,
                 info: this._formatSize(att.AttachmentSize) + " • " + this._getFileTypeName(att.AttachmentType),
                 icon: this.getFileIcon(att.AttachmentType),
@@ -4288,9 +4298,43 @@ sap.ui.define([
             const oDataModel = this.getView().getModel();
             const oLicencesModel = this.getView().getModel("LicencesJsonModel");
 
+            // Función helper para normalizar adjuntos desde formato OData expandido
+            const normalizeAttachments = (attachments) => {
+                if (!attachments || !Array.isArray(attachments) || attachments.length === 0) {
+                    return [];
+                }
+
+                return attachments.map(att => ({
+                    Id: att.Id,
+                    Empresa: att.Empresa,
+                    Anio: att.Anio,
+                    AttachmentData: att.Attachment ? ("data:" + att.Doctype + ";base64," + att.Attachment) : att.AttachmentData,
+                    AttachmentName: att.Filename || att.AttachmentName,
+                    AttachmentType: att.Doctype || att.AttachmentType,
+                    AttachmentSize: att.Size || att.AttachmentSize,
+                    Attindex: att.Attindex,
+                    Timestamp: att.Timestamp || new Date().getTime() + Math.random()
+                }));
+            };
+
             const aPromises = aLicencias.map((licencia, idx) => {
 
-                return new Promise((resolve, reject) => {
+                return new Promise((resolve) => {
+                    // Verificar si los adjuntos ya están disponibles en AttachmentXLicencia_nav.results
+                    const expandedAttachments = licencia.AttachmentXLicencia_nav?.results || 
+                                               licencia.AttachmentXLicencia_nav || 
+                                               null;
+
+                    if (expandedAttachments && Array.isArray(expandedAttachments) && expandedAttachments.length > 0) {
+                        // Los datos expandidos ya están en AttachmentXLicencia_nav.results
+                        // No necesitamos transformarlos ni asignarlos, ya están disponibles
+                        console.log(`✅ Adjuntos expandidos disponibles para licencia ${licencia.Id} (${expandedAttachments.length} adjuntos)`);
+                        resolve();
+                        return;
+                    }
+
+                    // Si no hay datos expandidos, hacer la llamada OData
+                    console.log(`📡 Cargando adjuntos desde OData para licencia ${licencia.Id}`);
                     const aFilters = [
                         new Filter("Id", FilterOperator.EQ, licencia.Id),
                         new Filter("Empresa", FilterOperator.EQ, licencia.Empresa),
@@ -4300,23 +4344,9 @@ sap.ui.define([
                     oDataModel.read("/AttachmentLicenciasSet", {
                         filters: aFilters,
                         success: function (oData) {
-
                             if (oData.results && oData.results.length > 0) {
-
-                                const aAttachments = oData.results.map(att => ({
-                                    Id: att.Id,
-                                    Empresa: att.Empresa,
-                                    Anio: att.Anio,
-                                    AttachmentData: "data:" + att.Doctype + ";base64," + att.Attachment,
-                                    AttachmentName: att.Filename,
-                                    AttachmentType: att.Doctype,
-                                    Attindex: att.Attindex,
-                                    Timestamp: new Date().getTime() + Math.random()
-                                }));
-
-                                // Buscar índice real
+                                // Asignar los adjuntos a AttachmentXLicencia_nav.results para consistencia
                                 const aLicenciasActuales = oLicencesModel.getData();
-
                                 const iRealIndex = aLicenciasActuales.findIndex(lic =>
                                     lic.Id === licencia.Id &&
                                     lic.Empresa === licencia.Empresa &&
@@ -4324,16 +4354,18 @@ sap.ui.define([
                                 );
 
                                 if (iRealIndex !== -1) {
-                                    oLicencesModel.setProperty("/" + iRealIndex + "/Attachments", aAttachments);
-
-                                    // Verificar que se asignó
-                                    const licenciaActualizada = oLicencesModel.getProperty("/" + iRealIndex);
+                                    // Crear estructura AttachmentXLicencia_nav si no existe
+                                    if (!aLicenciasActuales[iRealIndex].AttachmentXLicencia_nav) {
+                                        oLicencesModel.setProperty("/" + iRealIndex + "/AttachmentXLicencia_nav", {});
+                                    }
+                                    oLicencesModel.setProperty("/" + iRealIndex + "/AttachmentXLicencia_nav/results", oData.results);
                                 }
                             }
                             resolve();
                         }.bind(this),
                         error: function (oError) {
-                            resolve();
+                            console.warn(`⚠️ Error al cargar adjuntos para licencia ${licencia.Id}:`, oError);
+                            resolve(); // Resolver igual para no bloquear otras licencias
                         }
                     });
                 });
@@ -4503,17 +4535,54 @@ sap.ui.define([
             return "sap-icon://document";
         },
 
+        /**
+         * Obtiene los adjuntos normalizados de una licencia
+         * Usa AttachmentXLicencia_nav.results si está disponible, sino usa Attachments
+         * @param {Object} oLicencia - La licencia
+         * @returns {Array} Array de adjuntos normalizados
+         */
+        _getNormalizedAttachments: function (oLicencia) {
+            if (!oLicencia) {
+                return [];
+            }
+
+            // Priorizar AttachmentXLicencia_nav.results (datos expandidos)
+            let aRawAttachments = null;
+            if (oLicencia.AttachmentXLicencia_nav?.results && Array.isArray(oLicencia.AttachmentXLicencia_nav.results)) {
+                aRawAttachments = oLicencia.AttachmentXLicencia_nav.results;
+            } else if (oLicencia.AttachmentXLicencia_nav && Array.isArray(oLicencia.AttachmentXLicencia_nav)) {
+                aRawAttachments = oLicencia.AttachmentXLicencia_nav;
+            } else if (oLicencia.Attachments && Array.isArray(oLicencia.Attachments)) {
+                // Fallback a Attachments si ya está transformado
+                return oLicencia.Attachments;
+            }
+
+            if (!aRawAttachments || aRawAttachments.length === 0) {
+                return [];
+            }
+
+            // Normalizar desde formato OData expandido a formato esperado
+            return aRawAttachments.map(att => ({
+                Id: att.Id,
+                Empresa: att.Empresa,
+                Anio: att.Anio,
+                AttachmentData: att.Attachment ? ("data:" + att.Doctype + ";base64," + att.Attachment) : att.AttachmentData,
+                AttachmentName: att.Filename || att.AttachmentName,
+                AttachmentType: att.Doctype || att.AttachmentType,
+                AttachmentSize: att.Size || att.AttachmentSize,
+                Attindex: att.Attindex,
+                Timestamp: att.Timestamp || new Date().getTime() + Math.random()
+            }));
+        },
+
         hasAttachments: function (oLicencia) {
-            return oLicencia &&
-                oLicencia.Attachments &&
-                oLicencia.Attachments.length > 0;
+            const aAttachments = this._getNormalizedAttachments(oLicencia);
+            return aAttachments && aAttachments.length > 0;
         },
 
         getAttachmentCount: function (oLicencia) {
-            if (!oLicencia || !oLicencia.Attachments) {
-                return 0;
-            }
-            return oLicencia.Attachments.length;
+            const aAttachments = this._getNormalizedAttachments(oLicencia);
+            return aAttachments ? aAttachments.length : 0;
         },
 
         onCloseAttachmentSelector: function () {
