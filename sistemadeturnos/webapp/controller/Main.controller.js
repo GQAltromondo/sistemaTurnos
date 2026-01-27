@@ -7348,13 +7348,29 @@ sap.ui.define([
 
         test: function () {
             const oView = this.getView();
-            const oDataModel = this.getView().getModel();
             const oModel = this.getView().getModel();
-            var oLicenseTurno = ModelHelper.getModel("LicencesJsonModel", oView).getData();
+            const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
+            const aLicencias = oLicencesModel.getData() || [];
 
-            // Esperar la respuesta del FIND antes de continuar
-            LicenseService.FIND(oLicenseTurno, oDataModel)
-                .then((oLicense) => {
+            if (!aLicencias || aLicencias.length === 0) {
+                MessageBox.warning("No hay licencias en el modelo para procesar");
+                return;
+            }
+
+            console.group("📋 Procesando licencias del modelo");
+            console.log("Total de licencias:", aLicencias.length);
+            console.groupEnd();
+
+            const oComponent = this.getOwnerComponent();
+            var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
+            var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
+
+            // Procesar cada licencia del modelo
+            const aPromises = aLicencias.map((oLicense) => {
+                return new Promise((resolve, reject) => {
+                    console.group(`📄 Procesando licencia ${oLicense.Id || 'N/A'}`);
+
+                    // Obtener permisos y emails ET para esta licencia
                     let promises = [LicenseService.getPermisos(oLicense, oModel)];
                     promises.push(
                         EtMailService.getPromise(
@@ -7364,131 +7380,107 @@ sap.ui.define([
                         )
                     );
 
-                    return Promise.all(promises).then(res => {
-                        // Retornar tanto los resultados como la licencia
-                        return { res: res, oLicense: oLicense };
-                    });
-                })
-                .then(({ res, oLicense }) => {
+                    Promise.all(promises)
+                        .then(res => {
+                            console.log("Permisos (res[0]):", res[0]);
+                            console.log("ET Mails (res[1]):", res[1]);
 
-                console.group("🔎 Promise.all results");
-                console.log("res completo:", res);
-                console.log("Permisos (res[0]):", res[0]);
-                console.log("ET Mails (res[1]):", res[1]);
-                console.groupEnd();
+                            let emails = [];
+                            let hashPermisos = {};
+                            let permisos = res[0] || [];
 
-                var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
-                var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
+                            permisos.forEach(permiso => {
+                                hashPermisos[permiso.Rol] = permiso;
+                            });
 
-                console.group("👤 Usuario actual");
-                console.log("CurrentUser:", currentUser);
-                console.log("UserJsonModel:", oUserJson);
-                console.groupEnd();
+                            emails = [
+                                hashPermisos["Creador"],
+                                hashPermisos["ope_solic-lic_transener"],
+                                hashPermisos["Solicitante_Suplente"],
+                                hashPermisos["Jefe_Trabajo"],
+                                hashPermisos["Jefe_Trabajo_Suplente"],
+                                hashPermisos["Solicitante_Suplente_Auxiliar"]
+                            ].map(permiso => permiso && permiso.Mail);
 
-                let emails = [];
-                let hashPermisos = {};
-                let permisos = res[0];
+                            let sEmailEt =
+                                res[1].results && res[1].results.length
+                                    ? res[1].results.map(e => e.Mail).join(",")
+                                    : "guillermo.quattrocchi@altromondo.com.ar";
 
-                permisos.forEach(permiso => {
-                    hashPermisos[permiso.Rol] = permiso;
+                            const sDestinatario = emails.filter(e => e).join(",") || sEmailEt || "guillermo.quattrocchi@altromondo.com.ar";
+
+                            // Construir objeto licencia para el mail
+                            const oLicenciaParaMail = {
+                                Destinatario: sDestinatario,
+                                Email: sDestinatario,
+                                Id: oLicense.Id || "",
+                                Equnr: oLicense.Equnr || "",
+                                Equstat: oLicense.Equstat || "",
+                                Jobcond: oLicense.Jobcond || "",
+                                Fecha: oLicense.Fecha || "",
+                                Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
+                                TurnoAsignado: oLicense.TurnoAsignado || "",
+                                Comments: oLicense.Comentarios || "",
+                                Comentarios: oLicense.Comentarios || "",
+                                DescEquipo: oLicense.DescEquipo || "",
+                                DescripcionEquipo: oLicense.DescEquipo || "",
+                                Consola: oLicense.Consola || "",
+                                Empresa: oLicense.Empresa || "",
+                                Tipo: oLicense.Tipo || "L",
+                                Anio: oLicense.Anio || ""
+                            };
+
+                            console.log("📤 Enviando mail para licencia:", oLicense.Id);
+                            console.log("Destinatario:", sDestinatario);
+
+                            // Enviar mail usando MailService
+                            MailService.sendLicenseEmail(oLicenciaParaMail, oComponent)
+                                .then((result) => {
+                                    console.log(`✅ Mail enviado correctamente para licencia ${oLicense.Id}:`, result);
+                                    console.groupEnd();
+                                    resolve({ success: true, licenciaId: oLicense.Id });
+                                })
+                                .catch((error) => {
+                                    console.error(`❌ Error al enviar mail para licencia ${oLicense.Id}:`, error);
+                                    console.groupEnd();
+                                    // No rechazar para que continúe con las demás licencias
+                                    resolve({ success: false, licenciaId: oLicense.Id, error: error });
+                                });
+                        })
+                        .catch(err => {
+                            console.error(`❌ Error al obtener permisos/emails para licencia ${oLicense.Id}:`, err);
+                            console.groupEnd();
+                            // No rechazar para que continúe con las demás licencias
+                            resolve({ success: false, licenciaId: oLicense.Id, error: err });
+                        });
                 });
+            });
 
-                console.group("🔐 Hash permisos");
-                console.table(hashPermisos);
-                console.groupEnd();
+            // Esperar a que se procesen todas las licencias
+            Promise.all(aPromises)
+                .then((results) => {
+                    const aExitosos = results.filter(r => r.success);
+                    const aFallidos = results.filter(r => !r.success);
 
-                emails = [
-                    hashPermisos["Creador"],
-                    hashPermisos["ope_solic-lic_transener"],
-                    hashPermisos["Solicitante_Suplente"],
-                    hashPermisos["Jefe_Trabajo"],
-                    hashPermisos["Jefe_Trabajo_Suplente"],
-                    hashPermisos["Solicitante_Suplente_Auxiliar"]
-                ].map(permiso => permiso && permiso.Mail);
+                    console.group("📊 Resumen de procesamiento");
+                    console.log(`Total procesadas: ${results.length}`);
+                    console.log(`Exitosas: ${aExitosos.length}`);
+                    console.log(`Fallidas: ${aFallidos.length}`);
+                    if (aFallidos.length > 0) {
+                        console.log("Licencias con errores:", aFallidos.map(r => r.licenciaId));
+                    }
+                    console.groupEnd();
 
-                console.group("📧 Emails armados");
-                console.log("Array emails:", emails);
-                console.log("Emails string:", emails.join(","));
-                console.groupEnd();
-
-                let usuariosAsignados = {
-                    Coordinador: currentUser.Legajo + ", " + oUserJson.nombre + ", " + oUserJson.apellido,
-                    Creador: hashPermisos["Creador"]
-                        ? hashPermisos["Creador"].Legajo + ", " + hashPermisos["Creador"].Nombre
-                        : "",
-                    Solicitante: hashPermisos["ope_solic-lic_transener"]
-                        ? hashPermisos["ope_solic-lic_transener"].Legajo + ", " + hashPermisos["ope_solic-lic_transener"].Nombre
-                        : "",
-                    SolicitanteSuplente: hashPermisos["Solicitante_Suplente"]
-                        ? hashPermisos["Solicitante_Suplente"].Legajo + ", " + hashPermisos["Solicitante_Suplente"].Nombre
-                        : "",
-                    Jefe: hashPermisos["Jefe_Trabajo"]
-                        ? hashPermisos["Jefe_Trabajo"].Legajo + ", " + hashPermisos["Jefe_Trabajo"].Nombre
-                        : "",
-                    JefeSuplente: hashPermisos["Jefe_Trabajo_Suplente"]
-                        ? hashPermisos["Jefe_Trabajo_Suplente"].Legajo + ", " + hashPermisos["Jefe_Trabajo_Suplente"].Nombre
-                        : "",
-                    SolSuplenteAux: hashPermisos["Solicitante_Suplente_Auxiliar"]
-                        ? hashPermisos["Solicitante_Suplente_Auxiliar"].Legajo + ", " + hashPermisos["Solicitante_Suplente_Auxiliar"].Nombre
-                        : ""
-                };
-
-                console.group("👥 Usuarios asignados");
-                console.table(usuariosAsignados);
-                console.groupEnd();
-
-                let sEmailEt =
-                    res[1].results && res[1].results.length
-                        ? res[1].results.map(e => e.Mail).join(",")
-                        : "guillermo.quattrocchi@altromondo.com.ar";
-
-                console.group("📨 Email ET");
-                console.log("sEmailEt:", sEmailEt);
-                console.groupEnd();
-
-                // Enviar mail usando MailService
-                const oComponent = this.getOwnerComponent();
-                const sDestinatarioReales = emails.filter(e => e).join(",") || sEmailEt || "";
-                const sDestinatario = "guillermo.quattrocchi@altromondo.com.ar"
-
-                const oLicenciaParaMail = {
-                    Destinatario: sDestinatario,
-                    Email: sDestinatario,
-                    Id: oLicense.Id || "",
-                    Equnr: oLicense.Equnr || "",
-                    Equstat: oLicense.Equstat || "",
-                    Jobcond: oLicense.Jobcond || "",
-                    Fecha: oLicense.Fecha || "",
-                    Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
-                    TurnoAsignado: oLicense.TurnoAsignado || "",
-                    Comments: oLicense.Comentarios || "",
-                    Comentarios: oLicense.Comentarios || "",
-                    DescEquipo: oLicense.DescEquipo || "",
-                    DescripcionEquipo: oLicense.DescEquipo || "",
-                    Consola: oLicense.Consola || "",
-                    Empresa: oLicense.Empresa || "",
-                    Tipo: oLicense.Tipo || "L",
-                    Anio: oLicense.Anio || ""
-                };
-
-                console.group("📤 Enviando mail con MailService");
-                console.log("Licencia para mail:", oLicenciaParaMail);
-                console.groupEnd();
-
-                MailService.sendLicenseEmail(oLicenciaParaMail, oComponent)
-                    .then((result) => {
-                        console.log("✅ Mail enviado correctamente:", result);
-                        MessageToast.show("Mail enviado correctamente");
-                    })
-                    .catch((error) => {
-                        console.error("❌ Error al enviar mail:", error);
-                        MessageBox.error("Error al enviar mail: " + (error.message || error));
-                    });
-
+                    if (aExitosos.length > 0) {
+                        MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente`);
+                    }
+                    if (aFallidos.length > 0) {
+                        MessageBox.warning(`${aFallidos.length} licencia(s) tuvieron errores al enviar el mail`);
+                    }
                 })
                 .catch(err => {
-                    console.error("❌ Error en FIND o Promise.all:", err);
-                    MessageBox.error("Error al obtener datos de la licencia: " + (err.message || err));
+                    console.error("❌ Error general en el procesamiento:", err);
+                    MessageBox.error("Error al procesar las licencias: " + (err.message || err));
                 });
         },
 
