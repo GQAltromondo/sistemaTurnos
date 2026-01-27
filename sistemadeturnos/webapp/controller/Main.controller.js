@@ -2933,14 +2933,46 @@ sap.ui.define([
                         "Agrmanual": licencia.Agrmanual || false
                     };
 
-                    oDataService.create(entity, license, {
-                        success: () => {
-                            resolve();
-                        },
-                        error: (oError) => {
-                            reject(oError);
-                        }
-                    });
+                    // Si bEnviado es true, primero intentar actualizar el turno existente
+                    if (bEnviado === true) {
+                        // La clave primaria incluye: Id, Empresa, Tipo, Anio, Dateturno
+                        const oDateturno = license.Dateturno || new Date(licencia.Fecha);
+                        const sDateturnoISO = oDateturno.toISOString();
+                        const sKey = entity + 
+                            "(Empresa='" + license.Empresa + 
+                            "',Id='" + license.Id + 
+                            "',Tipo='" + license.Tipo + 
+                            "',Anio='" + license.Anio + 
+                            "',Dateturno=datetime'" + sDateturnoISO + "')";
+
+                        // Intentar actualizar primero
+                        oDataService.update(sKey, license, {
+                            success: () => {
+                                resolve();
+                            },
+                            error: (oError) => {
+                                // Si el update falla (turno no existe), crear nuevo
+                                oDataService.create(entity, license, {
+                                    success: () => {
+                                        resolve();
+                                    },
+                                    error: (oCreateError) => {
+                                        reject(oCreateError);
+                                    }
+                                });
+                            }
+                        });
+                    } else {
+                        // Si no es enviado, crear normalmente
+                        oDataService.create(entity, license, {
+                            success: () => {
+                                resolve();
+                            },
+                            error: (oError) => {
+                                reject(oError);
+                            }
+                        });
+                    }
                 });
             });
 
@@ -7414,6 +7446,14 @@ sap.ui.define([
                 return new Promise((resolve, reject) => {
                     console.group(`📄 Procesando licencia ${oLicense.Id || 'N/A'}`);
 
+                    // Verificar si ya fue enviado - evitar reenviar mails
+                    if (oLicense.Enviado === true) {
+                        console.log(`⏭️ Licencia ${oLicense.Id} ya fue enviada (Enviado = true), saltando envío de mail`);
+                        console.groupEnd();
+                        resolve({ success: true, licenciaId: oLicense.Id, skipped: true, reason: "Ya enviado" });
+                        return;
+                    }
+
                     // Obtener permisos y emails ET para esta licencia
                     let promises = [LicenseService.getPermisos(oLicense, oModel)];
                     promises.push(
@@ -7507,23 +7547,58 @@ sap.ui.define([
                 return Promise.all(aPromises);
             })
             .then((results) => {
-                const aExitosos = results.filter(r => r.success);
-                const aFallidos = results.filter(r => !r.success);
+                const aExitosos = results.filter(r => r.success && !r.skipped);
+                const aSaltadas = results.filter(r => r.skipped);
+                const aFallidos = results.filter(r => !r.success && !r.skipped);
 
                 console.group("📊 Resumen de procesamiento");
                 console.log(`Total procesadas: ${results.length}`);
-                console.log(`Exitosas: ${aExitosos.length}`);
+                console.log(`Exitosas (mails enviados): ${aExitosos.length}`);
+                console.log(`Saltadas (ya enviadas): ${aSaltadas.length}`);
                 console.log(`Fallidas: ${aFallidos.length}`);
+                if (aSaltadas.length > 0) {
+                    console.log("Licencias saltadas (ya enviadas):", aSaltadas.map(r => r.licenciaId));
+                }
                 if (aFallidos.length > 0) {
                     console.log("Licencias con errores:", aFallidos.map(r => r.licenciaId));
                 }
                 console.groupEnd();
 
                 if (aExitosos.length > 0) {
-                    MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente`);
+                    MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente${aSaltadas.length > 0 ? ` (${aSaltadas.length} ya enviados)` : ''}`);
+                    
+                    // Guardar los turnos con Enviado = true solo para las licencias que tuvieron éxito (no saltadas)
+                    const aLicenciasExitosas = aLicencias.filter(lic => 
+                        aExitosos.some(r => r.licenciaId === lic.Id)
+                    );
+
+                    // Preparar datos para createTurno (formato similar a onSaveTurnoPress)
+                    const aDataParaGuardar = aLicenciasExitosas.map((oLicense) => {
+                        return {
+                            Id: oLicense.Id,
+                            Empresa: oLicense.Empresa,
+                            Tipo: oLicense.Tipo || "L",
+                            Anio: oLicense.Anio,
+                            Fecha: FechaTurno || oLicense.Fecha || new Date(),
+                            Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
+                            Comentarios: oLicense.Comentarios || "",
+                            Enviado: true, // Marcar como enviado
+                            Agrmanual: oLicense.Agrmanual || false
+                        };
+                    });
+
+                    console.group("💾 Guardando turnos con Enviado = true");
+                    console.log(`Guardando ${aDataParaGuardar.length} turno(s)`);
+                    console.groupEnd();
+
+                    // Guardar usando createTurno con bEnviado = true
+                    this.createTurno(aDataParaGuardar, aLicenciasExitosas, true);
+                } else {
+                    MessageBox.warning("No se pudo enviar ningún mail. No se guardarán los turnos.");
                 }
+
                 if (aFallidos.length > 0) {
-                    MessageBox.warning(`${aFallidos.length} licencia(s) tuvieron errores al enviar el mail`);
+                    MessageBox.warning(`${aFallidos.length} licencia(s) tuvieron errores al enviar el mail y no se guardarán`);
                 }
             })
             .catch(err => {
