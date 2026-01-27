@@ -7347,7 +7347,10 @@ sap.ui.define([
         },
 
         test: function () {
+            var oFormatter = this.formatter;
+
             const oView = this.getView();
+            const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel", oView).getProperty("/FechaTurno")
             const oModel = this.getView().getModel();
             const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
             const aLicencias = oLicencesModel.getData() || [];
@@ -7407,17 +7410,18 @@ sap.ui.define([
                                     ? res[1].results.map(e => e.Mail).join(",")
                                     : "guillermo.quattrocchi@altromondo.com.ar";
 
-                            const sDestinatario = emails.filter(e => e).join(",") || sEmailEt || "guillermo.quattrocchi@altromondo.com.ar";
-
+                            const sDestinatario2 = emails.filter(e => e).join(",") || sEmailEt || "guillermo.quattrocchi@altromondo.com.ar";
+                            const sDestinatario = "guillermo.quattrocchi@altromondo.com.ar";
                             // Construir objeto licencia para el mail
                             const oLicenciaParaMail = {
+                                society: oLicense.Empresa,
                                 Destinatario: sDestinatario,
                                 Email: sDestinatario,
                                 Id: oLicense.Id || "",
                                 Equnr: oLicense.Equnr || "",
-                                Equstat: oLicense.Equstat || "",
-                                Jobcond: oLicense.Jobcond || "",
-                                Fecha: oLicense.Fecha || "",
+                                Equstat: oFormatter.getEstado(oLicense.Equstat) || "",
+                                Jobcond: oFormatter.getJobCond(oLicense.Jobcond) || "",
+                                Fecha: FechaTurno || "",
                                 Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
                                 TurnoAsignado: oLicense.TurnoAsignado || "",
                                 Comments: oLicense.Comentarios || "",
@@ -7427,7 +7431,8 @@ sap.ui.define([
                                 Consola: oLicense.Consola || "",
                                 Empresa: oLicense.Empresa || "",
                                 Tipo: oLicense.Tipo || "L",
-                                Anio: oLicense.Anio || ""
+                                Anio: oLicense.Anio || "",
+                                Period: oFormatter.getPeriod(oLicense.Period),
                             };
 
                             console.log("📤 Enviando mail para licencia:", oLicense.Id);

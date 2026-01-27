@@ -11,22 +11,25 @@ sap.ui.define([
             }
 
             const sBaseURL = this._getWorkflowRuntimeBaseURL(oComponent);
-            
+
             return this._fetchCSRFToken(sBaseURL)
                 .then((csrfToken) => {
                     const sPostURL = sBaseURL + "/workflow-instances";
-                    
+                    const asunto = "Turno de maniobra - COT | " + oLicencia.Equnr + " " + oLicencia.Equstat + " Licencia: " + oLicencia.Id + " / " + oLicencia.Anio
                     const context = {
+                        Asunto: asunto,
+                        society: oLicencia.society,
                         Destinatario: oLicencia.Destinatario || oLicencia.Email || "",
                         IdLicencia: oLicencia.Id || "",
                         Equipo: oLicencia.Equnr || "",
-                        EstadoEquipo:oLicencia.Equstat || "",
+                        EstadoEquipo: oLicencia.Equstat || "",
                         CondTrabajo: oLicencia.Jobcond || "",
-                        Fecha: oLicencia.Fecha ? new Date(oLicencia.Fecha).toLocaleDateString() : "",
+                        Fecha: oLicencia.Fecha,
                         Turno: oLicencia.Turno || oLicencia.TurnoAsignado || "",
                         Comentarios: oLicencia.Comments || "",
                         DescripcionEquipo: oLicencia.DescEquipo || "",
-                        Consola: oLicencia.Consola || ""
+                        Consola: oLicencia.Consola || "",
+                        Period: oLicencia.Period
                     };
 
                     const data = {
@@ -52,9 +55,9 @@ sap.ui.define([
                                 if (jqXHR && jqXHR.responseText) {
                                     try {
                                         const errorResponse = JSON.parse(jqXHR.responseText);
-                                        errorMessage = errorResponse.error?.message || 
-                                                      errorResponse.message || 
-                                                      errorMessage;
+                                        errorMessage = errorResponse.error?.message ||
+                                            errorResponse.message ||
+                                            errorMessage;
                                     } catch (e) {
                                         errorMessage = errorThrown || textStatus || errorMessage;
                                     }
@@ -70,10 +73,10 @@ sap.ui.define([
             const appId = oComponent.getManifestEntry("/sap.app/id");
             const appPath = appId.replaceAll(".", "/");
             let appModulePath = jQuery.sap.getModulePath(appPath);
-            
+
             const uuidWithDotPattern = /\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.([^\/]+.*)/;
             const match = appModulePath.match(uuidWithDotPattern);
-            
+
             if (match && match[2]) {
                 appModulePath = "/" + match[2];
             } else {
@@ -83,17 +86,17 @@ sap.ui.define([
                     appModulePath = "/" + pathMatch[1];
                 }
             }
-            
+
             if (!appModulePath.startsWith("/")) {
                 appModulePath = "/" + appModulePath;
             }
-            
+
             return appModulePath + "/bpmworkflowruntime/v1";
         },
 
         _fetchCSRFToken: function (sBaseURL) {
             const sURL = sBaseURL + "/xsrf-token";
-            
+
             return new Promise((resolve, reject) => {
                 jQuery.ajax({
                     url: sURL,

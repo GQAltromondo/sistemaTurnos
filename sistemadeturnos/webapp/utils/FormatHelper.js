@@ -10,7 +10,16 @@ sap.ui.define([
             });
             return oDateFormat.format(oDate);
         },
-        
+        getPeriod: function (value) {
+            switch (value) {
+                case 'D':
+                    return "Diaria";
+                case "C":
+                    return "Contiuna"
+                default:
+                    return value
+            }
+        },
         getEstado: function (value) {
             switch (value) {
                 case 'X':
@@ -21,7 +30,7 @@ sap.ui.define([
                     return value
             }
         },
-        
+
         getJobCond: function (value) {
             switch (value) {
                 case '01':
@@ -40,7 +49,7 @@ sap.ui.define([
                     return value;
             }
         },
-        
+
         getRegiones: function (value) {
             switch (value) {
                 case '103':
@@ -55,14 +64,14 @@ sap.ui.define([
                     return value;
             }
         },
-        
+
         msTohoursSeconds: function (ms) {
             let date = new Date(ms);
             let hours = date.getHours().toString().padStart(2, '0');
             let minutes = date.getMinutes().toString().padStart(2, '0');
             return hours + ":" + minutes;
         },
-        
+
         turnoColor: function (consola) {
             switch (consola) {
                 case "NOA":
@@ -75,82 +84,82 @@ sap.ui.define([
                     return "None";
             }
         },
-   
+
         edmTimeToHHMM: function (edmTime) {
             let milliseconds = edmTime;
             if (typeof edmTime === 'object' && edmTime !== null && 'ms' in edmTime) {
                 milliseconds = edmTime.ms;
             }
-            
+
             // Convertir milisegundos a horas y minutos
             const totalMinutes = Math.floor(milliseconds / (1000 * 60));
             const hours = Math.floor(totalMinutes / 60);
             const minutes = totalMinutes % 60;
-            
+
             const result = hours.toString().padStart(2, '0') + ':' + minutes.toString().padStart(2, '0');
-            
+
             return result;
         },
-        
+
         durationToTime: function (duration) {
             if (!duration || typeof duration !== 'string') {
                 return "";
             }
-            
+
             const hoursMatch = duration.match(/(\d+)H/);
             const minutesMatch = duration.match(/(\d+)M/);
-            
+
             const hours = hoursMatch ? hoursMatch[1].padStart(2, '0') : '00';
             const minutes = minutesMatch ? minutesMatch[1].padStart(2, '0') : '00';
-            
+
             const result = hours + ":" + minutes;
-            
+
             return result;
         },
-    
+
         formatInitHour: function (timbeg, gdate) {
-            
+
             if (timbeg && typeof timbeg === 'object' && 'ms' in timbeg) {
                 return FormatHelper.edmTimeToHHMM(timbeg);
             }
-            
+
             if (timbeg && typeof timbeg === 'string' && timbeg !== "PT00H00M00S") {
                 return FormatHelper.durationToTime(timbeg);
             }
-            
+
             if (gdate) {
                 return FormatHelper.msTohoursSeconds(gdate);
             }
-            
+
             return "";
         },
 
         formatLicState: function (sLicstat) {
-			switch (sLicstat) {
-				case "01":
-					return "Autorizada";
-				case "07":
-					return "Coordinada";
-				case "08":
-					return "Entregada";
-				case "09":
-					return "Generada";
-				case "10":
-					return "Suspendida";
-				case "23":
-					return "En trámite";
+            switch (sLicstat) {
+                case "01":
+                    return "Autorizada";
+                case "07":
+                    return "Coordinada";
+                case "08":
+                    return "Entregada";
+                case "09":
+                    return "Generada";
+                case "10":
+                    return "Suspendida";
+                case "23":
+                    return "En trámite";
                 case "02":
-					return "Observada";
+                    return "Observada";
                 case "30":
-					return "Creada";
+                    return "Creada";
                 case "03":
-					return "Anulada";
+                    return "Anulada";
                 case "11":
-					return "Cancelada";
-				default:
-					return sLicstat || "";
-			}
-		}
+                    return "Cancelada";
+                default:
+                    return sLicstat || "";
+            }
+        }
     };
 
     return FormatHelper;
