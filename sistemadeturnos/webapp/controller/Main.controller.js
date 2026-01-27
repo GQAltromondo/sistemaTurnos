@@ -2944,7 +2944,7 @@ sap.ui.define([
                             oFechaDate = new Date();
                         }
                     }
-                    
+
                     // Asegurar que la fecha tenga hora 00:00:00 UTC para formato OData
                     if (oFechaDate instanceof Date && !isNaN(oFechaDate.getTime())) {
                         // Normalizar a UTC con hora 00:00:00
@@ -4365,9 +4365,9 @@ sap.ui.define([
 
                 return new Promise((resolve) => {
                     // Verificar si los adjuntos ya están disponibles en AttachmentXLicencia_nav.results
-                    const expandedAttachments = licencia.AttachmentXLicencia_nav?.results || 
-                                               licencia.AttachmentXLicencia_nav || 
-                                               null;
+                    const expandedAttachments = licencia.AttachmentXLicencia_nav?.results ||
+                        licencia.AttachmentXLicencia_nav ||
+                        null;
 
                     if (expandedAttachments && Array.isArray(expandedAttachments)) {
                         // Los datos expandidos ya están disponibles
@@ -6258,68 +6258,260 @@ sap.ui.define([
 
         // ----------------------------------------------------- ENVIAR ----------------------------------------------------------------
 
+        // onSendEmailPress: function () {
+        //     const Fecha = this._oFechaTurnoCreado || this.getView().byId('date').getDateValue();
+
+        //     if (!Fecha) {
+        //         MessageBox.warning("Debe seleccionar una fecha para enviar el turno.");
+        //         return;
+        //     }
+
+        //     const oModel = this.getView().getModel("LicencesJsonModel");
+        //     const aAllLicences = oModel.getProperty("/") || [];
+
+        //     if (!aAllLicences || aAllLicences.length === 0) {
+        //         MessageBox.warning("No hay datos para enviar.");
+        //         return;
+        //     }
+
+        //     const aLicenciasSinHorario = aAllLicences.filter(lic => {
+        //         const turno = lic.TurnoAsignado;
+        //         return !turno || turno.trim() === "";
+        //     });
+
+        //     if (aLicenciasSinHorario.length > 0) {
+        //         const sLicenciasDetalle = aLicenciasSinHorario
+        //             .map(lic => `• Licencia ${lic.Id} (${lic.Equnr || 'Sin equipo'})`)
+        //             .join("\n");
+
+        //         MessageBox.error(
+        //             `No se puede enviar el turno porque hay ${aLicenciasSinHorario.length} licencia(s) sin horario asignado:\n\n${sLicenciasDetalle}\n\nPor favor, asigne un horario a todas las licencias antes de enviar.`,
+        //             {
+        //                 title: "Horarios sin asignar",
+        //                 styleClass: "sapUiSizeCompact"
+        //             }
+        //         );
+        //         return;
+        //     }
+
+        //     const aLicenciasAEnviar = aAllLicences.filter(lic => lic.Enviado !== true);
+
+        //     if (aLicenciasAEnviar.length === 0) {
+        //         MessageBox.information("Todas las licencias ya fueron enviadas. No hay cambios pendientes.");
+        //         return;
+        //     }
+
+        //     // Preparar datos SOLO de las licencias a enviar
+        //     const aData = [];
+        //     aLicenciasAEnviar.forEach(function (oRowData) {
+        //         const row = {
+        //             Id: oRowData.Id,
+        //             Empresa: oRowData.Empresa,
+        //             Tipo: oRowData.Tipo,
+        //             Anio: oRowData.Anio,
+        //             Fecha: Fecha,
+        //             Turno: oRowData.TurnoAsignado,
+        //             Comentarios: oRowData.Comentarios,
+        //             Enviado: true
+        //         };
+        //         aData.push(row);
+        //     });
+
+        //     this.createTurno(aData, aLicenciasAEnviar, true);
+        // },
         onSendEmailPress: function () {
-            const Fecha = this._oFechaTurnoCreado || this.getView().byId('date').getDateValue();
+            var oFormatter = this.formatter;
 
-            if (!Fecha) {
-                MessageBox.warning("Debe seleccionar una fecha para enviar el turno.");
+            const oView = this.getView();
+            const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel", oView).getProperty("/FechaTurno")
+            const oModel = this.getView().getModel();
+            const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
+            const aLicencias = oLicencesModel.getData() || [];
+
+            if (!aLicencias || aLicencias.length === 0) {
+                MessageBox.warning("No hay licencias en el modelo para procesar");
                 return;
             }
 
-            const oModel = this.getView().getModel("LicencesJsonModel");
-            const aAllLicences = oModel.getProperty("/") || [];
+            const oComponent = this.getOwnerComponent();
+            var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
+            var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
 
-            if (!aAllLicences || aAllLicences.length === 0) {
-                MessageBox.warning("No hay datos para enviar.");
-                return;
-            }
+            // Variable para almacenar el token actual (se puede renovar si expira)
+            let currentCsrfToken = null;
 
-            const aLicenciasSinHorario = aAllLicences.filter(lic => {
-                const turno = lic.TurnoAsignado;
-                return !turno || turno.trim() === "";
-            });
+            // Función para renovar el token cuando expire
+            const renewToken = function () {
+                console.warn("🔄 Token CSRF expirado, renovando...");
+                return MailService.getCSRFToken(oComponent)
+                    .then((newToken) => {
+                        currentCsrfToken = newToken;
+                        console.log("✅ Token CSRF renovado");
+                        return newToken;
+                    });
+            };
 
-            if (aLicenciasSinHorario.length > 0) {
-                const sLicenciasDetalle = aLicenciasSinHorario
-                    .map(lic => `• Licencia ${lic.Id} (${lic.Equnr || 'Sin equipo'})`)
-                    .join("\n");
+            // Obtener el token CSRF una sola vez para todos los envíos
+            const csrfTokenPromise = MailService.getCSRFToken(oComponent);
 
-                MessageBox.error(
-                    `No se puede enviar el turno porque hay ${aLicenciasSinHorario.length} licencia(s) sin horario asignado:\n\n${sLicenciasDetalle}\n\nPor favor, asigne un horario a todas las licencias antes de enviar.`,
-                    {
-                        title: "Horarios sin asignar",
-                        styleClass: "sapUiSizeCompact"
+            // Procesar cada licencia del modelo
+            csrfTokenPromise.then((csrfToken) => {
+                currentCsrfToken = csrfToken;
+
+
+                const aPromises = aLicencias.map((oLicense) => {
+                    return new Promise((resolve, reject) => {
+
+
+                        // Verificar si ya fue enviado - evitar reenviar mails
+                        if (oLicense.Enviado === true) {
+
+                            resolve({ success: true, licenciaId: oLicense.Id, skipped: true, reason: "Ya enviado" });
+                            return;
+                        }
+
+                        // Obtener permisos y emails ET para esta licencia
+                        let promises = [LicenseService.getPermisos(oLicense, oModel)];
+                        promises.push(
+                            EtMailService.getPromise(
+                                oLicense.Empresa,
+                                oLicense.Tplnr,
+                                LicenseService.getSelectionArea(oLicense.Tipo, "01")
+                            )
+                        );
+
+                        Promise.all(promises)
+                            .then(res => {
+                                console.log("Permisos (res[0]):", res[0]);
+                                console.log("ET Mails (res[1]):", res[1]);
+
+                                let emails = [];
+                                let hashPermisos = {};
+                                let permisos = res[0] || [];
+
+                                permisos.forEach(permiso => {
+                                    hashPermisos[permiso.Rol] = permiso;
+                                });
+
+                                emails = [
+                                    hashPermisos["Creador"],
+                                    hashPermisos["ope_solic-lic_transener"],
+                                    hashPermisos["Solicitante_Suplente"],
+                                    hashPermisos["Jefe_Trabajo"],
+                                    hashPermisos["Jefe_Trabajo_Suplente"],
+                                    hashPermisos["Solicitante_Suplente_Auxiliar"]
+                                ].map(permiso => permiso && permiso.Mail);
+
+                                let sEmailEt =
+                                    res[1].results && res[1].results.length
+                                        ? res[1].results.map(e => e.Mail).join(",")
+                                        : "guillermo.quattrocchi@altromondo.com.ar";
+
+                                const sDestinatario2 = emails.filter(e => e).join(",") || sEmailEt || "guillermo.quattrocchi@altromondo.com.ar";
+                                const sDestinatario = "guillermo.quattrocchi@altromondo.com.ar";
+                                // Construir objeto licencia para el mail
+                                const oLicenciaParaMail = {
+                                    society: oLicense.Empresa,
+                                    Destinatario: sDestinatario,
+                                    Email: sDestinatario,
+                                    Id: oLicense.Id || "",
+                                    Equnr: oLicense.Equnr || "",
+                                    Equstat: oFormatter.getEstado(oLicense.Equstat) || "",
+                                    Jobcond: oFormatter.getJobCond(oLicense.Jobcond) || "",
+                                    Fecha: FechaTurno || "",
+                                    Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
+                                    TurnoAsignado: oLicense.TurnoAsignado || "",
+                                    Comments: oLicense.Comentarios || "",
+                                    Comentarios: oLicense.Comentarios || "",
+                                    DescEquipo: oLicense.DescEquipo || "",
+                                    DescripcionEquipo: oLicense.DescEquipo || "",
+                                    Consola: oLicense.Consola || "",
+                                    Empresa: oLicense.Empresa || "",
+                                    Tipo: oLicense.Tipo || "L",
+                                    Anio: oLicense.Anio || "",
+                                    Period: oFormatter.getPeriod(oLicense.Period),
+                                };
+
+                                console.log("Destinatario:", sDestinatario);
+
+                                // Enviar mail usando MailService con el token CSRF reutilizado
+                                // Si el token expira, se renovará automáticamente mediante el callback
+                                MailService.sendLicenseEmail(oLicenciaParaMail, oComponent, currentCsrfToken, renewToken)
+                                    .then((result) => {
+
+                                        resolve({ success: true, licenciaId: oLicense.Id });
+                                    })
+                                    .catch((error) => {
+
+                                        // No rechazar para que continúe con las demás licencias
+                                        resolve({ success: false, licenciaId: oLicense.Id, error: error });
+                                    });
+                            })
+                            .catch(err => {
+
+                                // No rechazar para que continúe con las demás licencias
+                                resolve({ success: false, licenciaId: oLicense.Id, error: err });
+                            });
+                    });
+                });
+
+                // Esperar a que se procesen todas las licencias
+                return Promise.all(aPromises);
+            })
+                .then((results) => {
+                    const aExitosos = results.filter(r => r.success && !r.skipped);
+                    const aSaltadas = results.filter(r => r.skipped);
+                    const aFallidos = results.filter(r => !r.success && !r.skipped);
+
+
+                    if (aSaltadas.length > 0) {
+                        console.log("Licencias saltadas (ya enviadas):", aSaltadas.map(r => r.licenciaId));
                     }
-                );
-                return;
-            }
+                    if (aFallidos.length > 0) {
+                        console.log("Licencias con errores:", aFallidos.map(r => r.licenciaId));
+                    }
+                    console.groupEnd();
 
-            const aLicenciasAEnviar = aAllLicences.filter(lic => lic.Enviado !== true);
+                    if (aExitosos.length > 0) {
+                        MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente${aSaltadas.length > 0 ? ` (${aSaltadas.length} ya enviados)` : ''}`);
 
-            if (aLicenciasAEnviar.length === 0) {
-                MessageBox.information("Todas las licencias ya fueron enviadas. No hay cambios pendientes.");
-                return;
-            }
+                        // Guardar los turnos con Enviado = true solo para las licencias que tuvieron éxito (no saltadas)
+                        const aLicenciasExitosas = aLicencias.filter(lic =>
+                            aExitosos.some(r => r.licenciaId === lic.Id)
+                        );
 
-            // Preparar datos SOLO de las licencias a enviar
-            const aData = [];
-            aLicenciasAEnviar.forEach(function (oRowData) {
-                const row = {
-                    Id: oRowData.Id,
-                    Empresa: oRowData.Empresa,
-                    Tipo: oRowData.Tipo,
-                    Anio: oRowData.Anio,
-                    Fecha: Fecha,
-                    Turno: oRowData.TurnoAsignado,
-                    Comentarios: oRowData.Comentarios,
-                    Enviado: true
-                };
-                aData.push(row);
-            });
+                        // Preparar datos para createTurno (formato similar a onSaveTurnoPress)
+                        const aDataParaGuardar = aLicenciasExitosas.map((oLicense) => {
+                            return {
+                                Id: oLicense.Id,
+                                Empresa: oLicense.Empresa,
+                                Tipo: oLicense.Tipo || "L",
+                                Anio: oLicense.Anio,
+                                Fecha: FechaTurno || oLicense.Fecha || new Date(),
+                                Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
+                                Comentarios: oLicense.Comentarios || "",
+                                Enviado: true, // Marcar como enviado
+                                Agrmanual: oLicense.Agrmanual || false
+                            };
+                        });
 
-            this.createTurno(aData, aLicenciasAEnviar, true);
+
+
+
+                        this.createTurno(aDataParaGuardar, aLicenciasExitosas, true);
+                    } else {
+                        MessageBox.warning("No se realizaron modificaciones en el turno, ni se reenviaron mails ya enviados.");
+                    }
+
+                    if (aFallidos.length > 0) {
+                        MessageBox.warning(`${aFallidos.length} licencia(s) tuvieron errores al enviar el mail y no se guardarán`);
+                    }
+                })
+                .catch(err => {
+                    console.error("❌ Error al obtener token CSRF o procesar las licencias:", err);
+                    MessageBox.error("Error al procesar las licencias: " + (err.message || err));
+                });
         },
-
         //-------------------------------------------- ADJUNTAR EN TAB ACCIONES  ------------------------------------------------
 
         onAttachFileAccion: function (oEvent) {
@@ -7430,199 +7622,7 @@ sap.ui.define([
                 });
         },
 
-        test: function () {
-            var oFormatter = this.formatter;
 
-            const oView = this.getView();
-            const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel", oView).getProperty("/FechaTurno")
-            const oModel = this.getView().getModel();
-            const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
-            const aLicencias = oLicencesModel.getData() || [];
-
-            if (!aLicencias || aLicencias.length === 0) {
-                MessageBox.warning("No hay licencias en el modelo para procesar");
-                return;
-            }
-
-            const oComponent = this.getOwnerComponent();
-            var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
-            var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
-
-            // Variable para almacenar el token actual (se puede renovar si expira)
-            let currentCsrfToken = null;
-            
-            // Función para renovar el token cuando expire
-            const renewToken = function() {
-                console.warn("🔄 Token CSRF expirado, renovando...");
-                return MailService.getCSRFToken(oComponent)
-                    .then((newToken) => {
-                        currentCsrfToken = newToken;
-                        console.log("✅ Token CSRF renovado");
-                        return newToken;
-                    });
-            };
-
-            // Obtener el token CSRF una sola vez para todos los envíos
-            const csrfTokenPromise = MailService.getCSRFToken(oComponent);
-
-            // Procesar cada licencia del modelo
-            csrfTokenPromise.then((csrfToken) => {
-                currentCsrfToken = csrfToken;
-          
-
-                const aPromises = aLicencias.map((oLicense) => {
-                return new Promise((resolve, reject) => {
-                  
-
-                    // Verificar si ya fue enviado - evitar reenviar mails
-                    if (oLicense.Enviado === true) {
-                    
-                        resolve({ success: true, licenciaId: oLicense.Id, skipped: true, reason: "Ya enviado" });
-                        return;
-                    }
-
-                    // Obtener permisos y emails ET para esta licencia
-                    let promises = [LicenseService.getPermisos(oLicense, oModel)];
-                    promises.push(
-                        EtMailService.getPromise(
-                            oLicense.Empresa,
-                            oLicense.Tplnr,
-                            LicenseService.getSelectionArea(oLicense.Tipo, "01")
-                        )
-                    );
-
-                    Promise.all(promises)
-                        .then(res => {
-                            console.log("Permisos (res[0]):", res[0]);
-                            console.log("ET Mails (res[1]):", res[1]);
-
-                            let emails = [];
-                            let hashPermisos = {};
-                            let permisos = res[0] || [];
-
-                            permisos.forEach(permiso => {
-                                hashPermisos[permiso.Rol] = permiso;
-                            });
-
-                            emails = [
-                                hashPermisos["Creador"],
-                                hashPermisos["ope_solic-lic_transener"],
-                                hashPermisos["Solicitante_Suplente"],
-                                hashPermisos["Jefe_Trabajo"],
-                                hashPermisos["Jefe_Trabajo_Suplente"],
-                                hashPermisos["Solicitante_Suplente_Auxiliar"]
-                            ].map(permiso => permiso && permiso.Mail);
-
-                            let sEmailEt =
-                                res[1].results && res[1].results.length
-                                    ? res[1].results.map(e => e.Mail).join(",")
-                                    : "guillermo.quattrocchi@altromondo.com.ar";
-
-                            const sDestinatario2 = emails.filter(e => e).join(",") || sEmailEt || "guillermo.quattrocchi@altromondo.com.ar";
-                            const sDestinatario = "guillermo.quattrocchi@altromondo.com.ar";
-                            // Construir objeto licencia para el mail
-                            const oLicenciaParaMail = {
-                                society: oLicense.Empresa,
-                                Destinatario: sDestinatario,
-                                Email: sDestinatario,
-                                Id: oLicense.Id || "",
-                                Equnr: oLicense.Equnr || "",
-                                Equstat: oFormatter.getEstado(oLicense.Equstat) || "",
-                                Jobcond: oFormatter.getJobCond(oLicense.Jobcond) || "",
-                                Fecha: FechaTurno || "",
-                                Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
-                                TurnoAsignado: oLicense.TurnoAsignado || "",
-                                Comments: oLicense.Comentarios || "",
-                                Comentarios: oLicense.Comentarios || "",
-                                DescEquipo: oLicense.DescEquipo || "",
-                                DescripcionEquipo: oLicense.DescEquipo || "",
-                                Consola: oLicense.Consola || "",
-                                Empresa: oLicense.Empresa || "",
-                                Tipo: oLicense.Tipo || "L",
-                                Anio: oLicense.Anio || "",
-                                Period: oFormatter.getPeriod(oLicense.Period),
-                            };
-
-                            console.log("Destinatario:", sDestinatario);
-
-                            // Enviar mail usando MailService con el token CSRF reutilizado
-                            // Si el token expira, se renovará automáticamente mediante el callback
-                            MailService.sendLicenseEmail(oLicenciaParaMail, oComponent, currentCsrfToken, renewToken)
-                                .then((result) => {
-                                
-                                    resolve({ success: true, licenciaId: oLicense.Id });
-                                })
-                                .catch((error) => {
-                                  
-                                    // No rechazar para que continúe con las demás licencias
-                                    resolve({ success: false, licenciaId: oLicense.Id, error: error });
-                                });
-                        })
-                        .catch(err => {
-                        
-                            // No rechazar para que continúe con las demás licencias
-                            resolve({ success: false, licenciaId: oLicense.Id, error: err });
-                        });
-                });
-                });
-
-                // Esperar a que se procesen todas las licencias
-                return Promise.all(aPromises);
-            })
-            .then((results) => {
-                const aExitosos = results.filter(r => r.success && !r.skipped);
-                const aSaltadas = results.filter(r => r.skipped);
-                const aFallidos = results.filter(r => !r.success && !r.skipped);
-
-              
-                if (aSaltadas.length > 0) {
-                    console.log("Licencias saltadas (ya enviadas):", aSaltadas.map(r => r.licenciaId));
-                }
-                if (aFallidos.length > 0) {
-                    console.log("Licencias con errores:", aFallidos.map(r => r.licenciaId));
-                }
-                console.groupEnd();
-
-                if (aExitosos.length > 0) {
-                    MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente${aSaltadas.length > 0 ? ` (${aSaltadas.length} ya enviados)` : ''}`);
-                    
-                    // Guardar los turnos con Enviado = true solo para las licencias que tuvieron éxito (no saltadas)
-                    const aLicenciasExitosas = aLicencias.filter(lic => 
-                        aExitosos.some(r => r.licenciaId === lic.Id)
-                    );
-
-                    // Preparar datos para createTurno (formato similar a onSaveTurnoPress)
-                    const aDataParaGuardar = aLicenciasExitosas.map((oLicense) => {
-                        return {
-                            Id: oLicense.Id,
-                            Empresa: oLicense.Empresa,
-                            Tipo: oLicense.Tipo || "L",
-                            Anio: oLicense.Anio,
-                            Fecha: FechaTurno || oLicense.Fecha || new Date(),
-                            Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
-                            Comentarios: oLicense.Comentarios || "",
-                            Enviado: true, // Marcar como enviado
-                            Agrmanual: oLicense.Agrmanual || false
-                        };
-                    });
-
-                  
-
-                 
-                    this.createTurno(aDataParaGuardar, aLicenciasExitosas, true);
-                } else {
-                    MessageBox.warning("No se realizaron modificaciones en el turno, ni se reenviaron mails ya enviados.");
-                }
-
-                if (aFallidos.length > 0) {
-                    MessageBox.warning(`${aFallidos.length} licencia(s) tuvieron errores al enviar el mail y no se guardarán`);
-                }
-            })
-            .catch(err => {
-                console.error("❌ Error al obtener token CSRF o procesar las licencias:", err);
-                MessageBox.error("Error al procesar las licencias: " + (err.message || err));
-            });
-        },
 
     });
 });

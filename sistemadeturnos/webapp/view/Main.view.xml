@@ -1105,12 +1105,6 @@
                             enabled="{enabledModel>/btnEnviar}"
                             press="onSendEmailPress"
                         />
-                         <Button
-                            icon="sap-icon://email"
-                            text="{i18n>test}"
-                            enabled="{enabledModel>/btnEnviar}"
-                            press="test"
-                        />
                     </OverflowToolbar>
                 </footer>
             </Page>
