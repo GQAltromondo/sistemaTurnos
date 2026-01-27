@@ -10,9 +10,10 @@ sap.ui.define([
          * @param {Object} oLicencia - Datos de la licencia
          * @param {Object} oComponent - Componente de la aplicación
          * @param {String} [csrfToken] - Token CSRF opcional. Si no se proporciona, se obtiene automáticamente
+         * @param {Function} [onTokenExpired] - Callback opcional que se llama cuando el token expira. Debe retornar una Promise con el nuevo token
          * @returns {Promise} Promise que se resuelve cuando el mail se envía correctamente
          */
-        sendLicenseEmail: function (oLicencia, oComponent, csrfToken) {
+        sendLicenseEmail: function (oLicencia, oComponent, csrfToken, onTokenExpired) {
             if (!oLicencia || !oComponent) {
                 return Promise.reject(new Error("Datos de licencia o componente faltantes"));
             }
@@ -35,7 +36,7 @@ sap.ui.define([
                     Equipo: oLicencia.Equnr || "",
                     EstadoEquipo: oLicencia.Equstat || "",
                     CondTrabajo: oLicencia.Jobcond || "",
-                    Fecha: oLicencia.Fecha,
+                    FechaTurno: oLicencia.Fecha,
                     Turno: oLicencia.Turno || oLicencia.TurnoAsignado || "",
                     Comentarios: oLicencia.Comments || "",
                     DescripcionEquipo: oLicencia.DescEquipo || "",
@@ -63,17 +64,52 @@ sap.ui.define([
                         },
                         error: function (jqXHR, textStatus, errorThrown) {
                             let errorMessage = "Error al enviar mail";
-                            if (jqXHR && jqXHR.responseText) {
-                                try {
-                                    const errorResponse = JSON.parse(jqXHR.responseText);
-                                    errorMessage = errorResponse.error?.message ||
-                                        errorResponse.message ||
-                                        errorMessage;
-                                } catch (e) {
-                                    errorMessage = errorThrown || textStatus || errorMessage;
+                            let isTokenExpired = false;
+                            
+                            // Detectar si el token CSRF expiró
+                            if (jqXHR) {
+                                // Error 403 generalmente indica token expirado o inválido
+                                if (jqXHR.status === 403) {
+                                    isTokenExpired = true;
+                                }
+                                
+                                if (jqXHR.responseText) {
+                                    try {
+                                        const errorResponse = JSON.parse(jqXHR.responseText);
+                                        errorMessage = errorResponse.error?.message ||
+                                            errorResponse.message ||
+                                            errorMessage;
+                                        
+                                        // Verificar mensajes específicos de token expirado
+                                        const errorText = errorMessage.toLowerCase();
+                                        if (errorText.includes("csrf") || 
+                                            errorText.includes("token") || 
+                                            errorText.includes("expired") ||
+                                            errorText.includes("invalid")) {
+                                            isTokenExpired = true;
+                                        }
+                                    } catch (e) {
+                                        errorMessage = errorThrown || textStatus || errorMessage;
+                                    }
                                 }
                             }
-                            reject(new Error(errorMessage));
+                            
+                            const error = new Error(errorMessage);
+                            error.isTokenExpired = isTokenExpired;
+                            error.statusCode = jqXHR ? jqXHR.status : null;
+                            
+                            // Si el token expiró y hay un callback para renovarlo, intentar renovar y reintentar
+                            if (isTokenExpired && onTokenExpired && typeof onTokenExpired === 'function') {
+                                onTokenExpired()
+                                    .then((newToken) => {
+                                        // Reintentar con el nuevo token
+                                        return this.sendLicenseEmail(oLicencia, oComponent, newToken);
+                                    })
+                                    .then(resolve)
+                                    .catch(reject);
+                            } else {
+                                reject(error);
+                            }
                         }
                     });
                 });

@@ -7368,11 +7368,26 @@ sap.ui.define([
             var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
             var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
 
+            // Variable para almacenar el token actual (se puede renovar si expira)
+            let currentCsrfToken = null;
+            
+            // Función para renovar el token cuando expire
+            const renewToken = function() {
+                console.warn("🔄 Token CSRF expirado, renovando...");
+                return MailService.getCSRFToken(oComponent)
+                    .then((newToken) => {
+                        currentCsrfToken = newToken;
+                        console.log("✅ Token CSRF renovado");
+                        return newToken;
+                    });
+            };
+
             // Obtener el token CSRF una sola vez para todos los envíos
             const csrfTokenPromise = MailService.getCSRFToken(oComponent);
 
             // Procesar cada licencia del modelo
             csrfTokenPromise.then((csrfToken) => {
+                currentCsrfToken = csrfToken;
                 console.log("✅ Token CSRF obtenido, reutilizando para", aLicencias.length, "envíos");
 
                 const aPromises = aLicencias.map((oLicense) => {
@@ -7445,7 +7460,8 @@ sap.ui.define([
                             console.log("Destinatario:", sDestinatario);
 
                             // Enviar mail usando MailService con el token CSRF reutilizado
-                            MailService.sendLicenseEmail(oLicenciaParaMail, oComponent, csrfToken)
+                            // Si el token expira, se renovará automáticamente mediante el callback
+                            MailService.sendLicenseEmail(oLicenciaParaMail, oComponent, currentCsrfToken, renewToken)
                                 .then((result) => {
                                     console.log(`✅ Mail enviado correctamente para licencia ${oLicense.Id}:`, result);
                                     console.groupEnd();
