@@ -15,16 +15,24 @@ sap.ui.define([
         let duration = 15; // default
 
         if (job === "01") { // Consignación
-            if (tiposLinea.includes(tipo)) {
-                category = "ConsignacionLinea";   // L1…L6
+            // FIX: Solo L2 y L5 son líneas de alta tensión (500kV y 220kV) = 45 min
+            // El resto (L1, L3, L4, L6) son consignación de equipo = 30 min
+            if (tipo === "L2" || tipo === "L5") {
+                category = "ConsignacionLinea";   // Líneas 500kV y 220kV
                 duration = 45;
+            } else if (tiposLinea.includes(tipo)) {
+                // L1, L3, L4, L6 son consignación de equipo
+                category = "ConsignacionEquipo";
+                duration = 30;
             } else {
+                // Otros tipos de equipo también son consignación de equipo
                 category = "ConsignacionEquipo";
                 duration = 30;
             }
         } else if (job === "06") {
             const hasPatAdic = patAdic != null && String(patAdic).trim() !== "";
             if (hasPatAdic) {
+                // FIX: Maniobras sin consignación = 20 minutos (antes era 20, está bien)
                 category = "ManiobrasSinConsignacion";
                 duration = 20;
             } else {

@@ -225,3 +225,25 @@ html.sap-desktop .sapMIBar.sapMFooter-CTX {
 .sapMITBWarning {
     background-color: #FFF8E1 !important;
 }
+
+.sapMLabel {
+    font-size: 0.875rem !important;  /* 14px en lugar de 16px */
+}
+
+/* O si solo quieres afectar labels específicos, usa una clase custom */
+.filterLabel {
+    font-size: 0.875rem !important;
+    font-weight: 400 !important;
+}
+
+/* Inputs y ComboBox más compactos */
+.sapMInputBase,
+.sapMComboBox,
+.sapMMultiComboBox {
+    height: 2rem !important;  /* Más compactos */
+}
+
+/* DatePicker más compacto */
+.sapMDP {
+    height: 2rem !important;
+}

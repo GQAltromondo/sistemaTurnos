@@ -10,10 +10,10 @@ sap.ui.define([
     "sap/ui/model/FilterOperator",
     "sap/ui/model/json/JSONModel",
     "sap/ui/core/Fragment",
-    "sap/ui/export/Spreadsheet",
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/FormatHelper",
     "transener/sistemadeturnos/utils/Utils",
+    "transener/sistemadeturnos/utils/DateHelper",
     "transener/sistemadeturnos/services/LicenseService",
     "transener/sistemadeturnos/services/TurnosService",
     "transener/sistemadeturnos/services/TipoEquipoService",
@@ -22,15 +22,17 @@ sap.ui.define([
     "transener/sistemadeturnos/utils/TreeTableHelper",
     "transener/sistemadeturnos/services/TramitacionService",
     "transener/sistemadeturnos/utils/RoleHelper",
-    "transener/sistemadeturnos/utils/AppManagementHelper",
-    "transener/sistemadeturnos/services/UserService"
+    "transener/sistemadeturnos/services/UserService",
+    "transener/sistemadeturnos/services/EtMailService",
+    "transener/sistemadeturnos/services/MailService"
 
 
-], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment, Spreadsheet,
+], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment,
     //utils
-    ModelHelper, FormatHelper, Utils,
+    ModelHelper, FormatHelper, Utils, DateHelper,
     //services
-    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel, TreeTableHelper, TramitacionService, RoleHelper, AppManagementHelper, UserService
+    LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel,
+    TreeTableHelper, TramitacionService, RoleHelper, UserService, EtMailService, MailService
 ) {
     "use strict";
     let oDialog = null
@@ -265,15 +267,8 @@ sap.ui.define([
             oView.setModel(oAccionesModel, "AccionesEntregaModel");
         },
 
-        _initAccionesEntregaModel: function () {
-            const oView = this.getView();
-
-            // Crear modelo para almacenar las acciones seleccionadas
-            const oAccionesModel = new JSONModel([]);
-            oView.setModel(oAccionesModel, "AccionesEntregaModel");
-        },
-
         onOpenAccionEntregaPopover: function (oEvent) {
+            const oMenuItem = oEvent.getSource();
             const oView = this.getView();
             const oTable = this.byId("turnosTable");
 
@@ -283,6 +278,8 @@ sap.ui.define([
             oBindingContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
 
             // Intento 2: Desde el parent (Context Menu)
+            // Obtener el contexto de la fila (licencia) desde el MenuItem
+            oBindingContext = oMenuItem.getBindingContext("LicencesJsonModel");
             if (!oBindingContext) {
                 const oMenuItem = oEvent.getSource();
                 const oContextMenu = oMenuItem.getParent();
@@ -364,7 +361,53 @@ sap.ui.define([
                     oPopover.openBy(oTable);
                 }
 
+                // Obtener la fila de la tabla desde el binding context
+                var oRow = this._getTableRowFromBindingContext(oBindingContext);
+                var oTarget = oRow || oMenuItem;
+                oPopover.openBy(oTarget);
             }.bind(this));
+        },
+
+        _getTableRowFromControl: function (oControl) {
+            var oRow = oControl;
+            // Buscar el padre hasta encontrar la fila (sap.ui.table.Row)
+            while (oRow && !(oRow instanceof sap.ui.table.Row)) {
+                oRow = oRow.getParent();
+                // Protección contra loops infinitos
+                if (!oRow || oRow === oControl) {
+                    break;
+                }
+            }
+            return oRow instanceof sap.ui.table.Row ? oRow : null;
+        },
+
+        _getTableRowFromBindingContext: function (oBindingContext) {
+            if (!oBindingContext) {
+                return null;
+            }
+
+            // Obtener la tabla
+            var oTable = this.byId("turnosTable");
+            if (!oTable) {
+                return null;
+            }
+
+            // Obtener el path del binding context
+            var sPath = oBindingContext.getPath();
+
+            // Obtener todas las filas de la tabla
+            var aRows = oTable.getRows();
+
+            // Buscar la fila que tiene el mismo binding context
+            for (var i = 0; i < aRows.length; i++) {
+                var oRow = aRows[i];
+                var oRowContext = oRow.getBindingContext("LicencesJsonModel");
+                if (oRowContext && oRowContext.getPath() === sPath) {
+                    return oRow;
+                }
+            }
+
+            return null;
         },
 
         _initializeCheckBoxesEntrega: function () {
@@ -454,6 +497,8 @@ sap.ui.define([
             const aTodasLasAcciones = oAccionesModel.getData() || [];
 
             if (aTodasLasAcciones.length === 0) {
+                // ✅ FIX: Cerrar el busy ANTES de retornar
+                this.hideGlobalBusy();
                 MessageToast.show("No hay acciones para guardar");
                 return;
             }
@@ -463,6 +508,8 @@ sap.ui.define([
             );
 
             if (aAccionesSinTurno.length > 0) {
+                // ✅ FIX: Cerrar el busy ANTES de retornar
+                this.hideGlobalBusy();
                 MessageBox.warning(
                     `Hay ${aAccionesSinTurno.length} acción(es) sin turno de entrega.`,
                     { title: "Turnos sin asignar" }
@@ -474,12 +521,6 @@ sap.ui.define([
 
             this._verificarAccionesExistentes(aTodasLasAcciones)
                 .then((resultado) => {
-                    resultado.acciones.forEach(accion => {
-                        console.log(`  - ${accion.accion} (${accion.idLicencia}):`, {
-                            tieneAdjuntos: accion.Attachments && accion.Attachments.length > 0,
-                            cantidadAdjuntos: accion.Attachments ? accion.Attachments.length : 0
-                        });
-                    });
 
                     if (resultado.acciones.length === 0) {
                         this.hideGlobalBusy();
@@ -501,7 +542,6 @@ sap.ui.define([
                             try {
                                 const errorObj = JSON.parse(error.responseText);
                                 if (errorObj.error && errorObj.error.message) {
-                                    console.error("Mensaje del backend:", errorObj.error.message.value);
                                 }
                             } catch (e) {
                                 console.error("No se pudo parsear responseText");
@@ -533,16 +573,31 @@ sap.ui.define([
             const oAccionesModel = oView.getModel("AccionesEntregaModel");
             let aAcciones = oAccionesModel.getData();
 
-            aAcciones = aAcciones.filter(a => a.idLicencia !== oLicencia.Id);
+            // ✅ NUEVO: Eliminar acciones previas que contengan cualquier ID del grupo actual
+            const sIdsGrupo = this._getIdsDelGrupo(oLicencia);
+            const aIdsGrupoArray = sIdsGrupo.split(" / ").map(id => id.trim());
+
+            aAcciones = aAcciones.filter(a => {
+                const sIdLicencia = a.idLicencia || "";
+                const aIdsAccion = sIdLicencia.split(" / ").map(id => id.trim());
+
+                // Si hay intersección entre los IDs del grupo y los IDs de la acción, eliminarla
+                const bTieneInterseccion = aIdsAccion.some(id => aIdsGrupoArray.includes(id));
+                return !bTieneInterseccion;
+            });
 
             aCodigosSeleccionados.forEach(sCodigo => {
+                const sDescripcionLarga = this._getDescripcionDesdeCategologo(sCodigo);
+
                 aAcciones.push({
                     accion: sCodigo,
                     descripcion: oAccionesTemp[sCodigo].descripcion,
-                    idLicencia: oLicencia.Id,
+                    descripcionLarga: sDescripcionLarga,
+                    idLicencia: sIdsGrupo,  // ✅ Puede contener múltiples IDs
+                    idLicenciaOriginal: oLicencia.Id,  // ✅ ID original para operaciones
                     equipo: oLicencia.Equnr,
                     equipoCompleto: oLicencia.EquipoCompleto || oLicencia.Equnr,
-                    trabajoRealizar: oLicencia.Comments || "Sin descripción",
+                    trabajoRealizar: sDescripcionLarga || oLicencia.Comments || "Sin descripción",
                     turnoEntrega: oLicencia.TurnoAsignado || "",
                     estado: oLicencia.Licstat || "",
                     condicion: oLicencia.Jobcond || "",
@@ -561,7 +616,7 @@ sap.ui.define([
             const sPath = this._currentBindingContextEntrega.getPath();
             oLicencesModel.setProperty(sPath + "/accionSeleccionada", true);
 
-            MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${oLicencia.Id}`);
+            MessageToast.show(`${aCodigosSeleccionados.length} acción(es) guardada(s) para ${sIdsGrupo}`);
 
             if (this._oAccionEntregaPopover) {
                 this._oAccionEntregaPopover.close();
@@ -689,12 +744,14 @@ sap.ui.define([
                 return;
             }
 
+
+            const sDescripcionLarga = this._getDescripcionDesdeCategologo(accionRow.accion);
             // Crear objeto con los datos a guardar
             const oAccionData = {
                 accion: sAccion,
                 equipo: oLicencia.Equnr,
                 idLicencia: oLicencia.Id,
-                trabajoRealizar: oLicencia.Comments || "Sin descripción",
+                trabajoRealizar: sDescripcionLarga || accionRow.trabajoRealizar || "Sin descripción",
                 turno: oLicencia.TurnoAsignado || "Sin turno",
                 estado: oLicencia.Licstat || "",
                 condicion: oLicencia.Jobcond || "",
@@ -735,12 +792,14 @@ sap.ui.define([
                 return;
             }
 
+
+            const sDescripcionLarga = this._getDescripcionDesdeCategologo(sCodigo);
             // Crear objeto con los datos a guardar
             const oAccionData = {
                 accion: sAccion,
                 equipo: oLicencia.Equnr,
                 idLicencia: oLicencia.Id,
-                trabajoRealizar: oLicencia.Comments || "Sin descripción",
+                trabajoRealizar: sDescripcionLarga || oLicencia.Comments || "Sin descripción",
                 turno: oLicencia.TurnoAsignado || "Sin turno",
                 estado: oLicencia.Licstat || "",
                 condicion: oLicencia.conditionWork || "",
@@ -786,7 +845,7 @@ sap.ui.define([
             const iIndex = parseInt(oBindingContext.getPath().split("/")[1]);
 
             MessageBox.confirm(
-                `¿Desea eliminar la acción "${oAccion.accion}" para la licencia ${oAccion.idLicencia}?`,
+                `¿Desea eliminar la acción "${oAccion.accion}" para la(s) licencia(s) ${oAccion.idLicencia}?`,
                 {
                     title: "Confirmar eliminación",
                     onClose: (sAction) => {
@@ -803,7 +862,7 @@ sap.ui.define([
 
                                 // Construir la key completa para el backend
                                 const sKey = oDataService.createKey("/CatalogoEntregaSet", {
-                                    Id: oAccion.idLicencia,
+                                    Id: oAccion.idLicenciaOriginal || oAccion._licenciaId,
                                     Empresa: oAccion.empresa || "100",
                                     Tipo: oAccion.tipo || "L",
                                     Anio: oAccion.anio || new Date().getFullYear().toString(),
@@ -819,13 +878,18 @@ sap.ui.define([
                                         oAccionesModel.setData(aAcciones);
                                         oAccionesModel.refresh(true);
 
-                                        // Verificar si quedan más acciones para esta licencia
-                                        const bTieneAcciones = aAcciones.some(a => a.idLicencia === oAccion.idLicencia);
+                                        // ✅ MODIFICADO: Verificar si quedan más acciones para cualquier licencia del grupo
+                                        const sIdOriginal = oAccion.idLicenciaOriginal || oAccion._licenciaId;
+                                        const bTieneAcciones = aAcciones.some(a => {
+                                            const sIdLicencia = a.idLicencia || "";
+                                            const aIds = sIdLicencia.split(" / ").map(id => id.trim());
+                                            return aIds.includes(sIdOriginal);
+                                        });
 
                                         if (!bTieneAcciones) {
                                             const oLicencesModel = oView.getModel("LicencesJsonModel");
                                             const aLicencias = oLicencesModel.getData();
-                                            const oLicencia = aLicencias.find(lic => lic.Id === oAccion.idLicencia);
+                                            const oLicencia = aLicencias.find(lic => lic.Id === sIdOriginal);
 
                                             if (oLicencia) {
                                                 oLicencia.accionSeleccionada = false;
@@ -833,7 +897,7 @@ sap.ui.define([
                                             }
                                         }
 
-                                        MessageToast.show("Archivo eliminado: " + oAccion.accion);
+                                        MessageToast.show("Acción eliminada: " + oAccion.accion);
                                         this.onGuardarAccionesBackend();
                                     },
                                     error: (oError) => {
@@ -857,18 +921,24 @@ sap.ui.define([
                                 });
 
                             } else {
+                                // Eliminar localmente (sin backend)
                                 const oAccionesModel = oView.getModel("AccionesEntregaModel");
                                 const aAcciones = oAccionesModel.getData();
                                 aAcciones.splice(iIndex, 1);
                                 oAccionesModel.setData(aAcciones);
 
-                                // Verificar si quedan más acciones para esta licencia
-                                const bTieneAcciones = aAcciones.some(a => a.idLicencia === oAccion.idLicencia);
+                                // ✅ MODIFICADO: Verificar si quedan más acciones para cualquier licencia del grupo
+                                const sIdOriginal = oAccion.idLicenciaOriginal || oAccion._licenciaId;
+                                const bTieneAcciones = aAcciones.some(a => {
+                                    const sIdLicencia = a.idLicencia || "";
+                                    const aIds = sIdLicencia.split(" / ").map(id => id.trim());
+                                    return aIds.includes(sIdOriginal);
+                                });
 
                                 if (!bTieneAcciones) {
                                     const oLicencesModel = oView.getModel("LicencesJsonModel");
                                     const aLicencias = oLicencesModel.getData();
-                                    const oLicencia = aLicencias.find(lic => lic.Id === oAccion.idLicencia);
+                                    const oLicencia = aLicencias.find(lic => lic.Id === sIdOriginal);
 
                                     if (oLicencia) {
                                         oLicencia.accionSeleccionada = false;
@@ -876,7 +946,7 @@ sap.ui.define([
                                     }
                                 }
 
-                                MessageToast.show("Acción eliminada");
+                                MessageToast.show("Acción eliminada localmente");
                             }
                         }
                     }
@@ -1154,8 +1224,8 @@ sap.ui.define([
                         }
 
                         aResults.forEach(r => {
-                            const fechaFormateada = this._formatDateYYYYMMDD(r.Fecha);
-                            const desc = this._getEstadoDescription(r.Estado);
+                            const fechaFormateada = DateHelper.formatDateYYYYMMDD(r.Fecha);
+                            const desc = TramitacionService.getEstadoDescripcion(r.Estado);
                         });
 
                         let tramitacionColor = null;
@@ -1168,7 +1238,7 @@ sap.ui.define([
                             if (item.Estado === 'AS' || item.Estado === 'NA' || item.Estado === 'CD' || item.Estado === 'CC') {
                                 aEstadosProblematicos.push(item);
 
-                                const fechaItem = this._formatDateYYYYMMDD(item.Fecha);
+                                const fechaItem = DateHelper.formatDateYYYYMMDD(item.Fecha);
 
                                 if (item.Estado === 'AS' || item.Estado === 'NA') {
                                     tramitacionPorFecha[fechaItem] = 'red';
@@ -1182,7 +1252,7 @@ sap.ui.define([
 
                         if (aEstadosProblematicos.length > 0) {
                             aEstadosProblematicos.forEach(item => {
-                                const fechaFormateada = this._formatDateYYYYMMDD(item.Fecha);
+                                const fechaFormateada = DateHelper.formatDateYYYYMMDD(item.Fecha);
                             });
                         }
 
@@ -1247,59 +1317,16 @@ sap.ui.define([
                 return null;
             }
 
-            const sFechaTurno = this._formatDateYYYYMMDD(dFechaTurno);
+            const sFechaTurno = DateHelper.formatDateYYYYMMDD(dFechaTurno);
 
             const color = oLicencia.tramitacionPorFecha[sFechaTurno] || null;
 
             return color;
         },
 
-        _formatDateYYYYMMDD: function (date) {
-            if (!date) return "";
-
-            let oDate;
-
-            if (date instanceof Date) {
-                oDate = date;
-            }
-            else if (typeof date === "string" && !date.startsWith("/Date(")) {
-                oDate = new Date(date);
-            }
-            else if (typeof date === "string" && date.startsWith("/Date(")) {
-                const timestamp = parseInt(date.match(/\d+/)[0]);
-                oDate = new Date(timestamp);
-            }
-            else if (typeof date === "object" && date.__edmType === "Edm.DateTime") {
-                oDate = new Date(date);
-            }
-            else {
-                try {
-                    oDate = new Date(date);
-                } catch (e) {
-                    return "";
-                }
-            }
-
-            if (isNaN(oDate.getTime())) {
-                return "";
-            }
-
-            const year = oDate.getFullYear();
-            const month = String(oDate.getMonth() + 1).padStart(2, "0");
-            const day = String(oDate.getDate()).padStart(2, "0");
-
-            return `${year}-${month}-${day}`;
-        },
-
-        _getEstadoDescription: function (estado) {
-            const estados = {
-                "AS": "(Anulada Solicitante)",
-                "NA": "(No Autorizada)",
-                "CD": "(Condicionada)",
-                "AU": "(Autorizada)"
-            };
-            return estados[estado] || "";
-        },
+        // Funciones movidas a servicios/helpers:
+        // - _formatDateYYYYMMDD -> DateHelper.formatDateYYYYMMDD
+        // - _getEstadoDescription -> TramitacionService.getEstadoDescripcion
 
         onOpenCalendarioTramitacion: function (oEvent) {
             const oButton = oEvent.getSource();
@@ -1381,7 +1408,7 @@ sap.ui.define([
             const oView = this.getView();
 
             const aCalendarioData = oLicencia.calendarioCompleto.map(item => {
-                const fechaFormateada = this._formatDateYYYYMMDD(item.Fecha);
+                const fechaFormateada = DateHelper.formatDateYYYYMMDD(item.Fecha);
 
                 return {
                     FechaDisplay: this._formatDateToDisplay(item.Fecha),
@@ -1478,7 +1505,7 @@ sap.ui.define([
         },
 
         _formatDateToDisplay: function (date) {
-            const formatted = this._formatDateYYYYMMDD(date);
+            const formatted = DateHelper.formatDateYYYYMMDD(date);
             if (!formatted) return "";
 
             const [year, month, day] = formatted.split('-');
@@ -1696,7 +1723,7 @@ sap.ui.define([
                         item.isEditable = bIsEditable;
                     });
 
-                    // ✅ OBTENER DESCRIPCIONES DE EQUIPOS
+                    // OBTENER DESCRIPCIONES DE EQUIPOS
                     const aEquiposUnicos = data
                         .map(item => ({
                             Equnr: (item.Equnr || "").trim(),
@@ -1744,6 +1771,12 @@ sap.ui.define([
                             this._updateEditableState();
                         });
                 })
+                .catch((error) => {
+                    oLicencesModel.setData([]);
+                    oLicencesModel.refresh();
+                    oTable.setBusy(false);
+                    Utils.onCountItems(this.getView(), []);
+                });
         },
 
 
@@ -2130,6 +2163,15 @@ sap.ui.define([
             const sNewTime = oEvent.getParameter("value");
             const oSelectedLicence = aLicences[iLicenseIndex];
 
+            // ✅ NUEVO: Si el campo quedó vacío, recalcular según la regla
+            if (!sNewTime || sNewTime.trim() === "") {
+                this._recalculateEmptyShift(aLicences, oSelectedLicence, iLicenseIndex);
+
+                oModel.setProperty("/", aLicences);
+                oModel.refresh(true);
+                return;
+            }
+
             // Validación: rango prohibido 5:30 - 6:30
             if (this._isTimeInRestrictedRange(sNewTime)) {
                 MessageBox.error(
@@ -2149,7 +2191,7 @@ sap.ui.define([
                             this._sortLicences(aLicences);
                             oModel.setProperty("/", aLicences);
                             oModel.refresh(true);
-                        }
+                        }.bind(this)
                     }
                 );
                 return;
@@ -2178,6 +2220,138 @@ sap.ui.define([
             oModel.refresh(true);
         },
 
+        _recalculateEmptyShift: function (aLicences, oSelectedLicence, iLicenseIndex) {
+            const consola = oSelectedLicence.Consola;
+
+            if (!consola) {
+                return;
+            }
+
+            // 1) Actualizar el grupo actual a vacío
+            this._updateSameGroupAndConsoleShifts(aLicences, oSelectedLicence, "");
+
+            // 2) Agrupar por consola
+            const groupsMap = {};
+            aLicences.forEach(function (lic, idx) {
+                if (lic.Consola !== consola) return;
+
+                const grupo = lic.Grupo || lic.Equnr || "";
+                if (!groupsMap[grupo]) {
+                    groupsMap[grupo] = {
+                        grupo: grupo,
+                        items: [],
+                        firstIndex: idx
+                    };
+                }
+                groupsMap[grupo].items.push(lic);
+                if (idx < groupsMap[grupo].firstIndex) {
+                    groupsMap[grupo].firstIndex = idx;
+                }
+            });
+
+            const groups = Object.keys(groupsMap).map(k => groupsMap[k]);
+            groups.sort((a, b) => a.firstIndex - b.firstIndex);
+
+            // 3) Encontrar el grupo actual
+            const currentGroupIndex = groups.findIndex(g =>
+                g.items.indexOf(oSelectedLicence) !== -1
+            );
+
+            if (currentGroupIndex === -1) {
+                return;
+            }
+
+            // 4) Buscar el grupo anterior con turno
+            let prevGroupWithShift = null;
+            let prevStartMinutes = null;
+
+            for (let i = currentGroupIndex - 1; i >= 0; i--) {
+                const prevGroup = groups[i];
+                const firstWithTurno = prevGroup.items.find(it => !!it.TurnoAsignado);
+
+                if (firstWithTurno) {
+                    prevGroupWithShift = prevGroup;
+                    prevStartMinutes = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
+                    break;
+                }
+            }
+
+            // 5) Si hay grupo anterior, calcular el nuevo turno según la regla
+            if (prevGroupWithShift && prevStartMinutes !== null) {
+                const prevInfo = Utils.getShiftInfo(prevGroupWithShift.items[0]);
+                const calculatedStart = prevStartMinutes + prevInfo.duration;
+                const newTimeStr = this._formatTime(calculatedStart);
+
+                // Asignar el turno calculado al grupo actual
+                groups[currentGroupIndex].items.forEach(it => {
+                    it.TurnoAsignado = newTimeStr;
+                });
+
+                // 6) Recalcular grupos siguientes en cascada
+                this._recalculateFollowingGroups(groups, currentGroupIndex);
+            } else {
+                // Si no hay grupo anterior, usar el turno inicial por defecto (7:00)
+                const defaultStart = 7 * 60; // 7:00 AM
+                const newTimeStr = this._formatTime(defaultStart);
+
+                groups[currentGroupIndex].items.forEach(it => {
+                    it.TurnoAsignado = newTimeStr;
+                });
+
+                // Recalcular grupos siguientes
+                this._recalculateFollowingGroups(groups, currentGroupIndex);
+            }
+
+            this._rebuildFrontendGroupsByEquipoHora(aLicences);
+            this._assignGroupColors(aLicences);
+            this._sortLicences(aLicences);
+        },
+
+        _recalculateFollowingGroups: function (groups, startIndex) {
+            let prevStart = null;
+            let prevGroup = null;
+
+            // Obtener el inicio del grupo actual
+            const currentGroup = groups[startIndex];
+            const currentFirstWithTurno = currentGroup.items.find(it => !!it.TurnoAsignado);
+
+            if (currentFirstWithTurno) {
+                prevStart = this._convertShiftToMinutes(currentFirstWithTurno.TurnoAsignado);
+                prevGroup = currentGroup;
+            } else {
+                return; // No hay turno para calcular
+            }
+
+            // Recalcular grupos siguientes
+            for (let i = startIndex + 1; i < groups.length; i++) {
+                const group = groups[i];
+                const gFirstWithTurno = group.items.find(it => !!it.TurnoAsignado);
+
+                if (!gFirstWithTurno) {
+                    continue; // Saltar grupos sin turno
+                }
+
+                const prevInfo = Utils.getShiftInfo(prevGroup.items[0]);
+                const expectedStart = prevStart + prevInfo.duration;
+                const currentStart = this._convertShiftToMinutes(gFirstWithTurno.TurnoAsignado);
+
+                // Si el turno actual está adelante del esperado, no recalcular (respeta manual)
+                if (currentStart > expectedStart) {
+                    prevGroup = group;
+                    prevStart = currentStart;
+                    continue;
+                }
+
+                // Recalcular el grupo
+                const newTimeStr = this._formatTime(expectedStart);
+                group.items.forEach(it => {
+                    it.TurnoAsignado = newTimeStr;
+                });
+
+                prevGroup = group;
+                prevStart = expectedStart;
+            }
+        },
 
         _updateSameGroupAndConsoleShifts: function (aLicences, oSelectedLicence, sNewTime) {
             // Recorre las licencias y actualiza el horario solo de aquellas que comparten el mismo Grupo y Consola
@@ -2710,28 +2884,62 @@ sap.ui.define([
                 this._initializeCheckBoxes(aAccionesEntregas);
 
                 oPopover.openBy(oCell);
+                // Obtener la fila de la tabla en lugar del botón
+                var oRow = this._getTableRowFromControl(oButton);
+                var oTarget = oRow || oButton;
+                oPopover.openBy(oTarget);
             }.bind(this));
         },
 
-        _initializeCheckBoxes: function (aAccionesEntregas) {
-            var aCheckBoxes = [
-                { id: "checkboxSOL_COC", key: "SOL COC" },
-                { id: "checkboxSOL_TEC", key: "SOL TEC" },
-                { id: "checkboxAUT_COC", key: "AUT COC" }
-            ];
+        _initializeCheckBoxesEntrega: function () {
+            const oView = this.getView();
+            const oLicencia = this._currentLicenciaEntrega;
 
-            var aNombres = (Array.isArray(aAccionesEntregas) ? aAccionesEntregas : [])
-                .map(function (e) { return e && e.nombre; })
-                .filter(Boolean);
+            // Obtener todas las acciones ya guardadas
+            const oAccionesModel = oView.getModel("AccionesEntregaModel");
+            const aAcciones = oAccionesModel.getData();
 
-            aCheckBoxes.forEach(function (oCb) {
-                var oControl = this.byId(oCb.id);
+            // ✅ NUEVO: Buscar acciones que contengan el ID de esta licencia
+            const aAccionesLicencia = aAcciones.filter(a => {
+                const sIdLicencia = a.idLicencia || "";
+                const aIds = sIdLicencia.split(" / ").map(id => id.trim());
+                return aIds.includes(oLicencia.Id);
+            });
 
-                if (oControl) {
-                    var bSelected = aNombres.indexOf(oCb.key) !== -1;
-                    oControl.setSelected(bSelected);
+            // Array de códigos ya seleccionados
+            const aCodigosSeleccionados = aAccionesLicencia.map(a => a.accion);
+
+            this._accionesSeleccionadasTemp = {};
+
+            setTimeout(() => {
+                const oList = this.byId("listaAccionesEntrega");
+
+                if (!oList) {
+                    return;
                 }
-            }.bind(this));
+
+                const aItems = oList.getItems();
+
+                aItems.forEach(oItem => {
+                    const oCheckBox = oItem.getContent()[0];
+
+                    if (oCheckBox && oCheckBox.isA("sap.m.CheckBox")) {
+                        const sKey = oCheckBox.data("key");
+                        const sDescripcion = oCheckBox.data("descripcion");
+
+                        const bSelected = aCodigosSeleccionados.includes(sKey);
+                        oCheckBox.setSelected(bSelected);
+
+                        if (bSelected) {
+                            this._accionesSeleccionadasTemp[sKey] = {
+                                codigo: sKey,
+                                descripcion: sDescripcion
+                            };
+                        }
+                    }
+                });
+
+            }, 100);
         },
 
         onClosePopover: function () {
@@ -2910,26 +3118,93 @@ sap.ui.define([
             const sMensajeBusy = bEnviado ? "Enviando turno..." : "Guardando cambios...";
             this.showGlobalBusy(sMensajeBusy);
 
+            const oComponent = this.getOwnerComponent();
             const aPromises = licencias.map((licencia) => {
                 return new Promise((resolve, reject) => {
+                    // Convertir Fecha a Date nativo si es necesario
+                    let oFechaDate = licencia.Fecha;
+                    if (!(oFechaDate instanceof Date)) {
+                        if (typeof oFechaDate === 'string') {
+                            // Intentar parsear formato DD/MM/YYYY o DD-MM-YYYY
+                            const dateMatch = oFechaDate.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+                            if (dateMatch) {
+                                // Formato DD/MM/YYYY o DD-MM-YYYY
+                                const day = parseInt(dateMatch[1], 10);
+                                const month = parseInt(dateMatch[2], 10) - 1; // Los meses en Date son 0-indexados
+                                const year = parseInt(dateMatch[3], 10);
+                                oFechaDate = new Date(year, month, day, 0, 0, 0, 0);
+                            } else {
+                                // Intentar parseo estándar
+                                oFechaDate = new Date(oFechaDate);
+                            }
+                        } else if (oFechaDate && typeof oFechaDate.getTime === 'function') {
+                            // Es un objeto tipo Date (como SAP UI5 Date)
+                            oFechaDate = new Date(oFechaDate.getTime());
+                        } else {
+                            oFechaDate = new Date();
+                        }
+                    }
+
+                    // Asegurar que la fecha tenga hora 00:00:00 UTC para formato OData
+                    if (oFechaDate instanceof Date && !isNaN(oFechaDate.getTime())) {
+                        // Normalizar a UTC con hora 00:00:00
+                        const year = oFechaDate.getFullYear();
+                        const month = oFechaDate.getMonth();
+                        const day = oFechaDate.getDate();
+                        oFechaDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+                    }
+
                     const license = {
                         "Id": licencia.Id,
                         "Empresa": licencia.Empresa,
                         "Tipo": licencia.Tipo || "L",
                         "Anio": licencia.Anio,
-                        "Dateturno": new Date(licencia.Fecha),
+                        "Dateturno": oFechaDate,
                         "Turno": licencia.Turno,
                         "Comentarios": licencia.Comentarios,
                         "Enviado": bEnviado !== undefined ? bEnviado : licencia.Enviado,
                         "Agrmanual": licencia.Agrmanual || false
                     };
 
-                    oDataService.create(entity, license, {
-                        success: () => resolve(),
-                        error: (oError) => {
-                            reject(oError);
-                        }
-                    });
+                    // Si bEnviado es true, primero intentar actualizar el turno existente
+                    if (bEnviado === true) {
+                        // Usar createKey del modelo OData para construir la key automáticamente desde el metadata
+                        const sKey = oDataService.createKey(entity, {
+                            Id: license.Id,
+                            Empresa: license.Empresa,
+                            Tipo: license.Tipo,
+                            Anio: license.Anio,
+                            Dateturno: license.Dateturno
+                        });
+
+                        // Intentar actualizar primero
+                        oDataService.update(sKey, license, {
+                            success: () => {
+                                resolve();
+                            },
+                            error: (oError) => {
+                                // Si el update falla (turno no existe), crear nuevo
+                                oDataService.create(entity, license, {
+                                    success: () => {
+                                        resolve();
+                                    },
+                                    error: (oCreateError) => {
+                                        reject(oCreateError);
+                                    }
+                                });
+                            }
+                        });
+                    } else {
+                        // Si no es enviado, crear normalmente
+                        oDataService.create(entity, license, {
+                            success: () => {
+                                resolve();
+                            },
+                            error: (oError) => {
+                                reject(oError);
+                            }
+                        });
+                    }
                 });
             });
 
@@ -3002,60 +3277,6 @@ sap.ui.define([
                 }
             });
         },
-
-        /* createTurno: function (licencias, aAttachments) {
-            const entity = "/TurnosLicenciasSet";
-            const oDataService = this.getView().getModel();
-            const oResourceBundle = this.getView().getModel("i18n").getResourceBundle();
-
-            const sMensajeBusy = bEnviado ? "Enviando turno..." : "Guardando cambios...";
-            this.showGlobalBusy(sMensajeBusy);
-
-            const sMensajeExito = bEnviado
-                ? "Turno enviado exitosamente"
-                : "Cambios guardados correctamente";
-            MessageToast.show(sMensajeExito);
-
-            const aPromises = licencias.map((licencia) => {
-                return new Promise((resolve, reject) => {
-                    const license = {
-                        "Id": licencia.Id,
-                        "Empresa": licencia.Empresa,
-                        "Tipo": licencia.Tipo || "L",
-                        "Anio": licencia.Anio,
-                        "Dateturno": new Date(licencia.Fecha),
-                        "Turno": licencia.Turno,
-                        "Comentarios": licencia.Comentarios
-                    };
-
-                    oDataService.create(entity, license, {
-                        success: () => resolve(),
-                        error: (oError) => {
-                            console.error("Error al crear turno:", oError);
-                            reject(oError);
-                        }
-                    });
-                });
-            });
-
-            Promise.all(aPromises)
-                .then(() => {
-                    MessageToast.show(oResourceBundle.getText("saveTurno") + " - Éxito");
-
-                    if (aAttachments && aAttachments.length > 0) {
-                        this._saveAttachments(aAttachments);
-                    }
-
-                    setTimeout(() => {
-                        this._recargarDatosDespuesDeGuardar();
-                    }, 1000);
-                })
-                .catch((error) => {
-                    this.hideGlobalBusy();
-                    MessageBox.error("Error al guardar los turnos");
-                    console.error(error);
-                });
-        }, */
 
         // ------------ FILTROS AVANZADOS ----------------------------------
         openAdvancedFilters: function () {
@@ -3843,17 +4064,23 @@ sap.ui.define([
         // ==================== MÉTODOS PARA ADJUNTAR ARCHIVOS PDF ====================
 
         onAttachFile: function (oEvent) {
+            console.log("\n=== onAttachFile ===");
+
+            // Guardar el contexto de la licencia
             this._currentAttachmentContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
 
             if (!this._currentAttachmentContext) {
+                console.error("❌ No se pudo obtener el contexto");
                 MessageToast.show("No se pudo obtener la licencia");
                 return;
             }
 
             const oLicencia = this._currentAttachmentContext.getObject();
+            console.log("Licencia:", oLicencia.Id);
 
             // Crear input de archivo si no existe
             if (!this._fileInput) {
+                console.log("ℹ️ Creando file input");
                 this._fileInput = document.createElement("input");
                 this._fileInput.type = "file";
                 this._fileInput.accept = ".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.txt";
@@ -3868,98 +4095,139 @@ sap.ui.define([
 
             this._fileInput.value = null;
             this._fileInput.click();
+            console.log("✅ File input activado\n");
         },
 
+
         _handleFileSelection: function (oEvent) {
+            console.log("\n=== _handleFileSelection ===");
 
             const file = oEvent.target.files[0];
 
             if (!file) {
+                console.log("⚠️ No se seleccionó archivo");
                 return;
             }
 
+            console.log("Archivo seleccionado:", file.name);
+            console.log("Tamaño:", file.size, "bytes");
+
             const maxSize = 10 * 1024 * 1024; // 10MB
             if (file.size > maxSize) {
+                console.error("❌ Archivo demasiado grande");
                 MessageBox.error("El archivo es demasiado grande. Máximo 10MB");
                 return;
             }
 
-            // Convertir a base64
+            console.log("✅ Convirtiendo a base64...");
             this._convertFileToBase64(file);
         },
 
         _convertFileToBase64: function (file) {
+            console.log("\n=== _convertFileToBase64 ===");
+            console.log("Archivo:", file.name);
+
             const reader = new FileReader();
 
             reader.onload = function (e) {
+                console.log("✅ Archivo leído exitosamente");
                 const base64String = e.target.result;
 
                 if (this._currentAttachmentContext) {
                     const oLicencia = this._currentAttachmentContext.getObject();
+                    console.log("Licencia:", oLicencia.Id);
 
-                    if (!oLicencia.Attachments) {
+                    // Asegurar que existe el array de adjuntos
+                    if (!oLicencia.Attachments && !oLicencia.AttachmentXLicencia_nav) {
+                        console.log("ℹ️ Creando array Attachments");
+                        oLicencia.Attachments = [];
+                    } else if (oLicencia.AttachmentXLicencia_nav && !oLicencia.AttachmentXLicencia_nav.results) {
+                        console.log("ℹ️ Inicializando AttachmentXLicencia_nav.results");
+                        oLicencia.AttachmentXLicencia_nav.results = [];
+                    } else if (!oLicencia.Attachments) {
+                        console.log("ℹ️ Creando array Attachments (caso 2)");
                         oLicencia.Attachments = [];
                     }
 
                     // Obtener fecha del turno
                     const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
 
+                    // ✅ Extraer el base64 puro (sin el prefijo data:...)
+                    const base64Pure = base64String.includes(',') ? base64String.split(',')[1] : base64String;
+
                     const nuevoAdjunto = {
-                        // Keys
                         Id: oLicencia.Id,
                         Empresa: "100",
                         Tipo: "L",
                         Anio: new Date().getFullYear().toString(),
                         Dateturno: oFechaTurno,
                         Codigo: "",
-
-                        // Campos adicionales
                         Accion: "",
                         Descripcion: oLicencia.Comments || "",
                         Equnr: (oLicencia.Equnr || "").substring(0, 18),
                         Comments: file.name.substring(0, 255),
                         Licstat: (oLicencia.Licstat || "01").substring(0, 2),
-                        Attachment: base64String.split(',')[1],
-
-                        // Metadata para UI (NO se envían al backend)
+                        Attachment: base64Pure,  // ✅ Solo el base64 puro
+                        AttachmentData: base64String,  // ✅ Con el prefijo data:...
                         AttachmentName: file.name,
                         AttachmentSize: file.size,
                         AttachmentType: file.type,
                         Timestamp: new Date().getTime()
                     };
 
+                    console.log("📎 Agregando adjunto:", nuevoAdjunto.AttachmentName);
+                    console.log("  AttachmentType:", nuevoAdjunto.AttachmentType);
+                    console.log("  AttachmentData:", nuevoAdjunto.AttachmentData.substring(0, 50) + "...");
+
                     oLicencia.Attachments.push(nuevoAdjunto);
+                    console.log("Total adjuntos ahora:", oLicencia.Attachments.length);
 
                     const oModel = this.getView().getModel("LicencesJsonModel");
                     oModel.refresh(true);
+                    console.log("✅ Modelo refrescado");
 
                     MessageToast.show("Archivo agregado: " + file.name);
+                } else {
+                    console.error("❌ No hay contexto de licencia");
                 }
+
+                console.log("=== _convertFileToBase64 FIN ===\n");
             }.bind(this);
 
             reader.onerror = function () {
+                console.error("❌ Error al leer el archivo");
                 MessageBox.error("Error al leer el archivo");
             };
 
             reader.readAsDataURL(file);
         },
 
+
         onViewAttachment: function (oEvent) {
+            console.log("\n=== onViewAttachment ===");
+
             const oContext = oEvent.getSource().getBindingContext("LicencesJsonModel");
 
             if (!oContext) {
+                console.error("❌ No se pudo obtener el contexto");
                 MessageToast.show("No se pudo obtener la licencia");
                 return;
             }
 
             const oLicencia = oContext.getObject();
+            console.log("Licencia:", oLicencia.Id);
 
-            // Verificar si hay adjuntos
-            if (!oLicencia.Attachments || oLicencia.Attachments.length === 0) {
+            // Verificar si hay adjuntos usando función normalizada
+            const aAttachments = this._getNormalizedAttachments(oLicencia);
+            console.log("Adjuntos encontrados:", aAttachments.length);
+
+            if (!aAttachments || aAttachments.length === 0) {
+                console.log("⚠️ No hay adjuntos, mostrando mensaje");
                 MessageToast.show("No hay archivos adjuntos");
                 return;
             }
 
+            console.log("✅ Mostrando selector de adjuntos");
             this._showAttachmentSelector(oLicencia, oContext);
         },
 
@@ -4022,7 +4290,8 @@ sap.ui.define([
                                                 press: function (oEvent) {
                                                     const oItem = oEvent.getSource().getParent().getParent().getParent();
                                                     const iIndex = oList.indexOfItem(oItem);
-                                                    const oAttachment = oLicencia.Attachments[iIndex];
+                                                    const aAttachments = this._getNormalizedAttachments(oLicencia);
+                                                    const oAttachment = aAttachments[iIndex];
                                                     this._openAttachment(oAttachment);
                                                 }.bind(this)
                                             }).addStyleClass("sapUiTinyMarginEnd"),
@@ -4034,7 +4303,8 @@ sap.ui.define([
                                                 press: function (oEvent) {
                                                     const oItem = oEvent.getSource().getParent().getParent().getParent();
                                                     const iIndex = oList.indexOfItem(oItem);
-                                                    const oAttachment = oLicencia.Attachments[iIndex];
+                                                    const aAttachments = this._getNormalizedAttachments(oLicencia);
+                                                    const oAttachment = aAttachments[iIndex];
                                                     this._deleteAttachmentFromList(oAttachment, iIndex);
                                                 }.bind(this)
                                             })
@@ -4047,7 +4317,9 @@ sap.ui.define([
                 }
             });
 
-            const aListData = oLicencia.Attachments.map((att, idx) => ({
+            // Usar adjuntos normalizados
+            const aAttachments = this._getNormalizedAttachments(oLicencia);
+            const aListData = aAttachments.map((att, idx) => ({
                 name: att.AttachmentName,
                 info: this._formatSize(att.AttachmentSize) + " • " + this._getFileTypeName(att.AttachmentType),
                 icon: this.getFileIcon(att.AttachmentType),
@@ -4103,35 +4375,6 @@ sap.ui.define([
             );
         },
 
-        _deleteAttachment: function (oAttachment, iIndex) {
-            const oLicencia = this._currentLicenciaForAttachments;
-
-            if (!oLicencia || !oLicencia.Attachments) {
-                MessageToast.show("Error: No se pudo encontrar la licencia");
-                return;
-            }
-
-            // Eliminar del array
-            oLicencia.Attachments.splice(iIndex, 1);
-
-            const oModel = this.getView().getModel("LicencesJsonModel");
-            oModel.updateBindings(true);
-
-            if (oAttachment.Attindex) {
-                this._deleteAttachmentFromBackend(oAttachment);
-            } else {
-                MessageToast.show("Archivo eliminado: " + oAttachment.AttachmentName);
-            }
-
-            if (this._attachmentSelectorDialog) {
-                this._attachmentSelectorDialog.close();
-            }
-
-            if (oLicencia.Attachments.length === 0) {
-                MessageToast.show("Todos los archivos fueron eliminados");
-            }
-        },
-
         // ==================== FIN SOLUCIÓN BOTÓN ELIMINAR ====================
 
         /**
@@ -4164,23 +4407,38 @@ sap.ui.define([
          * Abre un archivo adjunto (PDF, imagen, etc)
          */
         _openAttachment: function (oAttachment) {
+            console.log("\n=== _openAttachment ===");
+            console.log("Archivo:", oAttachment.AttachmentName);
+            console.log("Tipo:", oAttachment.AttachmentType);
+            console.log("AttachmentData existe?", !!oAttachment.AttachmentData);
+
+            if (!oAttachment.AttachmentData) {
+                console.error("❌ No hay AttachmentData");
+                MessageBox.error("Error: El archivo no tiene datos para visualizar");
+                return;
+            }
+
             const sType = oAttachment.AttachmentType;
 
             // Para PDFs
             if (sType === "application/pdf") {
+                console.log("📄 Abriendo PDF");
                 this._openPDFViewer(oAttachment.AttachmentData);
                 return;
             }
 
             // Para imágenes
-            if (sType.startsWith("image/")) {
+            if (sType && sType.startsWith("image/")) {
+                console.log("🖼️ Abriendo imagen");
                 this._openImageViewer(oAttachment);
                 return;
             }
 
             // Para otros archivos, descargar
+            console.log("📥 Descargando archivo");
             this._downloadFile(oAttachment);
         },
+
 
         /**
          * Abre el visor de PDF
@@ -4278,11 +4536,22 @@ sap.ui.define([
          * Descarga un archivo
          */
         _downloadFile: function (oAttachment) {
+            console.log("📥 Descargando:", oAttachment.AttachmentName);
+            console.log("  AttachmentData existe?", !!oAttachment.AttachmentData);
+            console.log("  AttachmentData preview:", oAttachment.AttachmentData?.substring(0, 50));
+
+            if (!oAttachment.AttachmentData) {
+                console.error("❌ No hay AttachmentData");
+                MessageBox.error("Error: El archivo no tiene datos para descargar");
+                return;
+            }
+
             const link = document.createElement("a");
             link.href = oAttachment.AttachmentData;
             link.download = oAttachment.AttachmentName;
             link.click();
 
+            console.log("✅ Descarga iniciada");
             MessageToast.show("Descargando: " + oAttachment.AttachmentName);
         },
 
@@ -4304,46 +4573,89 @@ sap.ui.define([
             });
         },
 
-        /**
-         * Elimina un adjunto del array
-         */
         _deleteAttachment: function (oAttachment, iIndex) {
+            console.log("\n=== _deleteAttachment ===");
+            console.log("Adjunto a eliminar:", oAttachment.AttachmentName);
+            console.log("Índice:", iIndex);
+
             const oLicencia = this._currentLicenciaForAttachments;
 
-            if (!oLicencia || !oLicencia.Attachments) {
+            if (!oLicencia) {
+                console.error("❌ No se encontró oLicencia");
                 MessageToast.show("Error: No se pudo encontrar la licencia");
                 return;
             }
 
+            console.log("Licencia:", oLicencia.Id);
+
+            // ✅ Normalizar adjuntos primero
+            let aAttachments = this._getNormalizedAttachments(oLicencia);
+            console.log("Adjuntos actuales:", aAttachments.length);
+
+            if (!aAttachments || aAttachments.length === 0) {
+                console.error("❌ No hay adjuntos para eliminar");
+                MessageToast.show("Error: No hay adjuntos para eliminar");
+                return;
+            }
+
+            // ✅ Asegurar que oLicencia.Attachments existe
+            if (!oLicencia.Attachments) {
+                console.log("⚠️ Creando oLicencia.Attachments desde normalizados");
+                oLicencia.Attachments = [...aAttachments];
+            }
+
+            console.log("Adjuntos antes de eliminar:", oLicencia.Attachments.length);
+
             // Eliminar del array
             oLicencia.Attachments.splice(iIndex, 1);
 
-            // ✅ CORRECCIÓN 1: Forzar actualización del modelo
-            const oModel = this.getView().getModel("LicencesJsonModel");
-            oModel.updateBindings(true);  // Cambiado de refresh a updateBindings
+            console.log("Adjuntos después de eliminar:", oLicencia.Attachments.length);
 
-            // Obtener la tabla y refrescarla
+            // ✅ Limpiar AttachmentXLicencia_nav si se eliminó el último
+            if (oLicencia.Attachments.length === 0) {
+                console.log("⚠️ Último adjunto eliminado, limpiando AttachmentXLicencia_nav");
+                if (oLicencia.AttachmentXLicencia_nav) {
+                    if (oLicencia.AttachmentXLicencia_nav.results) {
+                        oLicencia.AttachmentXLicencia_nav.results = [];
+                    } else if (Array.isArray(oLicencia.AttachmentXLicencia_nav)) {
+                        oLicencia.AttachmentXLicencia_nav = [];
+                    }
+                }
+            }
+
+            // Forzar actualización del modelo
+            const oModel = this.getView().getModel("LicencesJsonModel");
+            oModel.updateBindings(true);
+            console.log("✅ Modelo actualizado");
+
+            // Refrescar tabla
             const oTable = this.byId("turnosTable");
             if (oTable) {
                 oTable.getBinding("rows").refresh();
+                console.log("✅ Tabla refrescada");
             }
 
             // Si se guardó en backend, eliminarlo también
             if (oAttachment.Attindex) {
+                console.log("🗑️ Eliminando del backend, Attindex:", oAttachment.Attindex);
                 this._deleteAttachmentFromBackend(oAttachment);
             } else {
+                console.log("ℹ️ Adjunto local, no está en backend");
                 MessageToast.show("Archivo eliminado: " + oAttachment.AttachmentName);
             }
 
-            // Cerrar el diálogo siempre (para forzar refresco visual)
+            // Cerrar el diálogo
             if (this._attachmentSelectorDialog) {
                 this._attachmentSelectorDialog.close();
+                console.log("✅ Diálogo cerrado");
             }
 
             // Mensaje si se eliminaron todos
             if (oLicencia.Attachments.length === 0) {
                 MessageToast.show("Todos los archivos fueron eliminados");
             }
+
+            console.log("=== _deleteAttachment FIN ===\n");
         },
 
 
@@ -4357,57 +4669,17 @@ sap.ui.define([
 
         _loadAttachmentsForLicensesAsync: function (aLicencias) {
 
-            const oDataModel = this.getView().getModel();
             const oLicencesModel = this.getView().getModel("LicencesJsonModel");
 
             const aPromises = aLicencias.map((licencia, idx) => {
 
-                return new Promise((resolve, reject) => {
-                    const aFilters = [
-                        new Filter("Id", FilterOperator.EQ, licencia.Id),
-                        new Filter("Empresa", FilterOperator.EQ, licencia.Empresa),
-                        new Filter("Anio", FilterOperator.EQ, licencia.Anio)
-                    ];
+                return new Promise((resolve) => {
+                    // Verificar si los adjuntos ya están disponibles en AttachmentXLicencia_nav.results
+                    const expandedAttachments = licencia.AttachmentXLicencia_nav?.results ||
+                        licencia.AttachmentXLicencia_nav ||
+                        null;
 
-                    oDataModel.read("/AttachmentLicenciasSet", {
-                        filters: aFilters,
-                        success: function (oData) {
-
-                            if (oData.results && oData.results.length > 0) {
-
-                                const aAttachments = oData.results.map(att => ({
-                                    Id: att.Id,
-                                    Empresa: att.Empresa,
-                                    Anio: att.Anio,
-                                    AttachmentData: "data:" + att.Doctype + ";base64," + att.Attachment,
-                                    AttachmentName: att.Filename,
-                                    AttachmentType: att.Doctype,
-                                    Attindex: att.Attindex,
-                                    Timestamp: new Date().getTime() + Math.random()
-                                }));
-
-                                // Buscar índice real
-                                const aLicenciasActuales = oLicencesModel.getData();
-
-                                const iRealIndex = aLicenciasActuales.findIndex(lic =>
-                                    lic.Id === licencia.Id &&
-                                    lic.Empresa === licencia.Empresa &&
-                                    lic.Anio === licencia.Anio
-                                );
-
-                                if (iRealIndex !== -1) {
-                                    oLicencesModel.setProperty("/" + iRealIndex + "/Attachments", aAttachments);
-
-                                    // Verificar que se asignó
-                                    const licenciaActualizada = oLicencesModel.getProperty("/" + iRealIndex);
-                                }
-                            }
-                            resolve();
-                        }.bind(this),
-                        error: function (oError) {
-                            resolve();
-                        }
-                    });
+                    resolve();
                 });
             });
 
@@ -4575,17 +4847,105 @@ sap.ui.define([
             return "sap-icon://document";
         },
 
+        _getNormalizedAttachments: function (oLicencia) {
+            if (!oLicencia) {
+                console.log("📎 _getNormalizedAttachments: oLicencia es null");
+                return [];
+            }
+
+            console.log("📎 _getNormalizedAttachments para licencia:", oLicencia.Id);
+            console.log("  Attachments local:", oLicencia.Attachments?.length || 0);
+            console.log("  AttachmentXLicencia_nav:", oLicencia.AttachmentXLicencia_nav ? "existe" : "no existe");
+
+            // ✅ PRIORIDAD 1: Verificar Attachments locales (adjuntos recién agregados)
+            if (oLicencia.Attachments && Array.isArray(oLicencia.Attachments) && oLicencia.Attachments.length > 0) {
+                console.log("  ✅ Usando Attachments locales:", oLicencia.Attachments.length);
+                // ✅ NUEVO: Asegurar que todos tienen AttachmentData
+                return oLicencia.Attachments.map(att => {
+                    if (!att.AttachmentData && att.Attachment) {
+                        // Construir AttachmentData si no existe
+                        const mimeType = att.AttachmentType || this._inferMimeType(att.AttachmentName);
+                        att.AttachmentData = `data:${mimeType};base64,${att.Attachment}`;
+                        console.log("    ⚠️ AttachmentData construido para:", att.AttachmentName);
+                    }
+                    return att;
+                });
+            }
+
+            // ✅ PRIORIDAD 2: Verificar AttachmentXLicencia_nav (datos del backend)
+            let aRawAttachments = null;
+            if (oLicencia.AttachmentXLicencia_nav?.results && Array.isArray(oLicencia.AttachmentXLicencia_nav.results)) {
+                aRawAttachments = oLicencia.AttachmentXLicencia_nav.results;
+                console.log("  ✅ Usando AttachmentXLicencia_nav.results:", aRawAttachments.length);
+            } else if (oLicencia.AttachmentXLicencia_nav && Array.isArray(oLicencia.AttachmentXLicencia_nav)) {
+                aRawAttachments = oLicencia.AttachmentXLicencia_nav;
+                console.log("  ✅ Usando AttachmentXLicencia_nav (array):", aRawAttachments.length);
+            }
+
+            if (!aRawAttachments || aRawAttachments.length === 0) {
+                console.log("  ⚠️ No hay adjuntos");
+                return [];
+            }
+
+            // Normalizar desde formato OData expandido a formato esperado
+            const aNormalizados = aRawAttachments.map(att => {
+                // ✅ Construir AttachmentData con el MIME type correcto
+                let sAttachmentData = att.AttachmentData;
+                if (!sAttachmentData && att.Attachment) {
+                    const sMimeType = att.Doctype || this._inferMimeType(att.Filename || att.AttachmentName);
+                    sAttachmentData = `data:${sMimeType};base64,${att.Attachment}`;
+                }
+
+                return {
+                    Id: att.Id,
+                    Empresa: att.Empresa,
+                    Anio: att.Anio,
+                    Attachment: att.Attachment,
+                    AttachmentData: sAttachmentData,  // ✅ Siempre con formato correcto
+                    AttachmentName: att.Filename || att.AttachmentName,
+                    AttachmentType: att.Doctype || att.AttachmentType || this._inferMimeType(att.Filename || att.AttachmentName),
+                    AttachmentSize: att.Size || att.AttachmentSize,
+                    Attindex: att.Attindex,
+                    Timestamp: att.Timestamp || new Date().getTime() + Math.random()
+                };
+            });
+
+            console.log("  ✅ Normalizados:", aNormalizados.length);
+            return aNormalizados;
+        },
+
+        _inferMimeType: function (sFilename) {
+            if (!sFilename) return "application/octet-stream";
+
+            const sExt = sFilename.split('.').pop().toLowerCase();
+
+            const mimeTypes = {
+                'pdf': 'application/pdf',
+                'png': 'image/png',
+                'jpg': 'image/jpeg',
+                'jpeg': 'image/jpeg',
+                'gif': 'image/gif',
+                'bmp': 'image/bmp',
+                'doc': 'application/msword',
+                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'xls': 'application/vnd.ms-excel',
+                'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'txt': 'text/plain',
+                'csv': 'text/csv'
+            };
+
+            return mimeTypes[sExt] || 'application/octet-stream';
+        },
+
+
         hasAttachments: function (oLicencia) {
-            return oLicencia &&
-                oLicencia.Attachments &&
-                oLicencia.Attachments.length > 0;
+            const aAttachments = this._getNormalizedAttachments(oLicencia);
+            return aAttachments && aAttachments.length > 0;
         },
 
         getAttachmentCount: function (oLicencia) {
-            if (!oLicencia || !oLicencia.Attachments) {
-                return 0;
-            }
-            return oLicencia.Attachments.length;
+            const aAttachments = this._getNormalizedAttachments(oLicencia);
+            return aAttachments ? aAttachments.length : 0;
         },
 
         onCloseAttachmentSelector: function () {
@@ -5627,10 +5987,10 @@ sap.ui.define([
             }
 
             const iTotalMinutes = iHours * 60 + iMinutes;
-            const iStartRestricted = 5 * 60 + 30;
-            const iEndRestricted = 6 * 60 + 30;
+            const iStartRestricted = 5 * 60 + 30;  // 05:30 = 330 minutos
+            const iEndRestricted = 6 * 60 + 30;    // 06:30 = 390 minutos
 
-            return iTotalMinutes >= iStartRestricted && iTotalMinutes <= iEndRestricted;
+            return iTotalMinutes > iStartRestricted && iTotalMinutes < iEndRestricted;
         },
 
         // ==================== MÉTODOS DE ALERTAS DE LICENCIAS SIN ASIGNAR ====================
@@ -5828,9 +6188,6 @@ sap.ui.define([
         },
 
         // ------------------------------ AGREGAR LICENCIA --------------------------------------
-        onAgregarLicencia: function (oEvent) {
-            MessageToast.show("Funcionalidad en desarrollo");
-        },
 
         // ------------------------------- TAB REPORTES ------------------------------------------
 
@@ -6265,68 +6622,258 @@ sap.ui.define([
 
         // ----------------------------------------------------- ENVIAR ----------------------------------------------------------------
 
+        // onSendEmailPress: function () {
+        //     const Fecha = this._oFechaTurnoCreado || this.getView().byId('date').getDateValue();
+
+        //     if (!Fecha) {
+        //         MessageBox.warning("Debe seleccionar una fecha para enviar el turno.");
+        //         return;
+        //     }
+
+        //     const oModel = this.getView().getModel("LicencesJsonModel");
+        //     const aAllLicences = oModel.getProperty("/") || [];
+
+        //     if (!aAllLicences || aAllLicences.length === 0) {
+        //         MessageBox.warning("No hay datos para enviar.");
+        //         return;
+        //     }
+
+        //     const aLicenciasSinHorario = aAllLicences.filter(lic => {
+        //         const turno = lic.TurnoAsignado;
+        //         return !turno || turno.trim() === "";
+        //     });
+
+        //     if (aLicenciasSinHorario.length > 0) {
+        //         const sLicenciasDetalle = aLicenciasSinHorario
+        //             .map(lic => `• Licencia ${lic.Id} (${lic.Equnr || 'Sin equipo'})`)
+        //             .join("\n");
+
+        //         MessageBox.error(
+        //             `No se puede enviar el turno porque hay ${aLicenciasSinHorario.length} licencia(s) sin horario asignado:\n\n${sLicenciasDetalle}\n\nPor favor, asigne un horario a todas las licencias antes de enviar.`,
+        //             {
+        //                 title: "Horarios sin asignar",
+        //                 styleClass: "sapUiSizeCompact"
+        //             }
+        //         );
+        //         return;
+        //     }
+
+        //     const aLicenciasAEnviar = aAllLicences.filter(lic => lic.Enviado !== true);
+
+        //     if (aLicenciasAEnviar.length === 0) {
+        //         MessageBox.information("Todas las licencias ya fueron enviadas. No hay cambios pendientes.");
+        //         return;
+        //     }
+
+        //     // Preparar datos SOLO de las licencias a enviar
+        //     const aData = [];
+        //     aLicenciasAEnviar.forEach(function (oRowData) {
+        //         const row = {
+        //             Id: oRowData.Id,
+        //             Empresa: oRowData.Empresa,
+        //             Tipo: oRowData.Tipo,
+        //             Anio: oRowData.Anio,
+        //             Fecha: Fecha,
+        //             Turno: oRowData.TurnoAsignado,
+        //             Comentarios: oRowData.Comentarios,
+        //             Enviado: true
+        //         };
+        //         aData.push(row);
+        //     });
+
+        //     this.createTurno(aData, aLicenciasAEnviar, true);
+        // },
         onSendEmailPress: function () {
-            const Fecha = this._oFechaTurnoCreado || this.getView().byId('date').getDateValue();
+            var oFormatter = this.formatter;
 
-            if (!Fecha) {
-                MessageBox.warning("Debe seleccionar una fecha para enviar el turno.");
+            const oView = this.getView();
+            const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel", oView).getProperty("/FechaTurno")
+            const oModel = this.getView().getModel();
+            const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
+            const aLicencias = oLicencesModel.getData() || [];
+
+            if (!aLicencias || aLicencias.length === 0) {
+                MessageBox.warning("No hay licencias en el modelo para procesar");
                 return;
             }
 
-            const oModel = this.getView().getModel("LicencesJsonModel");
-            const aAllLicences = oModel.getProperty("/") || [];
+            const oComponent = this.getOwnerComponent();
+            var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
+            var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
 
-            if (!aAllLicences || aAllLicences.length === 0) {
-                MessageBox.warning("No hay datos para enviar.");
-                return;
-            }
+            // Variable para almacenar el token actual (se puede renovar si expira)
+            let currentCsrfToken = null;
 
-            const aLicenciasSinHorario = aAllLicences.filter(lic => {
-                const turno = lic.TurnoAsignado;
-                return !turno || turno.trim() === "";
-            });
+            // Función para renovar el token cuando expire
+            const renewToken = function () {
+                return MailService.getCSRFToken(oComponent)
+                    .then((newToken) => {
+                        currentCsrfToken = newToken;
+                        return newToken;
+                    });
+            };
 
-            if (aLicenciasSinHorario.length > 0) {
-                const sLicenciasDetalle = aLicenciasSinHorario
-                    .map(lic => `• Licencia ${lic.Id} (${lic.Equnr || 'Sin equipo'})`)
-                    .join("\n");
+            // Obtener el token CSRF una sola vez para todos los envíos
+            const csrfTokenPromise = MailService.getCSRFToken(oComponent);
 
-                MessageBox.error(
-                    `No se puede enviar el turno porque hay ${aLicenciasSinHorario.length} licencia(s) sin horario asignado:\n\n${sLicenciasDetalle}\n\nPor favor, asigne un horario a todas las licencias antes de enviar.`,
-                    {
-                        title: "Horarios sin asignar",
-                        styleClass: "sapUiSizeCompact"
+            // Procesar cada licencia del modelo
+            csrfTokenPromise.then((csrfToken) => {
+                currentCsrfToken = csrfToken;
+
+
+                const aPromises = aLicencias.map((oLicense) => {
+                    return new Promise((resolve, reject) => {
+
+
+                        // Verificar si ya fue enviado - evitar reenviar mails
+                        if (oLicense.Enviado === true) {
+
+                            resolve({ success: true, licenciaId: oLicense.Id, skipped: true, reason: "Ya enviado" });
+                            return;
+                        }
+
+                        // Obtener permisos y emails ET para esta licencia
+                        let promises = [LicenseService.getPermisos(oLicense, oModel)];
+                        promises.push(
+                            EtMailService.getPromise(
+                                oLicense.Empresa,
+                                oLicense.Tplnr,
+                                LicenseService.getSelectionArea(oLicense.Tipo, "01")
+                            )
+                        );
+
+                        Promise.all(promises)
+                            .then(res => {
+                                console.log("Permisos (res[0]):", res[0]);
+                                console.log("ET Mails (res[1]):", res[1]);
+
+                                let emails = [];
+                                let hashPermisos = {};
+                                let permisos = res[0] || [];
+
+                                permisos.forEach(permiso => {
+                                    hashPermisos[permiso.Rol] = permiso;
+                                });
+
+                                emails = [
+                                    hashPermisos["Creador"],
+                                    hashPermisos["ope_solic-lic_transener"],
+                                    hashPermisos["Solicitante_Suplente"],
+                                    hashPermisos["Jefe_Trabajo"],
+                                    hashPermisos["Jefe_Trabajo_Suplente"],
+                                    hashPermisos["Solicitante_Suplente_Auxiliar"]
+                                ].map(permiso => permiso && permiso.Mail);
+
+                                let sEmailEt =
+                                    res[1].results && res[1].results.length
+                                        ? res[1].results.map(e => e.Mail).join(",")
+                                        : "guillermo.quattrocchi@altromondo.com.ar";
+
+                                const sDestinatario2 = emails.filter(e => e).join(",") || sEmailEt || "guillermo.quattrocchi@altromondo.com.ar";
+                                const sDestinatario = "guillermo.quattrocchi@altromondo.com.ar";
+                                // Construir objeto licencia para el mail
+                                const oLicenciaParaMail = {
+                                    society: oLicense.Empresa,
+                                    Destinatario: sDestinatario,
+                                    Email: sDestinatario,
+                                    Id: oLicense.Id || "",
+                                    Equnr: oLicense.Equnr || "",
+                                    Equstat: oFormatter.getEstado(oLicense.Equstat) || "",
+                                    Jobcond: oFormatter.getJobCond(oLicense.Jobcond) || "",
+                                    Fecha: FechaTurno || "",
+                                    Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
+                                    TurnoAsignado: oLicense.TurnoAsignado || "",
+                                    Comments: oLicense.Comentarios || "",
+                                    Comentarios: oLicense.Comentarios || "",
+                                    DescEquipo: oLicense.DescEquipo || "",
+                                    DescripcionEquipo: oLicense.DescEquipo || "",
+                                    Consola: oLicense.Consola || "",
+                                    Empresa: oLicense.Empresa || "",
+                                    Tipo: oLicense.Tipo || "L",
+                                    Anio: oLicense.Anio || "",
+                                    Period: oFormatter.getPeriod(oLicense.Period),
+                                };
+
+                                console.log("Destinatario:", sDestinatario);
+
+                                // Enviar mail usando MailService con el token CSRF reutilizado
+                                // Si el token expira, se renovará automáticamente mediante el callback
+                                MailService.sendLicenseEmail(oLicenciaParaMail, oComponent, currentCsrfToken, renewToken)
+                                    .then((result) => {
+
+                                        resolve({ success: true, licenciaId: oLicense.Id });
+                                    })
+                                    .catch((error) => {
+
+                                        // No rechazar para que continúe con las demás licencias
+                                        resolve({ success: false, licenciaId: oLicense.Id, error: error });
+                                    });
+                            })
+                            .catch(err => {
+
+                                // No rechazar para que continúe con las demás licencias
+                                resolve({ success: false, licenciaId: oLicense.Id, error: err });
+                            });
+                    });
+                });
+
+                // Esperar a que se procesen todas las licencias
+                return Promise.all(aPromises);
+            })
+                .then((results) => {
+                    const aExitosos = results.filter(r => r.success && !r.skipped);
+                    const aSaltadas = results.filter(r => r.skipped);
+                    const aFallidos = results.filter(r => !r.success && !r.skipped);
+
+
+                    if (aSaltadas.length > 0) {
+                        console.log("Licencias saltadas (ya enviadas):", aSaltadas.map(r => r.licenciaId));
                     }
-                );
-                return;
-            }
+                    if (aFallidos.length > 0) {
+                        console.log("Licencias con errores:", aFallidos.map(r => r.licenciaId));
+                    }
+                    console.groupEnd();
 
-            const aLicenciasAEnviar = aAllLicences.filter(lic => lic.Enviado !== true);
+                    if (aExitosos.length > 0) {
+                        MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente${aSaltadas.length > 0 ? ` (${aSaltadas.length} ya enviados)` : ''}`);
 
-            if (aLicenciasAEnviar.length === 0) {
-                MessageBox.information("Todas las licencias ya fueron enviadas. No hay cambios pendientes.");
-                return;
-            }
+                        // Guardar los turnos con Enviado = true solo para las licencias que tuvieron éxito (no saltadas)
+                        const aLicenciasExitosas = aLicencias.filter(lic =>
+                            aExitosos.some(r => r.licenciaId === lic.Id)
+                        );
 
-            // Preparar datos SOLO de las licencias a enviar
-            const aData = [];
-            aLicenciasAEnviar.forEach(function (oRowData) {
-                const row = {
-                    Id: oRowData.Id,
-                    Empresa: oRowData.Empresa,
-                    Tipo: oRowData.Tipo,
-                    Anio: oRowData.Anio,
-                    Fecha: Fecha,
-                    Turno: oRowData.TurnoAsignado,
-                    Comentarios: oRowData.Comentarios,
-                    Enviado: true
-                };
-                aData.push(row);
-            });
+                        // Preparar datos para createTurno (formato similar a onSaveTurnoPress)
+                        const aDataParaGuardar = aLicenciasExitosas.map((oLicense) => {
+                            return {
+                                Id: oLicense.Id,
+                                Empresa: oLicense.Empresa,
+                                Tipo: oLicense.Tipo || "L",
+                                Anio: oLicense.Anio,
+                                Fecha: FechaTurno || oLicense.Fecha || new Date(),
+                                Turno: oLicense.Turno || oLicense.TurnoAsignado || "",
+                                Comentarios: oLicense.Comentarios || "",
+                                Enviado: true, // Marcar como enviado
+                                Agrmanual: oLicense.Agrmanual || false
+                            };
+                        });
 
-            this.createTurno(aData, aLicenciasAEnviar, true);
+
+
+
+                        this.createTurno(aDataParaGuardar, aLicenciasExitosas, true);
+                    } else {
+                        MessageBox.warning("No se realizaron modificaciones en el turno, ni se reenviaron mails ya enviados.");
+                    }
+
+                    if (aFallidos.length > 0) {
+                        MessageBox.warning(`${aFallidos.length} licencia(s) tuvieron errores al enviar el mail y no se guardarán`);
+                    }
+                })
+                .catch(err => {
+                    console.error("❌ Error al obtener token CSRF o procesar las licencias:", err);
+                    MessageBox.error("Error al procesar las licencias: " + (err.message || err));
+                });
         },
-
         //-------------------------------------------- ADJUNTAR EN TAB ACCIONES  ------------------------------------------------
 
         onAttachFileAccion: function (oEvent) {
@@ -6377,42 +6924,53 @@ sap.ui.define([
         },
 
         _convertFileToBase64Accion: function (file) {
+            // ✅ CRÍTICO: Capturar el contexto ANTES de la operación async
+            if (!this._currentAccionAttachmentContext) {
+                MessageBox.error("Error: No se pudo encontrar el contexto");
+                return;
+            }
+
+            const oAccion = this._currentAccionAttachmentContext.getObject();
+            const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+
+            if (!oAccion) {
+                MessageBox.error("Error: No se pudo encontrar la acción");
+                return;
+            }
+
             const reader = new FileReader();
 
             reader.onload = function (e) {
                 const base64String = e.target.result;
 
-                if (this._currentAccionAttachmentContext) {
-                    const oAccion = this._currentAccionAttachmentContext.getObject();
+                // Inicializar array de adjuntos si no existe
+                if (!oAccion.Attachments) {
+                    oAccion.Attachments = [];
+                }
 
-                    // Inicializar array de adjuntos si no existe
-                    if (!oAccion.Attachments) {
-                        oAccion.Attachments = [];
-                    }
+                const sIdLicencia = oAccion.idLicencia || "";
+                const aIds = sIdLicencia.split(" / ").map(id => id.trim());
 
-                    // Obtener fecha del turno
-                    const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+                if (aIds.length === 1 && oAccion._idsDelGrupo && oAccion._idsDelGrupo.length > 1) {
+                    aIds.length = 0;
+                    aIds.push(...oAccion._idsDelGrupo);
+                }
 
-                    // Crear nuevo adjunto con estructura de CatalogoEntregasSet
+                aIds.forEach(sId => {
                     const nuevoAdjunto = {
-                        // Keys
-                        Id: oAccion.idLicencia,
+                        Id: sId,
                         Empresa: "100",
                         Tipo: "L",
                         Anio: new Date().getFullYear().toString(),
                         Dateturno: oFechaTurno,
                         Codigo: oAccion.accion || "",
-
-                        // Campos adicionales
                         Descripcion: oAccion.descripcion || "",
                         Equnr: oAccion.equipo || "",
                         Jobcond: oAccion.condicion || "",
                         Turnoentrega: oAccion.turnoEntrega || "",
-                        Comments: "",
+                        Comments: file.name,
                         Licstat: oAccion.estado || "",
                         Attachment: base64String.split(',')[1],
-
-                        // Metadata para UI
                         AttachmentName: file.name,
                         AttachmentSize: file.size,
                         AttachmentType: file.type,
@@ -6420,13 +6978,17 @@ sap.ui.define([
                     };
 
                     oAccion.Attachments.push(nuevoAdjunto);
+                });
 
-                    // Refrescar modelo
-                    const oModel = this.getView().getModel("AccionesEntregaModel");
-                    oModel.refresh(true);
+                // Refrescar modelo
+                const oModel = this.getView().getModel("AccionesEntregaModel");
+                oModel.refresh(true);
 
-                    MessageToast.show("Archivo agregado: " + file.name);
-                }
+                const sMensaje = aIds.length > 1
+                    ? `Archivo agregado para ${aIds.length} licencias: ${file.name}`
+                    : `Archivo agregado: ${file.name}`;
+
+                MessageToast.show(sMensaje);
             }.bind(this);
 
             reader.onerror = function () {
@@ -6996,6 +7558,7 @@ sap.ui.define([
         },
 
         _saveAccionesEnBackend: function (aAcciones, timestampOData) {
+
             const oDataService = this.getView().getModel();
             const sEntity = "/CatalogoEntregaSet";
 
@@ -7003,14 +7566,27 @@ sap.ui.define([
                 return Promise.resolve();
             }
 
+            if (!timestampOData) {
+                const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+                if (oFechaTurno) {
+                    const timestampMs = oFechaTurno.getTime();
+                    timestampOData = `/Date(${timestampMs})/`;
+                } else {
+                    MessageBox.error("Error: No se pudo obtener la fecha del turno");
+                    return Promise.reject("No hay fecha de turno");
+                }
+            }
+
             const aPromises = [];
 
-            aAcciones.forEach(accion => {
+            aAcciones.forEach((accion, idx) => {
+
                 const bExisteEnBackend = accion._licenciaId && accion.idLicencia && accion.accion;
 
                 if (accion.Attachments && accion.Attachments.length > 0) {
-                    // Procesar cada adjunto
-                    accion.Attachments.forEach((att, idx) => {
+                    // ========== CON ADJUNTOS ==========
+                    accion.Attachments.forEach((att, attIdx) => {
+
                         const bAdjuntoExiste = att.Id && att.Empresa && att.Tipo && att.Anio && att.Dateturno && att.Codigo;
 
                         aPromises.push(
@@ -7021,7 +7597,7 @@ sap.ui.define([
                                 }
 
                                 const payload = {
-                                    Id: accion.idLicencia,
+                                    Id: att.Id,
                                     Empresa: accion.empresa || "100",
                                     Tipo: accion.tipo || "L",
                                     Anio: accion.anio || new Date().getFullYear().toString(),
@@ -7033,7 +7609,7 @@ sap.ui.define([
                                     Equstat: accion.equstat || "A",
                                     Jobcond: (accion.condicion || "01").substring(0, 2),
                                     Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
-                                    Comments: (att.AttachmentName || `Adjunto ${idx + 1}`).substring(0, 255),
+                                    Comments: (att.AttachmentName || `Adjunto ${attIdx + 1}`).substring(0, 255),
                                     Licstat: (accion.estado || "01").substring(0, 2),
                                     Attachment: base64Data
                                 };
@@ -7052,48 +7628,25 @@ sap.ui.define([
                                         success: () => {
                                             resolve();
                                         },
-                                        error: (oError) => {
-                                            // Intentar crear si falla el update
+                                        error: () => {
                                             oDataService.create(sEntity, payload, {
                                                 success: () => {
                                                     resolve();
                                                 },
                                                 error: () => {
-                                                    resolve();
+                                                    reject();
                                                 }
                                             });
                                         }
                                     });
                                 } else {
+
                                     oDataService.create(sEntity, payload, {
                                         success: () => {
                                             resolve();
                                         },
-                                        error: (oError) => {
-                                            const isDuplicado = oError.responseText &&
-                                                oError.responseText.includes("ya existe");
-
-                                            if (isDuplicado) {
-                                                const sKey = oDataService.createKey(sEntity, {
-                                                    Id: payload.Id,
-                                                    Empresa: payload.Empresa,
-                                                    Tipo: payload.Tipo,
-                                                    Anio: payload.Anio,
-                                                    Dateturno: payload.Dateturno,
-                                                    Codigo: payload.Codigo
-                                                });
-
-                                                oDataService.update(sKey, payload, {
-                                                    success: () => {
-                                                        resolve();
-                                                    },
-                                                    error: () => {
-                                                        resolve();
-                                                    }
-                                                });
-                                            } else {
-                                                resolve();
-                                            }
+                                        error: () => {
+                                            reject();
                                         }
                                     });
                                 }
@@ -7102,91 +7655,83 @@ sap.ui.define([
                     });
 
                 } else {
+                    // ========== SIN ADJUNTOS - CREAR UN REGISTRO POR CADA ID DEL GRUPO ==========
 
-                    aPromises.push(
-                        new Promise((resolve, reject) => {
-                            const payload = {
-                                Id: accion.idLicencia,
-                                Empresa: accion.empresa || "100",
-                                Tipo: accion.tipo || "L",
-                                Anio: accion.anio || new Date().getFullYear().toString(),
-                                Dateturno: timestampOData,
-                                Codigo: (accion.accion || "").substring(0, 10),
-                                Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
-                                Descripcion: accion.trabajoRealizar || "Sin descripción",
-                                Equnr: (accion.equipo || "").substring(0, 18),
-                                Equstat: accion.equstat || "A",
-                                Jobcond: (accion.condicion || "01").substring(0, 2),
-                                Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
-                                Comments: "Sin adjuntos",
-                                Licstat: (accion.estado || "01").substring(0, 2),
-                                Attachment: ""
-                            };
+                    const sIdLicencia = accion.idLicencia || "";
+                    const aIds = sIdLicencia.split(" / ").map(id => id.trim());
 
-                            if (bExisteEnBackend) {
-                                const sKey = oDataService.createKey(sEntity, {
-                                    Id: accion.idLicencia,
+                    aIds.forEach(sId => {
+                        aPromises.push(
+                            new Promise((resolve, reject) => {
+                                const payload = {
+                                    Id: sId,
                                     Empresa: accion.empresa || "100",
                                     Tipo: accion.tipo || "L",
                                     Anio: accion.anio || new Date().getFullYear().toString(),
                                     Dateturno: timestampOData,
-                                    Codigo: accion.accion
-                                });
+                                    Codigo: (accion.accion || "").substring(0, 10),
+                                    Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                                    Descripcion: accion.trabajoRealizar || "Sin descripción",
+                                    Equnr: (accion.equipo || "").substring(0, 18),
+                                    Equstat: accion.equstat || "A",
+                                    Jobcond: (accion.condicion || "01").substring(0, 2),
+                                    Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                                    Comments: "Sin adjuntos",
+                                    Licstat: (accion.estado || "01").substring(0, 2),
+                                    Attachment: ""
+                                };
 
-                                oDataService.update(sKey, payload, {
-                                    success: () => {
-                                        resolve();
-                                    },
-                                    error: (oError) => {
-                                        oDataService.create(sEntity, payload, {
-                                            success: () => {
-                                                resolve();
-                                            },
-                                            error: (oError2) => {
-                                                resolve();
-                                            }
-                                        });
-                                    }
-                                });
-                            } else {
-                                oDataService.create(sEntity, payload, {
-                                    success: () => {
-                                        resolve();
-                                    },
-                                    error: (oError) => {
-                                        const isDuplicado = oError.responseText &&
-                                            oError.responseText.includes("ya existe");
 
-                                        if (isDuplicado) {
-                                            const sKey = oDataService.createKey(sEntity, {
-                                                Id: payload.Id,
-                                                Empresa: payload.Empresa,
-                                                Tipo: payload.Tipo,
-                                                Anio: payload.Anio,
-                                                Dateturno: payload.Dateturno,
-                                                Codigo: payload.Codigo
-                                            });
+                                if (bExisteEnBackend) {
+                                    const sKey = oDataService.createKey(sEntity, {
+                                        Id: sId,
+                                        Empresa: accion.empresa || "100",
+                                        Tipo: accion.tipo || "L",
+                                        Anio: accion.anio || new Date().getFullYear().toString(),
+                                        Dateturno: timestampOData,
+                                        Codigo: accion.accion
+                                    });
 
-                                            oDataService.update(sKey, payload, {
+                                    oDataService.update(sKey, payload, {
+                                        success: () => {
+                                            resolve();
+                                        },
+                                        error: () => {
+                                            oDataService.create(sEntity, payload, {
                                                 success: () => {
                                                     resolve();
                                                 },
                                                 error: () => {
-                                                    resolve();
+                                                    reject();
                                                 }
                                             });
-                                        } else {
-                                            resolve();
                                         }
-                                    }
-                                });
-                            }
-                        })
-                    );
+                                    });
+                                } else {
+
+                                    oDataService.create(sEntity, payload, {
+                                        success: () => {
+                                            resolve();
+                                        },
+                                        error: (oError) => {
+                                            const sErrorMsg = oError?.message || "";
+                                            if (sErrorMsg.includes("ya existe")) {
+                                                resolve();
+                                            } else {
+                                                reject();
+                                            }
+                                        }
+                                    });
+                                }
+                            })
+                        );
+                    });
                 }
             });
-
-            return Promise.all(aPromises);
+            return Promise.all(aPromises).then(() => {
+            }).catch((error) => {
+                throw error;
+            });
         },
 
         _convertODataTimestampToDate: function (timestampOData) {
@@ -7239,21 +7784,39 @@ sap.ui.define([
         },
 
         _procesarAccionesCargadas: function (aResultados) {
+
             const oView = this.getView();
             const oAccionesModel = oView.getModel("AccionesEntregaModel");
+            const oLicencesModel = oView.getModel("LicencesJsonModel");
+            const aLicencias = oLicencesModel.getData() || [];
 
+            // PASO 1: Crear mapa Id → Grupo
+            const mIdToGrupo = {};
+            aLicencias.forEach(lic => {
+                if (lic.Grupo) {
+                    mIdToGrupo[lic.Id] = lic.Grupo;
+                }
+            });
+
+            // PASO 2: Agrupar por Equipo + Codigo + Grupo
             const mAccionesAgrupadas = {};
 
             aResultados.forEach(item => {
-                const sKey = `${item.Id}_${item.Codigo}`;
+                const sGrupo = mIdToGrupo[item.Id] || item.Id;
+                const sKey = `${item.Equnr}_${item.Codigo}_${sGrupo}`;
 
                 if (!mAccionesAgrupadas[sKey]) {
+                    const sDescripcionLarga = this._getDescripcionDesdeCategologo(item.Codigo);
+
                     mAccionesAgrupadas[sKey] = {
                         accion: item.Codigo,
                         descripcion: item.Accion || "",
+                        descripcionLarga: sDescripcionLarga,
                         equipo: item.Equnr || "",
+                        equipoCompleto: item.Equnr || "",
                         idLicencia: item.Id,
-                        trabajoRealizar: item.Descripcion || "Sin descripción",
+                        idLicenciaOriginal: item.Id,
+                        trabajoRealizar: sDescripcionLarga || item.Descripcion || "Sin descripción",
                         turnoEntrega: item.Turnoentrega || "",
                         estado: item.Licstat || "",
                         condicion: item.Jobcond || "",
@@ -7262,33 +7825,61 @@ sap.ui.define([
                         tipo: item.Tipo || "L",
                         anio: item.Anio || "",
                         _licenciaId: item.Id,
+                        _idsDelGrupo: [item.Id],
                         Attachments: []
                     };
+                } else {
+                    const accionExistente = mAccionesAgrupadas[sKey];
+
+                    if (!accionExistente._idsDelGrupo.includes(item.Id)) {
+                        accionExistente._idsDelGrupo.push(item.Id);
+                        accionExistente.idLicencia = accionExistente._idsDelGrupo.join(" / ");
+                    }
                 }
 
+                // PASO 3: Agregar adjuntos (deduplicados)
                 const esSinAdjuntos = (item.Comments || "").toLowerCase().includes("sin adjunto");
 
                 if (item.Attachment && item.Attachment.trim() !== "" && !esSinAdjuntos) {
-                    mAccionesAgrupadas[sKey].Attachments.push({
-                        Id: item.Id,
-                        Empresa: item.Empresa,
-                        Tipo: item.Tipo,
-                        Anio: item.Anio,
-                        Dateturno: item.Dateturno,
-                        Codigo: item.Codigo,
-                        Descripcion: item.Descripcion || "",
-                        Equnr: item.Equnr || "",
-                        Equstat: item.Equstat || "",
-                        Jobcond: item.Jobcond || "",
-                        Turnoentrega: item.Turnoentrega || "",
-                        Comments: item.Comments || "",
-                        Licstat: item.Licstat || "",
-                        Attachment: item.Attachment,
-                        AttachmentName: item.Comments || "Adjunto",
-                        AttachmentSize: Math.floor((item.Attachment.length * 3) / 4),
-                        AttachmentType: this._inferirTipoArchivo(item.Attachment),
-                        Timestamp: new Date().getTime()
-                    });
+                    const bAdjuntoYaExiste = mAccionesAgrupadas[sKey].Attachments.some(att =>
+                        att.Attachment === item.Attachment &&
+                        att.AttachmentName === (item.Comments || "Adjunto")
+                    );
+
+                    if (!bAdjuntoYaExiste) {
+                        mAccionesAgrupadas[sKey].Attachments.push({
+                            Id: item.Id,
+                            Empresa: item.Empresa,
+                            Tipo: item.Tipo,
+                            Anio: item.Anio,
+                            Dateturno: item.Dateturno,
+                            Codigo: item.Codigo,
+                            Descripcion: item.Descripcion || "",
+                            Equnr: item.Equnr || "",
+                            Equstat: item.Equstat || "",
+                            Jobcond: item.Jobcond || "",
+                            Turnoentrega: item.Turnoentrega || "",
+                            Comments: item.Comments || "",
+                            Licstat: item.Licstat || "",
+                            Attachment: item.Attachment,
+                            AttachmentName: item.Comments || "Adjunto",
+                            AttachmentSize: Math.floor((item.Attachment.length * 3) / 4),
+                            AttachmentType: this._inferirTipoArchivo(item.Attachment),
+                            Timestamp: new Date().getTime(),
+                            _idsCompartidos: [item.Id]
+                        });
+                    } else {
+                        const adjuntoExistente = mAccionesAgrupadas[sKey].Attachments.find(att =>
+                            att.Attachment === item.Attachment &&
+                            att.AttachmentName === (item.Comments || "Adjunto")
+                        );
+
+                        if (adjuntoExistente && adjuntoExistente._idsCompartidos) {
+                            if (!adjuntoExistente._idsCompartidos.includes(item.Id)) {
+                                adjuntoExistente._idsCompartidos.push(item.Id);
+                            }
+                        }
+                    }
                 }
             });
 
@@ -7346,6 +7937,50 @@ sap.ui.define([
             });
         },
 
+        _getDescripcionDesdeCategologo: function (sCodigo) {
+            const oCatalogoModel = this.getView().getModel("CatalogoCodigosModel");
+
+            if (!oCatalogoModel) {
+                return "";
+            }
+
+            const aCatalogo = oCatalogoModel.getData() || [];
+            const oAccion = aCatalogo.find(item => item.Codigo === sCodigo);
+
+            return oAccion ? oAccion.Descripcion : "";
+        },
+
+        // --------------------------------------------- ACCIONES POR GRUPO ------------------------------
+        //Obtiene todos los IDs de licencias que pertenecen al mismo grupo
+
+        _getIdsDelGrupo: function (oLicencia) {
+            const oView = this.getView();
+            const oLicencesModel = oView.getModel("LicencesJsonModel");
+            const aTodasLasLicencias = oLicencesModel.getData() || [];
+
+            // Obtener el grupo de la licencia seleccionada
+            const sGrupoSeleccionado = oLicencia.Grupo;
+
+            if (!sGrupoSeleccionado) {
+                // Si no tiene grupo, devolver solo su ID
+                return oLicencia.Id;
+            }
+
+            // Buscar todas las licencias del mismo grupo
+            const aLicenciasDelGrupo = aTodasLasLicencias.filter(lic =>
+                lic.Grupo === sGrupoSeleccionado
+            );
+
+            // Si es un grupo individual (solo 1 licencia), devolver solo ese ID
+            if (aLicenciasDelGrupo.length === 1) {
+                return oLicencia.Id;
+            }
+
+            // Si hay múltiples licencias en el grupo, devolver todos los IDs separados
+            const aIds = aLicenciasDelGrupo.map(lic => lic.Id);
+            return aIds.join(" / ");
+        },
+
         onNavigateToGrafico: function () {
             // ✅ ID CORRECTO: mainTabBar (no idIconTabBar)
             var oIconTabBar = this.byId("mainTabBar");
@@ -7355,11 +7990,10 @@ sap.ui.define([
                 oIconTabBar.setSelectedKey("Grafico");
 
                 // Cargar el gráfico si aún no está cargado
-                this._loadReporteFragment();
+                this._loadChartFragment();
 
                 sap.m.MessageToast.show("📊 Mostrando gráfico");
             } else {
-                console.error("No se encontró el IconTabBar con id 'mainTabBar'");
                 sap.m.MessageBox.error("No se pudo encontrar la pestaña de gráfico");
             }
         },

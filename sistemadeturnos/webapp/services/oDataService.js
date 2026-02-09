@@ -62,8 +62,5 @@ sap.ui.define([
 
             return this._models[name];
         },
-        getModel: function () {
-            ModelHelper.getModel("", oView)
-        }
     };
 });

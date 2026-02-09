@@ -1,5 +1,5 @@
 {
-  "METRO-SUR": [
+  "SUR": [
     "2AC",
     "AB",
     "AG",
@@ -49,12 +49,9 @@
     "VM",
     "ZN"
   ],
-  "NOA": [
+  "CENTRO-CUYO": [
     "AC",
-    "AJ",
     "AM",
-    "AU",
-    "BR",
     "CB5",
     "CH RG",
     "CN EM",
@@ -83,7 +80,6 @@
     "MA",
     "MI",
     "MQ",
-    "NOA",
     "NSJ",
     "RDI",
     "RE",
@@ -97,9 +93,14 @@
     "CAL",
     "CB"
   ],
-  "NEA": [
+  "NOA": [
+    "AJ",
+    "AU",
+    "BR",
+    "NOA"
+  ],
+  "LITORAL": [
     "AI",
-    "AP",
     "AT",
     "CA",
     "CA-TIBA",
@@ -132,7 +133,6 @@
     "LIT-SG",
     "MB",
     "MD",
-    "NEA",
     "PT",
     "RA",
     "RD",
@@ -149,5 +149,59 @@
     "YACILE",
     "YACYLE",
     "GER"
+  ],
+  "NEA": [
+    "AP",
+    "NEA"
+  ],
+  "METRO-SUR": [
+    "2AC",
+    "AB",
+    "AG",
+    "AL",
+    "APELP",
+    "BB",
+    "BB-TIBA",
+    "CC",
+    "CH",
+    "CH AL",
+    "CH CH",
+    "CH PA",
+    "CH PB",
+    "CH PC",
+    "CL",
+    "CO",
+    "CT AG",
+    "CT GBR",
+    "CT GE",
+    "CT LL",
+    "CT LP",
+    "CVAL",
+    "EPEN",
+    "ESP",
+    "EST MO M",
+    "EST MO S",
+    "EZ",
+    "GBR",
+    "HE",
+    "MC",
+    "OL",
+    "OL-TIBA",
+    "PACH",
+    "PB",
+    "PG",
+    "PU",
+    "PY",
+    "REP FO M",
+    "REP FO S",
+    "RSC",
+    "SACME",
+    "SPSE",
+    "TNPA",
+    "TRANSBA",
+    "TRANSPA",
+    "VIV",
+    "VM",
+    "ZN"
   ]
 }
