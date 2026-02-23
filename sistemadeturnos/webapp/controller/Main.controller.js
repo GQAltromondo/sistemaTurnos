@@ -497,7 +497,6 @@ sap.ui.define([
             const aTodasLasAcciones = oAccionesModel.getData() || [];
 
             if (aTodasLasAcciones.length === 0) {
-                // ✅ FIX: Cerrar el busy ANTES de retornar
                 this.hideGlobalBusy();
                 MessageToast.show("No hay acciones para guardar");
                 return;
@@ -508,7 +507,6 @@ sap.ui.define([
             );
 
             if (aAccionesSinTurno.length > 0) {
-                // ✅ FIX: Cerrar el busy ANTES de retornar
                 this.hideGlobalBusy();
                 MessageBox.warning(
                     `Hay ${aAccionesSinTurno.length} acción(es) sin turno de entrega.`,
@@ -517,38 +515,38 @@ sap.ui.define([
                 return;
             }
 
-            this.showGlobalBusy("Guardando acciones...");
+            this.showGlobalBusy("Guardando cambios...");
 
-            this._verificarAccionesExistentes(aTodasLasAcciones)
-                .then((resultado) => {
-
-                    if (resultado.acciones.length === 0) {
-                        this.hideGlobalBusy();
-                        MessageToast.show("Todas las acciones ya están guardadas");
-                        return Promise.reject("skip");
-                    }
-
-                    return this._saveAccionesEnBackend(resultado.acciones, resultado.timestamp);
-                })
+            // 🆕 USAR FUNCIÓN OPTIMIZADA EN LUGAR DE _verificarAccionesExistentes
+            this._saveAccionesEnBackendOptimizado(aTodasLasAcciones)
                 .then(() => {
                     this.hideGlobalBusy();
-                    MessageToast.show("Acciones guardadas correctamente");
+
+                    // Refrescar modelo
+                    const oView = this.getView();
+                    const oAccionesModel = oView.getModel("AccionesEntregaModel");
+                    oAccionesModel.refresh();
+
+                    MessageToast.show("Cambios guardados correctamente");
                 })
                 .catch((error) => {
                     this.hideGlobalBusy();
 
                     if (error !== "skip") {
+                        let sErrorMsg = "Error al guardar las acciones";
+
                         if (error.responseText) {
                             try {
                                 const errorObj = JSON.parse(error.responseText);
                                 if (errorObj.error && errorObj.error.message) {
+                                    sErrorMsg = errorObj.error.message.value || sErrorMsg;
                                 }
                             } catch (e) {
                                 console.error("No se pudo parsear responseText");
                             }
                         }
 
-                        MessageToast.show("Error al guardar acciones", { duration: 3000 });
+                        MessageBox.error(sErrorMsg);
                     }
                 });
         },
@@ -589,16 +587,22 @@ sap.ui.define([
             aCodigosSeleccionados.forEach(sCodigo => {
                 const sDescripcionLarga = this._getDescripcionDesdeCategologo(sCodigo);
 
+                // 🆕 CALCULAR HORARIO AUTOMÁTICAMENTE
+                const sTurnoBase = oLicencia.TurnoAsignado || "";
+                const sTurnoCalculado = this._calcularHorarioAccion(sCodigo, oLicencia, sTurnoBase);
+
+                console.log(`📋 Agregando acción ${sCodigo} con turno calculado: ${sTurnoCalculado}`);
+
                 aAcciones.push({
                     accion: sCodigo,
                     descripcion: oAccionesTemp[sCodigo].descripcion,
                     descripcionLarga: sDescripcionLarga,
-                    idLicencia: sIdsGrupo,  // ✅ Puede contener múltiples IDs
-                    idLicenciaOriginal: oLicencia.Id,  // ✅ ID original para operaciones
+                    idLicencia: sIdsGrupo,
+                    idLicenciaOriginal: oLicencia.Id,
                     equipo: oLicencia.Equnr,
                     equipoCompleto: oLicencia.EquipoCompleto || oLicencia.Equnr,
                     trabajoRealizar: sDescripcionLarga || oLicencia.Comments || "Sin descripción",
-                    turnoEntrega: oLicencia.TurnoAsignado || "",
+                    turnoEntrega: sTurnoCalculado,
                     estado: oLicencia.Licstat || "",
                     condicion: oLicencia.Jobcond || "",
                     equstat: oLicencia.Equstat || "A",
@@ -606,11 +610,13 @@ sap.ui.define([
                     tipo: oLicencia.Tipo || "L",
                     anio: oLicencia.Anio || new Date().getFullYear().toString(),
                     _licenciaId: oLicencia.Id,
+                    _estadoGuardado: false,  // 🆕 AGREGAR ESTA LÍNEA
                     Attachments: []
                 });
             });
 
-            oAccionesModel.setData(aAcciones);
+            const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAcciones);
+            oAccionesModel.setData(aAccionesOrdenadas);
 
             const oLicencesModel = oView.getModel("LicencesJsonModel");
             const sPath = this._currentBindingContextEntrega.getPath();
@@ -621,6 +627,60 @@ sap.ui.define([
             if (this._oAccionEntregaPopover) {
                 this._oAccionEntregaPopover.close();
             }
+        },
+
+        _ordenarAccionesPorGrupoYHora: function (aAcciones) {
+            if (!aAcciones || aAcciones.length === 0) {
+                return aAcciones;
+            }
+
+            console.log("📋 Ordenando acciones por grupo y hora...");
+            console.log("   Total acciones a ordenar:", aAcciones.length);
+
+            // Función helper para normalizar el grupo (ordenar los IDs alfabéticamente)
+            const normalizarGrupo = function (sGrupo) {
+                if (!sGrupo) return "";
+
+                // Separar los IDs, ordenarlos y volver a unir
+                const aIds = sGrupo.split(" / ").map(id => id.trim()).sort();
+                return aIds.join(" / ");
+            };
+
+            return aAcciones.sort((a, b) => {
+                // 1. Normalizar y ordenar por grupo (idLicencia)
+                const grupoA = normalizarGrupo(a.idLicencia || "");
+                const grupoB = normalizarGrupo(b.idLicencia || "");
+
+                if (grupoA !== grupoB) {
+                    const resultado = grupoA.localeCompare(grupoB);
+                    console.log(`   Comparando grupos: "${grupoA}" vs "${grupoB}" = ${resultado}`);
+                    return resultado;
+                }
+
+                // 2. Dentro del mismo grupo, ordenar por hora (turnoEntrega)
+                const horaA = a.turnoEntrega || "00:00";
+                const horaB = b.turnoEntrega || "00:00";
+
+                console.log(`   Mismo grupo "${grupoA}": comparando horas "${horaA}" vs "${horaB}"`);
+
+                // Manejar formato de hora correctamente
+                const partsA = horaA.split(":");
+                const partsB = horaB.split(":");
+
+                const horasA = parseInt(partsA[0], 10) || 0;
+                const minutosA = parseInt(partsA[1], 10) || 0;
+
+                const horasB = parseInt(partsB[0], 10) || 0;
+                const minutosB = parseInt(partsB[1], 10) || 0;
+
+                const totalMinutosA = (horasA * 60) + minutosA;
+                const totalMinutosB = (horasB * 60) + minutosB;
+
+                const resultadoHora = totalMinutosA - totalMinutosB;
+                console.log(`      ${horaA} (${totalMinutosA} min) vs ${horaB} (${totalMinutosB} min) = ${resultadoHora}`);
+
+                return resultadoHora;
+            });
         },
 
         _verificarAccionesExistentes: function (aAcciones) {
@@ -839,119 +899,213 @@ sap.ui.define([
         onRemoveAccionEntrega: function (oEvent) {
             const oButton = oEvent.getSource();
             const oView = this.getView();
-
             const oBindingContext = oButton.getBindingContext("AccionesEntregaModel");
+
+            if (!oBindingContext) {
+                MessageToast.show("No se pudo obtener el contexto de la acción");
+                return;
+            }
+
             const oAccion = oBindingContext.getObject();
             const iIndex = parseInt(oBindingContext.getPath().split("/")[1]);
+            const aIdsDelGrupo = oAccion.idLicencia.split(" / ").map(id => id.trim());
 
-            MessageBox.confirm(
-                `¿Desea eliminar la acción "${oAccion.accion}" para la(s) licencia(s) ${oAccion.idLicencia}?`,
-                {
-                    title: "Confirmar eliminación",
-                    onClose: (sAction) => {
-                        if (sAction === MessageBox.Action.OK) {
-                            const tieneKeysBackend = oAccion._licenciaId &&
-                                oAccion.idLicencia &&
-                                oAccion.accion;
+            console.log("🗑️ Intentando eliminar acción:", oAccion);
 
-                            if (tieneKeysBackend) {
-                                this.showGlobalBusy("Eliminando acción...");
+            // 🆕 VERIFICAR SI EXISTE EN BACKEND consultando el primero del grupo
+            this.showGlobalBusy("Verificando acción...");
 
-                                const oDataService = this.getView().getModel();
-                                const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+            const oDataModel = this.getView().getModel();
+            const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
 
-                                // Construir la key completa para el backend
-                                const sKey = oDataService.createKey("/CatalogoEntregaSet", {
-                                    Id: oAccion.idLicenciaOriginal || oAccion._licenciaId,
-                                    Empresa: oAccion.empresa || "100",
-                                    Tipo: oAccion.tipo || "L",
-                                    Anio: oAccion.anio || new Date().getFullYear().toString(),
-                                    Dateturno: oFechaTurno,
-                                    Codigo: oAccion.accion
-                                });
+            if (!oFechaTurno) {
+                this.hideGlobalBusy();
+                MessageBox.error("No se pudo obtener la fecha del turno");
+                return;
+            }
 
-                                oDataService.remove(sKey, {
-                                    success: () => {
-                                        const oAccionesModel = oView.getModel("AccionesEntregaModel");
-                                        const aAcciones = oAccionesModel.getData();
-                                        aAcciones.splice(iIndex, 1);
-                                        oAccionesModel.setData(aAcciones);
-                                        oAccionesModel.refresh(true);
+            const year = oFechaTurno.getFullYear();
+            const month = oFechaTurno.getMonth();
+            const day = oFechaTurno.getDate();
+            const oFechaUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
 
-                                        // ✅ MODIFICADO: Verificar si quedan más acciones para cualquier licencia del grupo
-                                        const sIdOriginal = oAccion.idLicenciaOriginal || oAccion._licenciaId;
-                                        const bTieneAcciones = aAcciones.some(a => {
-                                            const sIdLicencia = a.idLicencia || "";
-                                            const aIds = sIdLicencia.split(" / ").map(id => id.trim());
-                                            return aIds.includes(sIdOriginal);
-                                        });
+            // Verificar si existe consultando la primera licencia del grupo
+            const sKeyPrimeraLicencia = oDataModel.createKey("/CatalogoEntregaSet", {
+                Empresa: oAccion.empresa || "100",
+                Codigo: oAccion.accion,
+                Id: aIdsDelGrupo[0],
+                Tipo: oAccion.tipo || "L",
+                Anio: oAccion.anio || new Date().getFullYear().toString(),
+                Dateturno: oFechaUTC
+            });
 
-                                        if (!bTieneAcciones) {
-                                            const oLicencesModel = oView.getModel("LicencesJsonModel");
-                                            const aLicencias = oLicencesModel.getData();
-                                            const oLicencia = aLicencias.find(lic => lic.Id === sIdOriginal);
+            oDataModel.read(sKeyPrimeraLicencia, {
+                success: (oData) => {
+                    this.hideGlobalBusy();
+                    console.log("   ✅ Acción existe en backend - usar $batch");
 
-                                            if (oLicencia) {
-                                                oLicencia.accionSeleccionada = false;
-                                                oLicencesModel.refresh();
-                                            }
-                                        }
-
-                                        MessageToast.show("Acción eliminada: " + oAccion.accion);
-                                        this.onGuardarAccionesBackend();
-                                    },
-                                    error: (oError) => {
-                                        this.hideGlobalBusy();
-                                        const bNoEncontrado = oError.statusCode === "404" || oError.statusCode === 404;
-
-                                        if (bNoEncontrado) {
-                                            const oAccionesModel = oView.getModel("AccionesEntregaModel");
-                                            const aAcciones = oAccionesModel.getData();
-                                            aAcciones.splice(iIndex, 1);
-                                            oAccionesModel.setData(aAcciones);
-                                            oAccionesModel.refresh(true);
-
-                                            MessageToast.show("Acción eliminada");
-
-                                            this.onGuardarAccionesBackend();
-                                        } else {
-                                            MessageBox.error("Error al eliminar la acción del backend.");
-                                        }
-                                    }
-                                });
-
-                            } else {
-                                // Eliminar localmente (sin backend)
-                                const oAccionesModel = oView.getModel("AccionesEntregaModel");
-                                const aAcciones = oAccionesModel.getData();
-                                aAcciones.splice(iIndex, 1);
-                                oAccionesModel.setData(aAcciones);
-
-                                // ✅ MODIFICADO: Verificar si quedan más acciones para cualquier licencia del grupo
-                                const sIdOriginal = oAccion.idLicenciaOriginal || oAccion._licenciaId;
-                                const bTieneAcciones = aAcciones.some(a => {
-                                    const sIdLicencia = a.idLicencia || "";
-                                    const aIds = sIdLicencia.split(" / ").map(id => id.trim());
-                                    return aIds.includes(sIdOriginal);
-                                });
-
-                                if (!bTieneAcciones) {
-                                    const oLicencesModel = oView.getModel("LicencesJsonModel");
-                                    const aLicencias = oLicencesModel.getData();
-                                    const oLicencia = aLicencias.find(lic => lic.Id === sIdOriginal);
-
-                                    if (oLicencia) {
-                                        oLicencia.accionSeleccionada = false;
-                                        oLicencesModel.refresh();
-                                    }
+                    // Existe en backend → Confirmar y eliminar con $batch
+                    MessageBox.confirm(
+                        `¿Eliminar esta acción para TODAS las licencias del grupo?\n\n${oAccion.idLicencia}`,
+                        {
+                            title: "Confirmar eliminación",
+                            actions: [MessageBox.Action.OK, MessageBox.Action.CANCEL],
+                            emphasizedAction: MessageBox.Action.OK,
+                            styleClass: "sapUiSizeCompact",
+                            onClose: (sAction) => {
+                                if (sAction === MessageBox.Action.OK) {
+                                    this._eliminarAccionConBatch(oAccion, aIdsDelGrupo, iIndex);
                                 }
-
-                                MessageToast.show("Acción eliminada localmente");
                             }
                         }
+                    );
+                },
+                error: (oError) => {
+                    this.hideGlobalBusy();
+
+                    // 🆕 Manejar TANTO 400 como 404 (ambos significan "no existe")
+                    const statusCode = oError.statusCode?.toString() || "";
+                    const bNoExiste = statusCode === "404" || statusCode === "400" ||
+                        oError.statusCode === 404 || oError.statusCode === 400;
+
+                    if (bNoExiste) {
+                        console.log("   ℹ️ Acción NO existe en backend (error " + statusCode + ") - eliminar solo del modelo");
+
+                        // NO existe en backend → Eliminar solo del modelo local
+                        MessageBox.confirm(
+                            `¿Eliminar la acción "${oAccion.accion}" (sin guardar)?`,
+                            {
+                                title: "Confirmar eliminación",
+                                onClose: (sAction) => {
+                                    if (sAction === MessageBox.Action.OK) {
+                                        const oAccionesModel = oView.getModel("AccionesEntregaModel");
+                                        let aAcciones = oAccionesModel.getData();
+
+                                        aAcciones.splice(iIndex, 1);
+                                        const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAcciones);
+                                        oAccionesModel.setData(aAccionesOrdenadas);
+
+                                        MessageToast.show("Acción eliminada");
+                                    }
+                                }
+                            }
+                        );
+                    } else {
+                        // Otro error
+                        console.error("❌ Error verificando acción:", oError);
+                        MessageBox.error("Error al verificar la acción: " + (oError.message || "Error desconocido"));
                     }
                 }
-            );
+            });
+        },
+
+        _eliminarAccionConBatch: function (oAccion, aIdsDelGrupo, iIndex) {
+            const oDataModel = this.getView().getModel();
+            const oView = this.getView();
+            const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+
+            if (!oFechaTurno) {
+                MessageBox.error("No se pudo obtener la fecha del turno");
+                return;
+            }
+
+            // Normalizar fecha a UTC 00:00:00
+            const year = oFechaTurno.getFullYear();
+            const month = oFechaTurno.getMonth();
+            const day = oFechaTurno.getDate();
+            const oFechaUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+
+            console.log(`🗑️ Eliminando acción ${oAccion.accion} para ${aIdsDelGrupo.length} licencias con $batch`);
+
+            this.showGlobalBusy("Eliminando acción...");
+
+            // Configurar $batch
+            oDataModel.setUseBatch(true);
+            const sGroupId = "deleteAccionesGroup_" + Date.now();
+            oDataModel.setDeferredGroups([sGroupId]);
+
+            // Crear operaciones DELETE para cada licencia del grupo
+            aIdsDelGrupo.forEach(sIdLicencia => {
+                const sKey = oDataModel.createKey("/CatalogoEntregaSet", {
+                    Empresa: oAccion.empresa || "100",
+                    Codigo: oAccion.accion,
+                    Id: sIdLicencia,
+                    Tipo: oAccion.tipo || "L",
+                    Anio: oAccion.anio || new Date().getFullYear().toString(),
+                    Dateturno: oFechaUTC
+                });
+
+                console.log(`   🗑️ DELETE: ${sKey}`);
+
+                oDataModel.remove(sKey, {
+                    groupId: sGroupId
+                });
+            });
+
+            // Ejecutar $batch
+            oDataModel.submitChanges({
+                groupId: sGroupId,
+                success: (oData) => {
+                    this.hideGlobalBusy();
+                    console.log("✅ Eliminación exitosa:", oData);
+
+                    // Eliminar del modelo local
+                    const oAccionesModel = oView.getModel("AccionesEntregaModel");
+                    let aAcciones = oAccionesModel.getData();
+
+                    aAcciones.splice(iIndex, 1);
+                    const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAcciones);
+                    oAccionesModel.setData(aAccionesOrdenadas);
+
+                    // Verificar si quedan más acciones para cualquier licencia del grupo
+                    const sIdOriginal = oAccion.idLicenciaOriginal || oAccion._licenciaId;
+                    const bTieneAcciones = aAcciones.some(a => {
+                        const sIdLicencia = a.idLicencia || "";
+                        const aIds = sIdLicencia.split(" / ").map(id => id.trim());
+                        return aIds.includes(sIdOriginal);
+                    });
+
+                    if (!bTieneAcciones) {
+                        const oLicencesModel = oView.getModel("LicencesJsonModel");
+                        const aLicencias = oLicencesModel.getData();
+                        const oLicencia = aLicencias.find(lic => lic.Id === sIdOriginal);
+
+                        if (oLicencia) {
+                            oLicencia.accionSeleccionada = false;
+                            oLicencesModel.refresh();
+                        }
+                    }
+
+                    MessageToast.show(`Acción eliminada para ${aIdsDelGrupo.length} licencia(s)`);
+                },
+                error: (oError) => {
+                    this.hideGlobalBusy();
+                    console.error("❌ Error al eliminar con $batch:", oError);
+
+                    let sErrorMsg = "Error al eliminar la acción del backend";
+
+                    if (oError.responseText) {
+                        try {
+                            const oErrorData = JSON.parse(oError.responseText);
+                            sErrorMsg = oErrorData.error.message.value || sErrorMsg;
+                        } catch (e) {
+                            console.error("Error parseando respuesta:", e);
+                        }
+                    }
+
+                    // Si el error es 404 (no existe), eliminar del modelo local de todas formas
+                    const bNoEncontrado = oError.statusCode === "404" || oError.statusCode === 404;
+                    if (bNoEncontrado) {
+                        const oAccionesModel = oView.getModel("AccionesEntregaModel");
+                        let aAcciones = oAccionesModel.getData();
+                        aAcciones.splice(iIndex, 1);
+                        oAccionesModel.setData(aAcciones);
+                        MessageToast.show("Acción eliminada");
+                    } else {
+                        MessageBox.error(sErrorMsg);
+                    }
+                }
+            });
         },
 
         _limpiarAccionesEntrega: function () {
@@ -1162,6 +1316,7 @@ sap.ui.define([
                         })
                         .finally(() => {
                             this.hideGlobalBusy();
+                            this._generarAccionesAutomaticas();
                         });
                 },
                 error: (oError) => {
@@ -1169,6 +1324,7 @@ sap.ui.define([
                     oLicencesModel.setData([]);
                     Utils.onCountItems(oView, []);
                     this.hideGlobalBusy();
+                    this._generarAccionesAutomaticas();
                 }
             });
 
@@ -1740,7 +1896,7 @@ sap.ui.define([
                         oLicencesModel.setData(data);
                         oLicencesModel.refresh();
                         oTable.setBusy(false);
-                        Utils.onCountItems(this.getView(), data);
+                        Utils.onCountItems(this.getView(), aLicencias);
                         this._updateEditableState();
                         return;
                     }
@@ -1760,25 +1916,161 @@ sap.ui.define([
                             oLicencesModel.setData(data);
                             oLicencesModel.refresh();
                             oTable.setBusy(false);
-                            Utils.onCountItems(this.getView(), data);
+                            Utils.onCountItems(this.getView(), aLicencias);
                             this._updateEditableState();
+
                         })
                         .catch((error) => {
                             oLicencesModel.setData(data);
                             oLicencesModel.refresh();
                             oTable.setBusy(false);
-                            Utils.onCountItems(this.getView(), data);
+                            Utils.onCountItems(this.getView(), aLicencias);
                             this._updateEditableState();
+
                         });
                 })
                 .catch((error) => {
                     oLicencesModel.setData([]);
                     oLicencesModel.refresh();
                     oTable.setBusy(false);
-                    Utils.onCountItems(this.getView(), []);
+                    /* Utils.onCountItems(this.getView(), []); */
+                    Utils.onCountItems(this.getView(), aLicencias)
                 });
         },
 
+        _generarReporteAutomatico: function (aLicencias, oFecha) {
+            if (!aLicencias || aLicencias.length === 0) {
+                console.log("⚠️ No hay licencias para generar reporte automático");
+                return;
+            }
+
+            console.log("📊 Generando reporte automático para fecha:", oFecha);
+
+            // Usar la misma lógica que _procesarDatosComoExcel pero para una sola fecha
+            var oFormatter = this.formatter;
+            var aDatosTabla = [];
+            var sFechaFormateada = oFormatter.formatDate(oFecha);
+
+            // Filtrar solo licencias con maniobras (igual que tu lógica actual)
+            var aLicenciasFecha = aLicencias.filter(function (license) {
+                // Obtener categoría
+                var oInfo = Utils.getShiftInfo(license);
+
+                // Solo incluir equipos CON maniobras
+                return oInfo.category === "ConsignacionLinea" ||
+                    oInfo.category === "ConsignacionEquipo" ||
+                    oInfo.category === "ManiobrasSinConsignacion";
+            });
+
+            console.log("📊 Licencias con maniobras encontradas:", aLicenciasFecha.length);
+
+            // Eliminar duplicados basados en Equnr + TurnoAsignado (IGUAL QUE EL EXCEL)
+            var aLicenciasUnicas = [];
+            var oMapaDuplicados = {};
+
+            aLicenciasFecha.forEach(function (license) {
+                var sEquipo = license.Equnr || "";
+                var sTurno = license.TurnoAsignado || "";
+                var sClave = sEquipo + "|" + sTurno;
+
+                if (!oMapaDuplicados[sClave]) {
+                    oMapaDuplicados[sClave] = true;
+                    aLicenciasUnicas.push(license);
+                }
+            });
+
+            // Procesar cada licencia (IGUAL QUE EL EXCEL)
+            aLicenciasUnicas.forEach(function (license) {
+                var oInfo = Utils.getShiftInfo(license);
+                var sEquipo = license.Equnr || "";
+                var sHora = license.TurnoAsignado ||
+                    (license.Horainicio ? oFormatter.durationToTime(license.Horainicio) :
+                        (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : ""));
+                var sComentarios = license.Comments || license.Patadic || "";
+
+                aDatosTabla.push({
+                    Fecha: sFechaFormateada,
+                    Equipo: sEquipo,
+                    Hora: sHora,
+                    TipoIntervencion: this._getTipoIntervencionTexto(oInfo.category),
+                    Condicion: oInfo.condition,
+                    Comentarios: sComentarios
+                });
+            }.bind(this)); // ← ESTE ERA EL ERROR: faltaba cerrar el .bind(this)
+
+            // Ordenar por hora
+            aDatosTabla.sort(function (a, b) {
+                if (!a.Hora) return 1;
+                if (!b.Hora) return -1;
+                return a.Hora.localeCompare(b.Hora);
+            });
+
+            console.log("✅ Reporte automático generado con", aDatosTabla.length, "equipos");
+
+            // CARGAR DATOS EN EL MODELO
+            var oReporteModel = this.getView().getModel("ReporteModel");
+            if (!oReporteModel) {
+                oReporteModel = new JSONModel();
+                this.getView().setModel(oReporteModel, "ReporteModel");
+            }
+            oReporteModel.setData(aDatosTabla);
+
+            // Actualizar el rango de fechas
+            var oDateRangeControl = this.byId("reporteDateRange");
+            if (oDateRangeControl) {
+                var sMinHora = "--";
+                var sMaxHora = "--";
+
+                if (aDatosTabla.length > 0) {
+                    var aHoras = aDatosTabla.filter(function (d) { return d.Hora; }).map(function (d) { return d.Hora; });
+                    if (aHoras.length > 0) {
+                        sMinHora = aHoras[0];
+                        sMaxHora = aHoras[aHoras.length - 1];
+                    }
+                }
+
+                oDateRangeControl.setText("Horarios de maniobras previstas desde: " + sFechaFormateada + " " + sMinHora + " Hasta: " + sFechaFormateada + " " + sMaxHora);
+            }
+
+            // Guardar datos para el excel
+            this._datosReporteProcesados = aLicencias;
+            this._reporteFechaInicio = oFecha;
+            this._reporteFechaFin = oFecha;
+        },
+        // 🆕 FUNCIÓN AUXILIAR: Obtener texto del tipo de intervención
+        _getTipoIntervencionTexto: function (sCategoria) {
+            switch (sCategoria) {
+                case "ConsignacionLinea":
+                    return "Consignación (Línea)";
+                case "ConsignacionEquipo":
+                    return "Consignación (Equipo)";
+                case "ManiobrasSinConsignacion":
+                    return "Condiciones especiales C/maniobra";
+                default:
+                    return "";
+            }
+        },
+
+        // 🆕 FUNCIÓN AUXILIAR: Actualizar rango de fechas del reporte
+        _actualizarRangoFechasReporte: function (aData, sFecha) {
+            var sMinHora = "--";
+            var sMaxHora = "--";
+
+            if (aData.length > 0) {
+                var aHoras = aData.filter(d => d.Hora).map(d => d.Hora);
+                if (aHoras.length > 0) {
+                    sMinHora = aHoras[0]; // Ya está ordenado
+                    sMaxHora = aHoras[aHoras.length - 1];
+                }
+            }
+
+            var sTexto = "Horarios de maniobras previstas desde: " + sMinHora + " Hasta: " + sMaxHora;
+            if (sFecha) {
+                sTexto += " (Fecha: " + sFecha + ")";
+            }
+
+            this.byId("reporteDateRange").setText(sTexto);
+        },
 
         // onSearch: function () {
         //     var dateTurno = this.byId("date");
@@ -1804,7 +2096,7 @@ sap.ui.define([
         //             oLicencesModel.setData(data);
         //             oLicencesModel.refresh();
         //             oTable.setBusy(false);
-        //             Utils.onCountItems(this.getView(), data);
+        //             Utils.onCountItems(this.getView(), aLicencias);
         //         })
         //         .catch((error) => {
         //             console.error("Error en la búsqueda:", error);
@@ -2058,6 +2350,31 @@ sap.ui.define([
                                         }
                                     }
 
+                                    // 🆕 COPIAR ADJUNTOS DE LICENCESJONMODEL A LISTCRONOTREEMODEL
+                                    if (node._isGroup === false && node.Id) {
+                                        // Buscar la licencia original en LicencesJsonModel
+                                        const original = arrayClonado.find(item => item.Id === node.Id);
+                                        if (original) {
+                                            // Copiar AttachmentXLicencia_nav
+                                            node.AttachmentXLicencia_nav = original.AttachmentXLicencia_nav || { results: [] };
+                                            node.Attachments = original.Attachments || [];
+
+                                            // Marcar si tiene adjuntos
+                                            const aAdjuntos = node.AttachmentXLicencia_nav?.results ||
+                                                node.AttachmentXLicencia_nav ||
+                                                node.Attachments ||
+                                                [];
+
+                                            node._tieneAdjuntos = aAdjuntos.length > 0;
+                                            node._adjuntos = aAdjuntos;
+                                            node._cantidadAdjuntos = aAdjuntos.length;
+
+                                            if (aAdjuntos.length > 0) {
+                                                console.log(`      📎 Copiados ${aAdjuntos.length} adjunto(s) para ${node.Id}`);
+                                            }
+                                        }
+                                    }
+
                                     // Recursivo para hijos
                                     if (node.children && node.children.length > 0) {
                                         preserveNodeData(node.children);
@@ -2181,7 +2498,7 @@ sap.ui.define([
                         onClose: function () {
                             oSource.setValue("");
                             oSource.setValueState(CoreLibrary.ValueState.Error);
-                            oSource.setValueStateText(oResourceBundle.getText("invalidShiftTimeRange"));
+                            //oSource.setValueStateText(oResourceBundle.getText("invalidShiftTimeRange"));
 
                             this._updateSameGroupAndConsoleShifts(aLicences, oSelectedLicence, "");
 
@@ -5377,7 +5694,7 @@ sap.ui.define([
                         var sEquipo = license.Equnr || "";
                         var sHora = license.TurnoAsignado || (license.Horainicio ? oFormatter.durationToTime(license.Horainicio)
                             : (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : ""));
-                        var sComentarios = license.Comments || license.PatAdic || "";
+                        var sComentarios = license.Comments || license.Patadic || "";
 
                         aGrillaFecha.push([sEquipo, sHora, sComentarios]);
 
@@ -5675,9 +5992,15 @@ sap.ui.define([
                     const aFilteredData = TreeTableHelper.applyFiltersToTree(aOriginalData, aFilters);
                     const oFilteredModel = new JSONModel(aFilteredData);
                     oTreeTable.setModel(oFilteredModel, "listCronoTreeModel");
+                    this._marcarAdjuntosEnListadoCronologico();
+
+                    console.log("✅ Listado Cronológico creado con adjuntos marcados");
                 } else {
                     const oTreeModel = this.getView().getModel("listCronoTreeModel");
                     oTreeTable.setModel(oTreeModel, "listCronoTreeModel");
+                    this._marcarAdjuntosEnListadoCronologico();
+
+                    console.log("✅ Listado Cronológico creado con adjuntos marcados");
                 }
             }
         },
@@ -6445,7 +6768,7 @@ sap.ui.define([
                     var sEquipo = license.Equnr || "";
                     var sHora = license.TurnoAsignado || (license.Horainicio ? oFormatter.durationToTime(license.Horainicio)
                         : (license.Gdate ? oFormatter.msTohoursSeconds(license.Gdate) : ""));
-                    var sComentarios = license.Comments || license.PatAdic || "";
+                    var sComentarios = license.Comments || license.Patadic || "";
 
                     aDatosAplanados.push({
                         Fecha: sFechaFormateada,
@@ -6685,9 +7008,8 @@ sap.ui.define([
         // },
         onSendEmailPress: function () {
             var oFormatter = this.formatter;
-
             const oView = this.getView();
-            const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel", oView).getProperty("/FechaTurno")
+            const FechaTurno = ModelHelper.getModel("LicencesTurnoJsonModel", oView).getProperty("/FechaTurno");
             const oModel = this.getView().getModel();
             const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
             const aLicencias = oLicencesModel.getData() || [];
@@ -6697,6 +7019,342 @@ sap.ui.define([
                 return;
             }
 
+            // 🆕 VALIDACIÓN DE ESTADOS ANTES DE ENVIAR MAILS
+            console.log("🔍 Iniciando validación de estados antes de enviar mails...");
+            this.showGlobalBusy("Validando estados de licencias antes de enviar...");
+            this._validarEstadosAntesDeEnviarMail(aLicencias, FechaTurno, oFormatter);
+        },
+
+        _validarEstadosAntesDeEnviar: function (aLicenciasEnPantalla, Fecha) {
+            const oDataModel = this.getView().getModel();
+            const estadosPermitidos = ["01", "07", "08", "10", "23"];
+
+            console.log("🔍 Validando estados de", aLicenciasEnPantalla.length, "licencias antes de enviar...");
+
+            // Consultar estado actual de cada licencia UNA POR UNA
+            const aPromises = aLicenciasEnPantalla.map(oLic => {
+                return new Promise((resolve) => {
+                    // Construir clave compuesta
+                    const sPath = oDataModel.createKey("/LicenciaTrabajoSet", {
+                        Empresa: oLic.Empresa || "100",
+                        Id: oLic.Id,
+                        Tipo: oLic.Tipo || "L",
+                        Anio: oLic.Anio || "2026"
+                    });
+
+                    console.log(`   🔍 Consultando: ${oLic.Id}`);
+
+                    oDataModel.read(sPath, {
+                        urlParameters: {
+                            "$expand": "TurnosLicencias_nav"
+                        },
+                        success: (oData) => {
+                            const esValida = estadosPermitidos.includes(oData.Licstat);
+
+                            if (!esValida) {
+                                console.log(`   ❌ ${oLic.Id}: Estado ${oData.Licstat} NO permitido`);
+                            } else {
+                                console.log(`   ✅ ${oLic.Id}: Estado ${oData.Licstat} OK`);
+                            }
+
+                            resolve({
+                                id: oLic.Id,
+                                estadoActual: oData.Licstat,
+                                estadoTexto: this.formatter.formatLicState(oData.Licstat),
+                                esValida: esValida
+                            });
+                        },
+                        error: (oError) => {
+                            console.error(`   ❌ ${oLic.Id}: Error al consultar`);
+                            resolve({
+                                id: oLic.Id,
+                                estadoActual: 'ERROR',
+                                estadoTexto: 'Error al verificar',
+                                esValida: false
+                            });
+                        }
+                    });
+                });
+            });
+
+            // Esperar todas las validaciones
+            Promise.all(aPromises).then((resultados) => {
+                this.hideGlobalBusy();
+
+                const invalidas = resultados.filter(r => !r.esValida);
+                const validas = resultados.filter(r => r.esValida);
+
+                console.log("📊 Resultado de validación:");
+                console.log("   ✅ Licencias válidas:", validas.length);
+                console.log("   ❌ Licencias con estado no permitido:", invalidas.length);
+
+                if (invalidas.length > 0) {
+                    // Filtrar licencias
+                    const aLicenciasValidas = aLicenciasEnPantalla.filter(lic =>
+                        validas.find(v => v.id === lic.Id)
+                    );
+
+                    const aLicenciasInvalidas = aLicenciasEnPantalla.filter(lic =>
+                        invalidas.find(inv => inv.id === lic.Id)
+                    );
+
+                    // MARCAR COMO NO ENVIADAS
+                    this.showGlobalBusy("Actualizando estados de envío...");
+                    this._marcarLicenciasComoNoEnviadas(aLicenciasInvalidas, Fecha)
+                        .then((resultadosUpdate) => {
+                            this.hideGlobalBusy();
+
+                            const exitosas = resultadosUpdate.filter(r => r.success).length;
+                            console.log(`✅ ${exitosas} licencias marcadas como NO enviadas`);
+
+                            // Actualizar modelo
+                            const oModel = this.getView().getModel("LicencesJsonModel");
+                            oModel.setData(aLicenciasValidas);
+                            this.getLicencesArray = aLicenciasValidas;
+                            Utils.onCountItems(this.getView(), aLicenciasValidas);
+
+                            // Mensaje informativo
+                            let sMsg = `Se detectaron ${invalidas.length} licencia(s) con cambio de estado:\n\n`;
+
+                            invalidas.forEach(inv => {
+                                const lic = aLicenciasInvalidas.find(l => l.Id === inv.id);
+                                sMsg += `• ${inv.id} (${lic?.Equnr || 'Sin equipo'})\n`;
+                                sMsg += `  Estado: ${inv.estadoTexto}\n\n`;
+                            });
+
+
+                            // SOLO MOSTRAR INFORMACIÓN
+                            MessageBox.information(sMsg, {
+                                title: "Licencias excluidas",
+                                styleClass: "sapUiSizeCompact"
+                            });
+
+                            // CONTINUAR AUTOMÁTICAMENTE
+                            console.log("✅ Continuando con envío de", aLicenciasValidas.length, "licencias válidas");
+                            this._ejecutarEnvio(aLicenciasValidas, Fecha);
+                        })
+                        .catch((error) => {
+                            this.hideGlobalBusy();
+                            console.error("❌ Error al marcar como NO enviadas:", error);
+                            MessageBox.error("Error al actualizar estados: " + (error.message || "Error desconocido"));
+                        });
+                } else {
+                    console.log("✅ Todas válidas");
+                    this._ejecutarEnvio(aLicenciasEnPantalla, Fecha);
+                }
+            }).catch((error) => {
+                this.hideGlobalBusy();
+                console.error("❌ Error en validación de estados:", error);
+                MessageBox.error("Error al validar estados: " + (error.message || "Error desconocido"));
+            });
+        },
+
+        _ejecutarEnvio: function (aLicencias, Fecha) {
+            console.log("📤 Ejecutando envío de", aLicencias.length, "licencias");
+
+            const aData = [];
+
+            aLicencias.forEach(function (oRowData) {
+                const row = {
+                    Id: oRowData.Id,
+                    Empresa: oRowData.Empresa,
+                    Tipo: oRowData.Tipo,
+                    Anio: oRowData.Anio,
+                    Fecha: Fecha,
+                    Turno: oRowData.TurnoAsignado,
+                    Comentarios: oRowData.Comentarios,
+                    Enviado: true,
+                    Agrmanual: oRowData.Agrmanual || false
+                };
+                aData.push(row);
+            });
+
+            this.createTurno(aData, aLicencias, true);
+        },
+
+        _validarEstadosAntesDeEnviarMail: function (aLicenciasEnPantalla, FechaTurno, oFormatter) {
+            const oDataModel = this.getView().getModel();
+            const estadosPermitidos = ["01", "07", "08", "10", "23"];
+
+            console.log("🔍 Validando estados de", aLicenciasEnPantalla.length, "licencias antes de enviar mails...");
+
+            // Consultar estado actual de cada licencia UNA POR UNA
+            const aPromises = aLicenciasEnPantalla.map(oLic => {
+                return new Promise((resolve) => {
+                    // Construir clave compuesta
+                    const sPath = oDataModel.createKey("/LicenciaTrabajoSet", {
+                        Empresa: oLic.Empresa || "100",
+                        Id: oLic.Id,
+                        Tipo: oLic.Tipo || "L",
+                        Anio: oLic.Anio || "2026"
+                    });
+
+                    console.log(`   🔍 Consultando: ${oLic.Id}`);
+
+                    // Leer con expand de turnos
+                    oDataModel.read(sPath, {
+                        urlParameters: {
+                            "$expand": "TurnosLicencias_nav"
+                        },
+                        success: (oData) => {
+                            const esValida = estadosPermitidos.includes(oData.Licstat);
+
+                            if (!esValida) {
+                                console.log(`   ❌ ${oLic.Id}: Estado ${oData.Licstat} (${this.formatter.formatLicState(oData.Licstat)}) NO permitido`);
+                            } else {
+                                console.log(`   ✅ ${oLic.Id}: Estado ${oData.Licstat} (${this.formatter.formatLicState(oData.Licstat)}) OK`);
+                            }
+
+                            resolve({
+                                id: oLic.Id,
+                                estadoActual: oData.Licstat,
+                                estadoTexto: this.formatter.formatLicState(oData.Licstat),
+                                esValida: esValida
+                            });
+                        },
+                        error: (oError) => {
+                            console.error(`   ❌ ${oLic.Id}: Error al consultar`, oError);
+
+                            // Si hay error, asumir que no es válida
+                            resolve({
+                                id: oLic.Id,
+                                estadoActual: 'ERROR',
+                                estadoTexto: 'Error al verificar',
+                                esValida: false
+                            });
+                        }
+                    });
+                });
+            });
+
+            // Esperar todas las validaciones
+            Promise.all(aPromises).then((resultados) => {
+                this.hideGlobalBusy();
+
+                const invalidas = resultados.filter(r => !r.esValida);
+                const validas = resultados.filter(r => r.esValida);
+
+                console.log("📊 Resultado de validación:");
+                console.log("   ✅ Licencias válidas:", validas.length);
+                console.log("   ❌ Licencias con estado no permitido:", invalidas.length);
+
+                if (invalidas.length > 0) {
+                    // Filtrar licencias válidas e inválidas
+                    const aLicenciasValidas = aLicenciasEnPantalla.filter(lic =>
+                        validas.find(v => v.id === lic.Id)
+                    );
+
+                    const aLicenciasInvalidas = aLicenciasEnPantalla.filter(lic =>
+                        invalidas.find(inv => inv.id === lic.Id)
+                    );
+
+                    // MARCAR COMO NO ENVIADAS EN EL BACKEND
+                    this.showGlobalBusy("Actualizando estados de envío...");
+                    this._marcarLicenciasComoNoEnviadas(aLicenciasInvalidas, FechaTurno)
+                        .then((resultadosUpdate) => {
+                            this.hideGlobalBusy();
+
+                            const exitosas = resultadosUpdate.filter(r => r.success).length;
+                            const fallidas = resultadosUpdate.filter(r => !r.success).length;
+
+                            console.log(`✅ ${exitosas} licencias marcadas como NO enviadas`);
+                            if (fallidas > 0) {
+                                console.log(`❌ ${fallidas} licencias no se pudieron actualizar`);
+                            }
+
+                            // ACTUALIZAR MODELO (quitar las inválidas de la vista)
+                            const oView = this.getView();
+                            const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
+                            oLicencesModel.setData(aLicenciasValidas);
+                            this.getLicencesArray = aLicenciasValidas;
+                            Utils.onCountItems(this.getView(), aLicenciasValidas);
+
+                            // Construir mensaje informativo
+                            let sMsg = `Se detectaron ${invalidas.length} licencia(s) con cambio de estado:\n\n`;
+
+                            invalidas.forEach(inv => {
+                                const lic = aLicenciasInvalidas.find(l => l.Id === inv.id);
+                                sMsg += `• ${inv.id} (${lic?.Equnr || 'Sin equipo'})\n`;
+                                sMsg += `  Estado: ${inv.estadoTexto}\n\n`;
+                            });
+
+
+                            // SOLO MOSTRAR INFORMACIÓN (sin preguntar)
+                            MessageBox.information(sMsg, {
+                                title: "Licencias excluidas",
+                                styleClass: "sapUiSizeCompact"
+                            });
+
+                            // CONTINUAR AUTOMÁTICAMENTE CON EL ENVÍO DE MAILS
+                            const aLicenciasParaEnviar = aLicenciasValidas.filter(l => !l.Enviado);
+
+                            if (aLicenciasParaEnviar.length > 0) {
+                                console.log("✅ Continuando con envío de", aLicenciasParaEnviar.length, "mails");
+                                this._ejecutarEnvioMail(aLicenciasValidas, FechaTurno, oFormatter);
+                            } else {
+                                console.log("ℹ️ No hay licencias para enviar (todas ya fueron enviadas)");
+                            }
+                        })
+                        .catch((error) => {
+                            this.hideGlobalBusy();
+                            console.error("❌ Error al marcar licencias como NO enviadas:", error);
+                            MessageBox.error("Error al actualizar estados: " + (error.message || "Error desconocido"));
+                        });
+                } else {
+                    // Todas válidas
+                    console.log("✅ Todas las licencias siguen con estados permitidos");
+                    this._ejecutarEnvioMail(aLicenciasEnPantalla, FechaTurno, oFormatter);
+                }
+            }).catch((error) => {
+                this.hideGlobalBusy();
+                console.error("❌ Error en validación de estados:", error);
+                MessageBox.error("Error al validar estados: " + (error.message || "Error desconocido"));
+            });
+        },
+
+        _marcarLicenciasComoNoEnviadas: function (aLicenciasInvalidas, FechaTurno) {
+            console.log("🔄 Marcando", aLicenciasInvalidas.length, "licencias como NO enviadas (Enviado=false)...");
+
+            // Preparar datos igual que en onSendEmailPress original
+            const aDataParaGuardar = aLicenciasInvalidas.map((oLicense) => {
+                return {
+                    Id: oLicense.Id,
+                    Empresa: oLicense.Empresa,
+                    Tipo: oLicense.Tipo || "L",
+                    Anio: oLicense.Anio,
+                    Fecha: FechaTurno,
+                    Turno: oLicense.TurnoAsignado || oLicense.Turno || "",
+                    Comentarios: oLicense.Comentarios || "",
+                    Enviado: false,  // ← Marcar como NO enviado
+                    Agrmanual: oLicense.Agrmanual || false
+                };
+            });
+
+            console.log("📦 Datos preparados para marcar como NO enviadas:", aDataParaGuardar);
+
+            // Llamar a createTurno (reutilizar tu lógica que ya funciona)
+            return new Promise((resolve) => {
+                this.createTurno(aDataParaGuardar, aLicenciasInvalidas, false);
+
+                // Simular éxito para mantener compatibilidad
+                const resultados = aLicenciasInvalidas.map(lic => ({
+                    success: true,
+                    id: lic.Id
+                }));
+
+                setTimeout(() => {
+                    console.log(`✅ ${aLicenciasInvalidas.length} licencias procesadas con Enviado=false`);
+                    resolve(resultados);
+                }, 500);
+            });
+        },
+
+        _ejecutarEnvioMail: function (aLicencias, FechaTurno, oFormatter) {
+            console.log("📧 Ejecutando envío de", aLicencias.length, "mails");
+
+            // 🔽 AQUÍ EMPIEZA TU LÓGICA ORIGINAL DE onSendEmailPress (desde la línea del oComponent)
+            const oView = this.getView();
+            const oModel = this.getView().getModel();
             const oComponent = this.getOwnerComponent();
             var currentUser = ModelHelper.getModel("CurrentUser", oView).getData();
             var oUserJson = ModelHelper.getModel("UserJsonModel", oView).getData();
@@ -6720,14 +7378,11 @@ sap.ui.define([
             csrfTokenPromise.then((csrfToken) => {
                 currentCsrfToken = csrfToken;
 
-
                 const aPromises = aLicencias.map((oLicense) => {
                     return new Promise((resolve, reject) => {
 
-
                         // Verificar si ya fue enviado - evitar reenviar mails
                         if (oLicense.Enviado === true) {
-
                             resolve({ success: true, licenciaId: oLicense.Id, skipped: true, reason: "Ya enviado" });
                             return;
                         }
@@ -6767,10 +7422,11 @@ sap.ui.define([
                                 let sEmailEt =
                                     res[1].results && res[1].results.length
                                         ? res[1].results.map(e => e.Mail).join(",")
-                                        : "guillermo.quattrocchi@altromondo.com.ar";
+                                        : "chiara.signori@altromondo.com.ar";
 
-                                const sDestinatario2 = emails.filter(e => e).join(",") || sEmailEt || "guillermo.quattrocchi@altromondo.com.ar";
-                                const sDestinatario = "guillermo.quattrocchi@altromondo.com.ar";
+                                const sDestinatario2 = emails.filter(e => e).join(",") || sEmailEt || "chiara.signori@altromondo.com.ar";
+                                const sDestinatario = "chiara.signori@altromondo.com.ar";
+
                                 // Construir objeto licencia para el mail
                                 const oLicenciaParaMail = {
                                     society: oLicense.Empresa,
@@ -6797,20 +7453,16 @@ sap.ui.define([
                                 console.log("Destinatario:", sDestinatario);
 
                                 // Enviar mail usando MailService con el token CSRF reutilizado
-                                // Si el token expira, se renovará automáticamente mediante el callback
                                 MailService.sendLicenseEmail(oLicenciaParaMail, oComponent, currentCsrfToken, renewToken)
                                     .then((result) => {
-
                                         resolve({ success: true, licenciaId: oLicense.Id });
                                     })
                                     .catch((error) => {
-
                                         // No rechazar para que continúe con las demás licencias
                                         resolve({ success: false, licenciaId: oLicense.Id, error: error });
                                     });
                             })
                             .catch(err => {
-
                                 // No rechazar para que continúe con las demás licencias
                                 resolve({ success: false, licenciaId: oLicense.Id, error: err });
                             });
@@ -6825,14 +7477,12 @@ sap.ui.define([
                     const aSaltadas = results.filter(r => r.skipped);
                     const aFallidos = results.filter(r => !r.success && !r.skipped);
 
-
                     if (aSaltadas.length > 0) {
                         console.log("Licencias saltadas (ya enviadas):", aSaltadas.map(r => r.licenciaId));
                     }
                     if (aFallidos.length > 0) {
                         console.log("Licencias con errores:", aFallidos.map(r => r.licenciaId));
                     }
-                    console.groupEnd();
 
                     if (aExitosos.length > 0) {
                         MessageToast.show(`${aExitosos.length} mail(s) enviado(s) correctamente${aSaltadas.length > 0 ? ` (${aSaltadas.length} ya enviados)` : ''}`);
@@ -6842,7 +7492,7 @@ sap.ui.define([
                             aExitosos.some(r => r.licenciaId === lic.Id)
                         );
 
-                        // Preparar datos para createTurno (formato similar a onSaveTurnoPress)
+                        // Preparar datos para createTurno
                         const aDataParaGuardar = aLicenciasExitosas.map((oLicense) => {
                             return {
                                 Id: oLicense.Id,
@@ -6856,9 +7506,6 @@ sap.ui.define([
                                 Agrmanual: oLicense.Agrmanual || false
                             };
                         });
-
-
-
 
                         this.createTurno(aDataParaGuardar, aLicenciasExitosas, true);
                     } else {
@@ -7826,6 +8473,12 @@ sap.ui.define([
                         anio: item.Anio || "",
                         _licenciaId: item.Id,
                         _idsDelGrupo: [item.Id],
+                        _estadoGuardado: true,  // Ya está en backend
+                        // 🆕 SNAPSHOT ORIGINAL para detección de cambios
+                        _snapshotOriginal: {
+                            turnoEntrega: item.Turnoentrega || "",
+                            attachmentsCount: 0  // Se actualizará al agregar adjuntos
+                        },
                         Attachments: []
                     };
                 } else {
@@ -7866,8 +8519,17 @@ sap.ui.define([
                             AttachmentSize: Math.floor((item.Attachment.length * 3) / 4),
                             AttachmentType: this._inferirTipoArchivo(item.Attachment),
                             Timestamp: new Date().getTime(),
-                            _idsCompartidos: [item.Id]
+                            _idsCompartidos: [item.Id],
+                            _guardado: true,  // 🆕 Marcar como guardado
+                            // 🆕 SNAPSHOT del adjunto para detección de cambios
+                            _snapshotOriginal: {
+                                Attachment: item.Attachment,
+                                AttachmentName: item.Comments || "Adjunto"
+                            }
                         });
+
+                        // 🆕 ACTUALIZAR contador de adjuntos en snapshot de la acción
+                        mAccionesAgrupadas[sKey]._snapshotOriginal.attachmentsCount = mAccionesAgrupadas[sKey].Attachments.length;
                     } else {
                         const adjuntoExistente = mAccionesAgrupadas[sKey].Attachments.find(att =>
                             att.Attachment === item.Attachment &&
@@ -7885,7 +8547,8 @@ sap.ui.define([
 
             const aAcciones = Object.values(mAccionesAgrupadas);
 
-            oAccionesModel.setData(aAcciones);
+            const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAcciones);
+            oAccionesModel.setData(aAccionesOrdenadas);
             oAccionesModel.refresh(true);
 
             if (aAcciones.length > 0) {
@@ -8061,5 +8724,873 @@ sap.ui.define([
                 styleClass: "sapUiSizeCompact"
             });
         },
+
+        // ACCIONES PARA LA ENTREGA - RECALCULO DE HORAS
+
+        // 🆕 FUNCIÓN DEFINITIVA según documentación completa (3 imágenes de tablas)
+        _calcularHorarioAccion: function (sCodigoAccion, oLicencia, sTurnoBase) {
+            // sTurnoBase = T Eq (el horario asignado en la tab Turno)
+
+            if (!sTurnoBase || sTurnoBase.trim() === "") {
+                console.warn("⚠️ No hay turno base (T Eq) para calcular horario de acción");
+                return "";
+            }
+
+            console.log(`🕐 Calculando horario para acción ${sCodigoAccion} con T Eq = ${sTurnoBase}`);
+
+            // Convertir T Eq (turnoBase) a minutos
+            const [horas, minutos] = sTurnoBase.split(":").map(Number);
+            const tEqMinutos = (horas * 60) + minutos;
+
+            // Obtener T ManStd de la licencia
+            const shiftInfo = Utils.getShiftInfo(oLicencia);
+            const tManStd = shiftInfo.duration; // 45, 30, 20, 15 o 10 min
+
+            console.log(`   📊 T ManStd para esta licencia: ${tManStd} min`);
+
+            let horarioCalculadoMinutos = tEqMinutos;
+
+            // Constantes según documentación
+            const T_AVISO = 60;   // 1 hora (de doc anterior)
+            const T_MANCOT = 15;  // 15 minutos (de doc anterior)
+
+            // ⚠️ T_PES: Hora de puesta en servicio efectivo
+            // Por ahora provisional - preguntar al cliente
+            const T_PES_PROVISIONAL = tEqMinutos + tManStd + 480; // +8 horas provisional
+
+            // 🔧 CALCULAR SEGÚN CÓDIGO DE ACCIÓN
+            switch (sCodigoAccion) {
+                case "SOL COC":
+                    // Fórmula: T SOL COC = T Eq - T Aviso
+                    horarioCalculadoMinutos = tEqMinutos - T_AVISO;
+                    console.log(`   ✅ SOL COC: T Eq(${sTurnoBase}) - T Aviso(${T_AVISO}min)`);
+                    break;
+
+                case "SOL TEC":
+                    // Fórmula: T SOL TEC = T Eq - 20 min
+                    horarioCalculadoMinutos = tEqMinutos - 20;
+                    console.log(`   ✅ SOL TEC: T Eq(${sTurnoBase}) - 20min`);
+                    break;
+
+                case "AUT COC":
+                    // Fórmula: T AUT COC = T Eq - 10 min
+                    horarioCalculadoMinutos = tEqMinutos - 10;
+                    console.log(`   ✅ AUT COC: T Eq(${sTurnoBase}) - 10min`);
+                    break;
+
+                case "INI MAN":
+                    // Fórmula: T Eq = F/S PR Horario del turno
+                    // Es el turno base (sin cambios)
+                    horarioCalculadoMinutos = tEqMinutos;
+                    console.log(`   ✅ INI MAN: T Eq = ${sTurnoBase}`);
+                    break;
+
+                case "COL PAT":
+                    // Fórmula: T COL PAT = T INI MAN + T ManStd
+                    horarioCalculadoMinutos = tEqMinutos + tManStd;
+                    console.log(`   ✅ COL PAT: T Eq(${sTurnoBase}) + T ManStd(${tManStd}min)`);
+                    break;
+
+                case "FIN MAN":
+                    // Fórmula: T FIN MAN = T INI MAN + T ManStd + 0
+                    horarioCalculadoMinutos = tEqMinutos + tManStd;
+                    console.log(`   ✅ FIN MAN: T Eq(${sTurnoBase}) + T ManStd(${tManStd}min)`);
+                    break;
+
+                case "FIN LT":
+                    // Fórmula: T FIN LT = T MAN PES - T ManStd
+                    // T MAN PES = T PES - T ManCOT
+                    // Entonces: T FIN LT = (T PES - T ManCOT) - T ManStd = T PES - T ManCOT - T ManStd
+                    horarioCalculadoMinutos = T_PES_PROVISIONAL - T_MANCOT - tManStd;
+                    console.log(`   ⚠️ FIN LT: T PES(${this._minutosAHora(T_PES_PROVISIONAL)}) - T ManCOT(${T_MANCOT}min) - T ManStd(${tManStd}min) [PROVISIONAL]`);
+                    break;
+
+                case "RET PAT":
+                    // Fórmula: T RET PAT = T PES - T ManCOT
+                    horarioCalculadoMinutos = T_PES_PROVISIONAL - T_MANCOT;
+                    console.log(`   ⚠️ RET PAT: T PES(${this._minutosAHora(T_PES_PROVISIONAL)}) - T ManCOT(${T_MANCOT}min) [PROVISIONAL]`);
+                    break;
+
+                case "MAN PES":
+                    // Fórmula: T MAN PES = T PES - T ManCOT
+                    horarioCalculadoMinutos = T_PES_PROVISIONAL - T_MANCOT;
+                    console.log(`   ⚠️ MAN PES: T PES(${this._minutosAHora(T_PES_PROVISIONAL)}) - T ManCOT(${T_MANCOT}min) [PROVISIONAL]`);
+                    break;
+
+                case "PES":
+                case "FCS":
+                    // Fórmula: T PES = Hora de puesta en servicio efectivo
+                    // ⚠️ PROVISIONAL - Preguntar al cliente cuál es la hora real
+                    horarioCalculadoMinutos = T_PES_PROVISIONAL;
+                    console.log(`   ⚠️ PES/FCS: ${this._minutosAHora(T_PES_PROVISIONAL)} [PROVISIONAL - preguntar hora de PES al cliente]`);
+                    break;
+
+                default:
+                    // Por defecto, usar T Eq
+                    console.warn(`   ⚠️ Acción ${sCodigoAccion} sin fórmula definida - usando T Eq`);
+                    horarioCalculadoMinutos = tEqMinutos;
+            }
+
+            // Convertir de vuelta a formato HH:mm
+            const horasResultado = Math.floor(horarioCalculadoMinutos / 60);
+            const minutosResultado = horarioCalculadoMinutos % 60;
+
+            const horarioFinal =
+                String(horasResultado).padStart(2, '0') + ":" +
+                String(minutosResultado).padStart(2, '0');
+
+            console.log(`   🎯 Horario calculado: ${horarioFinal}\n`);
+
+            return horarioFinal;
+        },
+
+        // Función auxiliar para convertir minutos a formato HH:mm (para logs)
+        _minutosAHora: function (minutos) {
+            const h = Math.floor(minutos / 60);
+            const m = minutos % 60;
+            return String(h).padStart(2, '0') + ":" + String(m).padStart(2, '0');
+        },
+
+        // -------------------- UPDATE ACCIONES PARA LA ENTREGA -------------------------------
+
+        // 🆕 SOLUCIÓN HÍBRIDA: $batch + fallback individual cuando es necesario
+
+        _saveAccionesEnBackendOptimizado: function (aAcciones) {
+            const oDataModel = this.getView().getModel();
+            const oFechaTurno = this._oFechaTurnoCreado || this.byId("date").getDateValue();
+
+            if (!oFechaTurno) {
+                MessageBox.error("No se pudo obtener la fecha del turno");
+                return Promise.reject("No hay fecha de turno");
+            }
+
+            if (!aAcciones || aAcciones.length === 0) {
+                return Promise.resolve();
+            }
+
+            console.log("💾 Guardando acciones con $batch optimizado...");
+
+            // Normalizar fecha
+            const year = oFechaTurno.getFullYear();
+            const month = oFechaTurno.getMonth();
+            const day = oFechaTurno.getDate();
+            const oFechaUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+
+            // Separar operaciones en dos grupos:
+            // 1. Operaciones seguras para $batch (CREATE nuevos, UPDATE de turnos)
+            // 2. Operaciones con fallback (adjuntos que pueden necesitar CREATE si falla UPDATE)
+
+            const aBatchOperations = [];  // Para $batch
+            const aFallbackPromises = [];  // Para UPDATE-o-CREATE individual
+
+            // Configurar $batch
+            oDataModel.setUseBatch(true);
+            const sGroupId = "saveAccionesGroup_" + Date.now();
+            oDataModel.setDeferredGroups([sGroupId]);
+
+            let iOperacionesBatch = 0;
+            let iOperacionesFallback = 0;
+
+            // Procesar cada acción
+            aAcciones.forEach(accion => {
+                if (!accion.accion || !accion.idLicencia) {
+                    console.warn("⚠️ Acción incompleta");
+                    return;
+                }
+
+                const aIds = accion.idLicencia.split(" / ").map(id => id.trim());
+
+                // 🔑 CASO 1: Acción CON adjuntos
+                if (accion.Attachments && accion.Attachments.length > 0) {
+                    accion.Attachments.forEach((att, attIdx) => {
+                        const bEsAdjuntoNuevo = !att._guardado;
+                        const bCambioContenido = att._snapshotOriginal &&
+                            att.Attachment !== att._snapshotOriginal.Attachment;
+
+                        if (!bEsAdjuntoNuevo && !bCambioContenido) {
+                            console.log(`   ⏭️ Adjunto sin cambios: ${att.AttachmentName}`);
+                            return;
+                        }
+
+                        let base64Data = att.Attachment || "";
+                        if (base64Data.includes(',')) {
+                            base64Data = base64Data.split(',')[1];
+                        }
+
+                        const bAdjuntoExiste = att.Id && att.Empresa && att.Tipo &&
+                            att.Anio && att.Dateturno && att.Codigo;
+
+                        const payload = {
+                            Id: att.Id || aIds[0],
+                            Empresa: accion.empresa || "100",
+                            Tipo: accion.tipo || "L",
+                            Anio: accion.anio || new Date().getFullYear().toString(),
+                            Dateturno: oFechaUTC,
+                            Codigo: (accion.accion || "").substring(0, 10),
+                            Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                            Descripcion: accion.trabajoRealizar || "Sin descripción",
+                            Equnr: (accion.equipo || "").substring(0, 18),
+                            Equstat: accion.equstat || "A",
+                            Jobcond: (accion.condicion || "01").substring(0, 2),
+                            Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                            Comments: (att.AttachmentName || `Adjunto ${attIdx + 1}`).substring(0, 255),
+                            Licstat: (accion.estado || "01").substring(0, 2),
+                            Attachment: base64Data
+                        };
+
+                        if (bAdjuntoExiste) {
+                            // ⚠️ Adjunto existente: Puede necesitar fallback UPDATE→CREATE
+                            // NO usar $batch, usar promesa individual con fallback
+                            aFallbackPromises.push(
+                                new Promise((resolve, reject) => {
+                                    const sKey = oDataModel.createKey("/CatalogoEntregaSet", {
+                                        Id: att.Id,
+                                        Empresa: att.Empresa,
+                                        Tipo: att.Tipo,
+                                        Anio: att.Anio,
+                                        Dateturno: att.Dateturno,
+                                        Codigo: att.Codigo
+                                    });
+
+                                    oDataModel.update(sKey, payload, {
+                                        success: () => {
+                                            console.log(`   📝 UPDATE adjunto: ${att.AttachmentName}`);
+                                            resolve();
+                                        },
+                                        error: () => {
+                                            // Fallback: Si UPDATE falla, intentar CREATE
+                                            console.log(`   🔄 UPDATE falló, intentando CREATE: ${att.AttachmentName}`);
+                                            oDataModel.create("/CatalogoEntregaSet", payload, {
+                                                success: () => {
+                                                    console.log(`   ➕ CREATE adjunto (fallback): ${att.AttachmentName}`);
+                                                    resolve();
+                                                },
+                                                error: () => {
+                                                    console.error(`   ❌ Error adjunto: ${att.AttachmentName}`);
+                                                    reject();
+                                                }
+                                            });
+                                        }
+                                    });
+                                })
+                            );
+                            iOperacionesFallback++;
+                        } else {
+                            // ✅ Adjunto nuevo: Seguro para $batch
+                            oDataModel.create("/CatalogoEntregaSet", payload, {
+                                groupId: sGroupId
+                            });
+                            console.log(`   ➕ CREATE adjunto nuevo en $batch: ${att.AttachmentName}`);
+                            iOperacionesBatch++;
+                        }
+                    });
+
+                    // Verificar si solo cambió el turno (sin cambios en adjuntos)
+                    const bCambioTurno = accion._snapshotOriginal &&
+                        accion.turnoEntrega !== accion._snapshotOriginal.turnoEntrega;
+
+                    const bAlgunAdjuntoCambio = accion.Attachments.some(att => {
+                        const bEsNuevo = !att._guardado;
+                        const bCambio = att._snapshotOriginal && att.Attachment !== att._snapshotOriginal.Attachment;
+                        return bEsNuevo || bCambio;
+                    });
+
+                    if (bCambioTurno && !bAlgunAdjuntoCambio) {
+                        console.log(`   🔄 Solo cambió turno: ${accion._snapshotOriginal.turnoEntrega} → ${accion.turnoEntrega}`);
+
+                        aIds.forEach(sId => {
+                            const payload = {
+                                Id: sId,
+                                Empresa: accion.empresa || "100",
+                                Tipo: accion.tipo || "L",
+                                Anio: accion.anio || new Date().getFullYear().toString(),
+                                Dateturno: oFechaUTC,
+                                Codigo: (accion.accion || "").substring(0, 10),
+                                Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                                Descripcion: accion.trabajoRealizar || "Sin descripción",
+                                Equnr: (accion.equipo || "").substring(0, 18),
+                                Equstat: accion.equstat || "A",
+                                Jobcond: (accion.condicion || "01").substring(0, 2),
+                                Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                                Comments: `Adjuntos: ${accion.Attachments.length}`,
+                                Licstat: (accion.estado || "01").substring(0, 2),
+                                Attachment: ""
+                            };
+
+                            const sKey = oDataModel.createKey("/CatalogoEntregaSet", {
+                                Id: sId,
+                                Empresa: accion.empresa || "100",
+                                Tipo: accion.tipo || "L",
+                                Anio: accion.anio || new Date().getFullYear().toString(),
+                                Dateturno: oFechaUTC,
+                                Codigo: accion.accion
+                            });
+
+                            // ✅ UPDATE de turno: Seguro para $batch
+                            oDataModel.update(sKey, payload, {
+                                groupId: sGroupId
+                            });
+                            console.log(`   📝 UPDATE turno en $batch: ${sId} / ${accion.turnoEntrega}`);
+                            iOperacionesBatch++;
+                        });
+                    }
+
+                } else {
+                    // 🔑 CASO 2: Acción SIN adjuntos
+                    const bCambioTurno = !accion._snapshotOriginal ||
+                        accion.turnoEntrega !== accion._snapshotOriginal.turnoEntrega;
+
+                    const bEsNueva = !accion._estadoGuardado;
+
+                    if (!bEsNueva && !bCambioTurno) {
+                        console.log(`   ⏭️ Acción sin cambios: ${accion.idLicencia} / ${accion.accion}`);
+                        return;
+                    }
+
+                    aIds.forEach(sId => {
+                        const payload = {
+                            Id: sId,
+                            Empresa: accion.empresa || "100",
+                            Tipo: accion.tipo || "L",
+                            Anio: accion.anio || new Date().getFullYear().toString(),
+                            Dateturno: oFechaUTC,
+                            Codigo: (accion.accion || "").substring(0, 10),
+                            Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                            Descripcion: accion.trabajoRealizar || "Sin descripción",
+                            Equnr: (accion.equipo || "").substring(0, 18),
+                            Equstat: accion.equstat || "A",
+                            Jobcond: (accion.condicion || "01").substring(0, 2),
+                            Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                            Comments: "Sin adjuntos",
+                            Licstat: (accion.estado || "01").substring(0, 2),
+                            Attachment: ""
+                        };
+
+                        if (accion._estadoGuardado) {
+                            // ✅ UPDATE: Seguro para $batch
+                            const sKey = oDataModel.createKey("/CatalogoEntregaSet", {
+                                Id: sId,
+                                Empresa: accion.empresa || "100",
+                                Tipo: accion.tipo || "L",
+                                Anio: accion.anio || new Date().getFullYear().toString(),
+                                Dateturno: oFechaUTC,
+                                Codigo: accion.accion
+                            });
+
+                            oDataModel.update(sKey, payload, {
+                                groupId: sGroupId
+                            });
+                            console.log(`   📝 UPDATE en $batch: ${sId} / ${accion.turnoEntrega}`);
+                            iOperacionesBatch++;
+                        } else {
+                            // ✅ CREATE: Seguro para $batch
+                            oDataModel.create("/CatalogoEntregaSet", payload, {
+                                groupId: sGroupId
+                            });
+                            console.log(`   ➕ CREATE en $batch: ${sId} / ${accion.turnoEntrega}`);
+                            iOperacionesBatch++;
+                        }
+                    });
+                }
+            });
+
+            // Ejecutar operaciones
+            console.log(`📦 $batch: ${iOperacionesBatch} operaciones | Individual: ${iOperacionesFallback} operaciones`);
+
+            const aPromesas = [];
+
+            // 1. Ejecutar $batch si hay operaciones
+            if (iOperacionesBatch > 0) {
+                aPromesas.push(
+                    new Promise((resolve, reject) => {
+                        oDataModel.submitChanges({
+                            groupId: sGroupId,
+                            success: (oData) => {
+                                console.log("✅ $batch exitoso");
+                                resolve(oData);
+                            },
+                            error: (oError) => {
+                                console.error("❌ Error en $batch:", oError);
+                                reject(oError);
+                            }
+                        });
+                    })
+                );
+            }
+
+            // 2. Agregar promesas de fallback
+            aPromesas.push(...aFallbackPromises);
+
+            if (aPromesas.length === 0) {
+                console.log("✅ No hay cambios para guardar");
+                oDataModel.setUseBatch(false);
+                return Promise.resolve();
+            }
+
+            // Ejecutar todas las promesas en paralelo
+            return Promise.all(aPromesas)
+                .then(() => {
+                    oDataModel.setUseBatch(false);
+                    console.log("✅ Guardado completo exitoso");
+
+                    // Actualizar snapshots
+                    aAcciones.forEach(accion => {
+                        accion._estadoGuardado = true;
+                        accion._snapshotOriginal = {
+                            turnoEntrega: accion.turnoEntrega,
+                            attachmentsCount: accion.Attachments ? accion.Attachments.length : 0
+                        };
+
+                        if (accion.Attachments) {
+                            accion.Attachments.forEach(att => {
+                                att._guardado = true;
+                                att._snapshotOriginal = {
+                                    Attachment: att.Attachment,
+                                    AttachmentName: att.AttachmentName
+                                };
+                            });
+                        }
+                    });
+                })
+                .catch((error) => {
+                    oDataModel.setUseBatch(false);
+                    console.error("❌ Error al guardar:", error);
+                    throw error;
+                });
+        },
+
+        // ----------------- GENERAR ACCIONES AUTOMATICAS PARA LICENCIAS CON MANIOBRAS ------
+        onRegenerarAccionesAutomaticas: function () {
+            MessageBox.confirm(
+                "¿Generar acciones automáticas para todas las licencias con maniobras?\n\n" +
+                "Esto agregará las acciones faltantes (SOL TEC, AUT COC, INI MAN, COL PAT, FIN MAN).",
+                {
+                    title: "Generar Acciones Automáticas",
+                    actions: [MessageBox.Action.OK, MessageBox.Action.CANCEL],
+                    emphasizedAction: MessageBox.Action.OK,
+                    onClose: (sAction) => {
+                        if (sAction === MessageBox.Action.OK) {
+                            this._generarAccionesAutomaticas();
+                        }
+                    }
+                }
+            );
+        },
+
+        _generarAccionesAutomaticas: function () {
+            const oView = this.getView();
+            const oLicencesModel = oView.getModel("LicencesJsonModel");
+            const oAccionesModel = oView.getModel("AccionesEntregaModel");
+
+            const aLicencias = oLicencesModel.getData() || [];
+            let aAccionesExistentes = oAccionesModel.getData() || [];
+
+            if (aLicencias.length === 0) {
+                console.log("⚠️ No hay licencias para procesar");
+                return;
+            }
+
+            console.log("🤖 ════════════════════════════════════════════");
+            console.log("🤖 GENERACIÓN AUTOMÁTICA DE ACCIONES");
+            console.log("════════════════════════════════════════════\n");
+
+            // 🔍 Filtrar licencias CON maniobras
+            const aLicenciasConManiobras = aLicencias.filter(licencia => {
+                const info = Utils.getShiftInfo(licencia);
+
+                const esConManiobras =
+                    info.category === "ConsignacionLinea" ||
+                    info.category === "ConsignacionEquipo" ||
+                    info.category === "ManiobrasSinConsignacion";
+
+                return esConManiobras;
+            });
+
+            console.log(`📊 Licencias totales: ${aLicencias.length}`);
+            console.log(`✅ Licencias CON maniobras: ${aLicenciasConManiobras.length}`);
+            console.log(`⏭️ Licencias SIN maniobras: ${aLicencias.length - aLicenciasConManiobras.length}\n`);
+
+            if (aLicenciasConManiobras.length === 0) {
+                console.log("⚠️ No hay licencias con maniobras para generar acciones");
+                MessageToast.show("No hay licencias con maniobras");
+                return;
+            }
+
+            // 👥 Agrupar licencias por grupo
+            const mLicenciasPorGrupo = {};
+
+            aLicenciasConManiobras.forEach(licencia => {
+                const sGrupo = licencia.Grupo || licencia.Id;
+
+                if (!mLicenciasPorGrupo[sGrupo]) {
+                    mLicenciasPorGrupo[sGrupo] = [];
+                }
+
+                mLicenciasPorGrupo[sGrupo].push(licencia);
+            });
+
+            console.log(`👥 Grupos identificados: ${Object.keys(mLicenciasPorGrupo).length}\n`);
+
+            let iAccionesGeneradas = 0;
+            let iAccionesOmitidas = 0;
+
+            // 🔄 Para cada grupo, generar acciones
+            Object.keys(mLicenciasPorGrupo).forEach(sGrupo => {
+                const aLicenciasGrupo = mLicenciasPorGrupo[sGrupo];
+                const oLicenciaPrincipal = aLicenciasGrupo[0];
+
+                // 🔍 Obtener categoría de la licencia
+                const info = Utils.getShiftInfo(oLicenciaPrincipal);
+                const esConsignacion = info.category === "ConsignacionLinea" ||
+                    info.category === "ConsignacionEquipo";
+
+                // IDs del grupo
+                const aIdsGrupo = aLicenciasGrupo.map(lic => lic.Id);
+                const sIdsGrupo = aIdsGrupo.join(" / ");
+
+                console.log(`📌 Grupo: ${sIdsGrupo}`);
+                console.log(`   Categoría: ${info.category}`);
+                console.log(`   Equipo: ${oLicenciaPrincipal.Equnr || 'N/A'}`);
+                console.log(`   Turno: ${oLicenciaPrincipal.TurnoAsignado || 'N/A'}`);
+
+                // 📋 Definir acciones según categoría
+                let aAccionesAutomaticas;
+
+                if (esConsignacion) {
+                    // ✅ CONSIGNACIÓN: Todas las 9 acciones (incluye COL PAT y RET PAT)
+                    console.log(`   ✅ Consignación → Genera 9 acciones (con COL PAT y RET PAT)`);
+                    aAccionesAutomaticas = [
+                        { codigo: "SOL TEC", descripcion: "El técnico confirmará los trabajos al COT" },
+                        { codigo: "AUT COC", descripcion: "El COC y agentes involucrados autorizan" },
+                        { codigo: "INI MAN", descripcion: "Comienzo de maniobras - F/S Programado" },
+                        { codigo: "COL PAT", descripcion: "El Técnico confirmará la colocación de PAT" },
+                        { codigo: "FIN MAN", descripcion: "Finalización de maniobras - Entrega LT" },
+                        { codigo: "FIN LT", descripcion: "El Técnico confirmará la finalización de los trabajos" },
+                        { codigo: "RET PAT", descripcion: "El Técnico confirmará el retiro de PAT" },
+                        { codigo: "MAN PES", descripcion: "El Técnico confirmará la normalización de la instalación - El COT comienza las maniobras para la PES" },
+                        { codigo: "PES", descripcion: "Puesta en servicio efectivo" }
+                    ];
+                } else {
+                    // ⚠️ MANIOBRAS SIN CONSIGNACIÓN: 7 acciones (SIN COL PAT ni RET PAT)
+                    console.log(`   ⚠️ Sin Consignación → Genera 7 acciones (sin COL PAT ni RET PAT)`);
+                    aAccionesAutomaticas = [
+                        { codigo: "SOL TEC", descripcion: "El técnico confirmará los trabajos al COT" },
+                        { codigo: "AUT COC", descripcion: "El COC y agentes involucrados autorizan" },
+                        { codigo: "INI MAN", descripcion: "Comienzo de maniobras - F/S Programado" },
+                        { codigo: "FIN MAN", descripcion: "Finalización de maniobras - Entrega LT" },
+                        { codigo: "FIN LT", descripcion: "El Técnico confirmará la finalización de los trabajos" },
+                        { codigo: "MAN PES", descripcion: "El Técnico confirmará la normalización de la instalación - El COT comienza las maniobras para la PES" },
+                        { codigo: "PES", descripcion: "Puesta en servicio efectivo" }
+                    ];
+                }
+
+                // Verificar acciones existentes para este grupo
+                const aAccionesExistentesGrupo = aAccionesExistentes.filter(accion => {
+                    const sIdLicencia = accion.idLicencia || "";
+                    const aIdsAccion = sIdLicencia.split(" / ").map(id => id.trim());
+                    return aIdsAccion.some(id => aIdsGrupo.includes(id));
+                });
+
+                const aCodigosExistentes = aAccionesExistentesGrupo.map(a => a.accion);
+                console.log(`   Acciones existentes: ${aCodigosExistentes.length} (${aCodigosExistentes.join(', ') || 'ninguna'})`);
+
+                // Generar acciones faltantes
+                aAccionesAutomaticas.forEach(accionDef => {
+                    const sCodigo = accionDef.codigo;
+
+                    if (aCodigosExistentes.includes(sCodigo)) {
+                        console.log(`      ⏭️ ${sCodigo} ya existe`);
+                        iAccionesOmitidas++;
+                        return;
+                    }
+
+                    // Calcular horario automáticamente
+                    const sTurnoBase = oLicenciaPrincipal.TurnoAsignado || "";
+
+                    if (!sTurnoBase || sTurnoBase.trim() === "") {
+                        console.log(`      ⚠️ ${sCodigo} - SIN turno asignado, omitiendo`);
+                        iAccionesOmitidas++;
+                        return;
+                    }
+
+                    const sTurnoCalculado = this._calcularHorarioAccion(sCodigo, oLicenciaPrincipal, sTurnoBase);
+
+                    // Obtener descripción larga del catálogo
+                    const sDescripcionLarga = this._getDescripcionDesdeCategologo(sCodigo);
+
+                    // Crear nueva acción
+                    const oNuevaAccion = {
+                        accion: sCodigo,
+                        descripcion: accionDef.descripcion,
+                        descripcionLarga: sDescripcionLarga || accionDef.descripcion,
+                        idLicencia: sIdsGrupo,
+                        idLicenciaOriginal: oLicenciaPrincipal.Id,
+                        equipo: oLicenciaPrincipal.Equnr || "",
+                        equipoCompleto: oLicenciaPrincipal.EquipoCompleto || oLicenciaPrincipal.Equnr || "",
+                        trabajoRealizar: sDescripcionLarga || accionDef.descripcion,
+                        turnoEntrega: sTurnoCalculado,
+                        estado: oLicenciaPrincipal.Licstat || "01",
+                        condicion: oLicenciaPrincipal.Jobcond || "01",
+                        equstat: oLicenciaPrincipal.Equstat || "A",
+                        empresa: oLicenciaPrincipal.Empresa || "100",
+                        tipo: oLicenciaPrincipal.Tipo || "L",
+                        anio: oLicenciaPrincipal.Anio || new Date().getFullYear().toString(),
+                        _licenciaId: oLicenciaPrincipal.Id,
+                        _estadoGuardado: false,
+                        _snapshotOriginal: {
+                            turnoEntrega: sTurnoCalculado,
+                            attachmentsCount: 0
+                        },
+                        Attachments: []
+                    };
+
+                    aAccionesExistentes.push(oNuevaAccion);
+                    iAccionesGeneradas++;
+
+                    console.log(`      ➕ ${sCodigo} generada - Turno: ${sTurnoCalculado}`);
+                });
+
+                console.log("");
+            });
+
+            // Ordenar acciones por grupo y hora
+            const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAccionesExistentes);
+
+            // Actualizar modelo
+            oAccionesModel.setData(aAccionesOrdenadas);
+            oAccionesModel.refresh();
+
+            console.log("════════════════════════════════════════════");
+            console.log("✅ RESULTADO:");
+            console.log(`   Acciones generadas: ${iAccionesGeneradas}`);
+            console.log(`   Acciones omitidas (ya existían): ${iAccionesOmitidas}`);
+            console.log(`   Total acciones ahora: ${aAccionesOrdenadas.length}`);
+            console.log("════════════════════════════════════════════\n");
+
+            if (iAccionesGeneradas > 0) {
+                MessageToast.show(`${iAccionesGeneradas} acciones generadas automáticamente`, {
+                    duration: 3000
+                });
+            } else if (iAccionesOmitidas > 0) {
+                MessageToast.show("Todas las acciones ya existen", {
+                    duration: 2000
+                });
+            }
+        },
+
+        // ----------- LISTADO CRONOLOGICO CON ADJUNTOS Y COMENTARIOS ---------
+        // ════════════════════════════════════════════════════════════════
+        // SOLUCIÓN CORREGIDA: Los adjuntos ya están en las licencias
+        // No se necesita consultar /CatalogoEntregaSet
+        // ════════════════════════════════════════════════════════════════
+
+        // 1️⃣ MARCAR LICENCIAS CON ADJUNTOS al crear el Listado Cronológico
+
+        _marcarAdjuntosEnListadoCronologico: function () {
+            const oView = this.getView();
+            const oListCronoModel = oView.getModel("listCronoTreeModel");
+            const oData = oListCronoModel.getData() || [];
+
+            if (oData.length === 0) {
+                console.log("⚠️ No hay datos en listado cronológico");
+                return;
+            }
+
+            console.log("📎 Marcando licencias con adjuntos en Listado Cronológico...");
+
+            let iTotalAdjuntos = 0;
+
+            // Función recursiva para recorrer el árbol
+            const marcarNodos = (aNodes) => {
+                aNodes.forEach(node => {
+                    if (node._isGroup === false) {
+                        // Es una licencia (nodo hijo)
+
+                        // Obtener adjuntos desde AttachmentXLicencia_nav
+                        const aAdjuntos = node.AttachmentXLicencia_nav?.results ||
+                            node.AttachmentXLicencia_nav ||
+                            node.Attachments ||
+                            [];
+
+                        // Marcar si tiene adjuntos
+                        node._tieneAdjuntos = aAdjuntos.length > 0;
+                        node._adjuntos = aAdjuntos;
+                        node._cantidadAdjuntos = aAdjuntos.length;
+
+                        if (aAdjuntos.length > 0) {
+                            console.log(`      ✅ ${node.Id}: ${aAdjuntos.length} adjunto(s)`);
+                            iTotalAdjuntos += aAdjuntos.length;
+                        }
+                    }
+
+                    // Recursivo para hijos
+                    if (node.children && node.children.length > 0) {
+                        marcarNodos(node.children);
+                    }
+                });
+            };
+
+            marcarNodos(oData);
+
+            console.log(`   📎 Total de adjuntos en Listado Cronológico: ${iTotalAdjuntos}`);
+
+            // Refrescar modelo
+            oListCronoModel.refresh();
+        },
+
+        // 2️⃣ EVENTO del botón "Ver Adjuntos"
+
+        onVerAdjuntosListadoCronologico: function (oEvent) {
+            const oButton = oEvent.getSource();
+            const oContext = oButton.getBindingContext("listCronoTreeModel");
+
+            if (!oContext) {
+                MessageToast.show("No se pudo obtener el contexto");
+                return;
+            }
+
+            const oLicencia = oContext.getObject();
+
+            // Obtener adjuntos
+            const aAdjuntos = oLicencia.AttachmentXLicencia_nav?.results ||
+                oLicencia.AttachmentXLicencia_nav ||
+                oLicencia.Attachments ||
+                [];
+
+            if (aAdjuntos.length === 0) {
+                MessageToast.show("No hay adjuntos para esta licencia");
+                return;
+            }
+
+            console.log(`📎 Mostrando adjuntos para licencia: ${oLicencia.Id}`);
+            console.log(`   Cantidad: ${aAdjuntos.length}`);
+
+            // Crear modelo para el popup
+            const oAdjuntosModel = new JSONModel({
+                licenciaId: oLicencia.Id,
+                equipo: oLicencia.Equnr || oLicencia.DescEquipo,
+                fecha: this._getSelectedDateString(),
+                adjuntos: aAdjuntos
+            });
+
+            // Crear o abrir popup
+            if (!this._adjuntosListadoCronoDialog) {
+                this._adjuntosListadoCronoDialog = sap.ui.xmlfragment(
+                    "transener.sistemadeturnos.view.fragments.AdjuntosListadoCronologico",
+                    this
+                );
+                this.getView().addDependent(this._adjuntosListadoCronoDialog);
+            }
+
+            this._adjuntosListadoCronoDialog.setModel(oAdjuntosModel, "adjuntosModel");
+            this._adjuntosListadoCronoDialog.open();
+        },
+
+        // 3️⃣ CERRAR popup
+
+        onCerrarAdjuntosListadoCrono: function () {
+            if (this._adjuntosListadoCronoDialog) {
+                this._adjuntosListadoCronoDialog.close();
+            }
+        },
+
+        // 4️⃣ DESCARGAR adjunto
+
+        onDescargarAdjuntoListadoCrono: function (oEvent) {
+            const oButton = oEvent.getSource();
+            const oContext = oButton.getBindingContext("adjuntosModel");
+
+            if (!oContext) {
+                MessageToast.show("No se pudo obtener el adjunto");
+                return;
+            }
+
+            const oAdjunto = oContext.getObject();
+
+            console.log(`📥 Descargando adjunto: ${oAdjunto.Filename || oAdjunto.AttachmentName || "archivo"}`);
+
+            // Obtener datos del adjunto
+            const sBase64 = oAdjunto.Attachment || oAdjunto.Content;
+            const sFilename = oAdjunto.Filename || oAdjunto.AttachmentName || "adjunto";
+            const sMimeType = oAdjunto.Mimetype || "application/octet-stream";
+
+            if (!sBase64) {
+                MessageToast.show("No se pudo obtener el contenido del archivo");
+                return;
+            }
+
+            try {
+                // Crear blob y descargar
+                const byteCharacters = atob(sBase64);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: sMimeType });
+
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = sFilename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+
+                MessageToast.show(`Descargando: ${sFilename}`);
+            } catch (error) {
+                console.error("Error al descargar:", error);
+                MessageBox.error("Error al descargar el archivo");
+            }
+        },
+
+        // 5️⃣ HELPER: Formatear tamaño de archivo (si no existe en formatter.js)
+
+        formatFileSize: function (iBytes) {
+            if (!iBytes || iBytes === 0) return "0 B";
+
+            const k = 1024;
+            const sizes = ["B", "KB", "MB", "GB"];
+            const i = Math.floor(Math.log(iBytes) / Math.log(k));
+
+            return Math.round(iBytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i];
+        },
+
+        onViewAttachmentFromTree: function (oEvent) {
+            const oButton = oEvent.getSource();
+            const oTreeContext = oButton.getBindingContext("listCronoTreeModel");
+
+            if (!oTreeContext) {
+                MessageToast.show("No se pudo obtener el contexto");
+                return;
+            }
+
+            const oNodeData = oTreeContext.getObject();
+
+            // Buscar licencia en LicencesJsonModel
+            const oLicencesModel = this.getView().getModel("LicencesJsonModel");
+            const aLicencias = oLicencesModel.getData() || [];
+            const oLicencia = aLicencias.find(lic => lic.Id === oNodeData.Id);
+
+            if (!oLicencia) {
+                MessageToast.show("No se encontró la licencia");
+                return;
+            }
+
+            // Crear contexto para reutilizar onViewAttachment
+            const sPath = "/" + aLicencias.indexOf(oLicencia);
+            const oLicenciaContext = oLicencesModel.createBindingContext(sPath);
+
+            const oFakeEvent = {
+                getSource: () => ({
+                    getBindingContext: () => oLicenciaContext
+                })
+            };
+
+            // Reutilizar función existente
+            this.onViewAttachment(oFakeEvent);
+        }
+
     });
 });

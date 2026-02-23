@@ -4,7 +4,8 @@ sap.ui.define([
     "sap/ui/model/FilterOperator",
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/Utils",
-], function (MessageBox, Filter, FilterOperator, ModelHelper, Utils) {
+    "transener/sistemadeturnos/utils/FormatHelper"
+], function (MessageBox, Filter, FilterOperator, ModelHelper, Utils, FormatHelper) {
     "use strict";
 
     return {
@@ -88,18 +89,8 @@ sap.ui.define([
                 throw new Error("El parámetro 'fechaSeleccionada' debe ser un string con formato de fecha (YYYY-MM-DD).");
             }
 
-            if (isRefresh) {
-                // 01 = Autorizada
-                // 02 = Observada
-                // 07 = Coordinada
-                // 08 = Entregada
-                // 09 = Generada
-                // 10 = Suspendida
-                // 23 = En Tramite
-                estadosPermitidos = ["01", "07", "08", "10", "23"];
-            } else {
-                estadosPermitidos = ["01", "07", "08", "10", "23"];
-            }
+            // Estados permitidos (EXCLUYE "06" NO Autorizada)
+            estadosPermitidos = ["01", "07", "08", "10", "23"];
 
             const estadosEncontrados = {};
             datos.forEach(d => {
@@ -109,41 +100,45 @@ sap.ui.define([
                 estadosEncontrados[d.Licstat]++;
             });
 
+            console.log("📊 Estados encontrados en datos:", estadosEncontrados);
+
             const datosFiltrados = datos.filter(dato => {
                 // 1) Si es agregada manualmente, SIEMPRE pasa (sin importar estado)
                 if (dato.Agrmanual === true) {
                     return true;
                 }
 
-                // 2) Filtrar por estados permitidos
+                // 2) Filtrar por estados permitidos (EXCLUYE "06" NO Autorizada)
                 if (!estadosPermitidos.includes(dato.Licstat)) {
+                    // 🆕 QUITAR ESTA LÍNEA que usa _getEstadoTexto (no existe aquí)
+                    // console.log(`❌ Licencia ${dato.Id} excluida: Estado ${dato.Licstat} (${this._getEstadoTexto(dato.Licstat)})`);
+
+                    // ✅ REEMPLAZAR POR:
+                    console.log(`❌ Licencia ${dato.Id} excluida: Estado ${dato.Licstat}`);
                     return false;
                 }
 
-                // 2) Lógica según Period
+                // 3) Lógica según Period
                 if (dato.Period === "D") {
-                    // Diaria: si está en estado permitido, ya pasa
                     return true;
                 }
 
                 if (dato.Period === "C") {
-                    // Continua:
-                    // - si isRefresh = true → no validamos Solbeg, pasa directo
                     if (isRefresh) {
                         return true;
                     }
 
-                    // - si isRefresh = false → Solbeg debe ser igual a fechaSeleccionada
                     const fechaSolbeg = dato.Solbeg instanceof Date ? dato.Solbeg : new Date(dato.Solbeg);
                     if (isNaN(fechaSolbeg)) return false;
 
-                    const isoSolbeg = fechaSolbeg.toISOString().split("T")[0]; // YYYY-MM-DD
+                    const isoSolbeg = fechaSolbeg.toISOString().split("T")[0];
                     return isoSolbeg === fechaSeleccionada;
                 }
 
-                // Otros Period no pasan
                 return false;
             });
+
+            console.log(`✅ Licencias después del filtro: ${datosFiltrados.length} de ${datos.length}`);
             return datosFiltrados;
         },
 
@@ -327,9 +322,68 @@ sap.ui.define([
             oLicencesModel.refresh(true);
         },
 
+        validarEstadosAntesDeGuardar: function (aLicenciasEnPantalla, oDataModel) {
+            return new Promise((resolve, reject) => {
 
+                const aIds = aLicenciasEnPantalla.map(lic => lic.Id);
 
+                if (aIds.length === 0) {
+                    resolve({ validas: [], noAutorizadas: [] });
+                    return;
+                }
 
+                const aFilters = aIds.map(id =>
+                    new Filter("Id", FilterOperator.EQ, id)
+                );
+
+                const oFilterOr = new Filter({
+                    filters: aFilters,
+                    and: false
+                });
+
+                oDataModel.read('/LicenciaTrabajoSet', {
+                    filters: [oFilterOr],
+                    success: (oData) => {
+                        const estadosPermitidos = ["01", "07", "08", "10", "23"];
+
+                        const aValidas = [];
+                        const aNoAutorizadas = [];
+
+                        aLicenciasEnPantalla.forEach(licPantalla => {
+                            const licBackend = oData.results.find(l => l.Id === licPantalla.Id);
+
+                            if (!licBackend) {
+                                aNoAutorizadas.push({
+                                    ...licPantalla,
+                                    motivoRechazo: "Licencia no encontrada en el sistema"
+                                });
+                            } else if (!estadosPermitidos.includes(licBackend.Licstat)) {
+                                // 🆕 USAR FormatHelper en lugar de _getEstadoTexto
+                                aNoAutorizadas.push({
+                                    ...licPantalla,
+                                    estadoAnterior: licPantalla.Licstat,
+                                    estadoActual: licBackend.Licstat,
+                                    motivoRechazo: `Estado cambió a: ${FormatHelper.formatLicState(licBackend.Licstat)}`
+                                });
+                            } else {
+                                aValidas.push(licPantalla);
+                            }
+                        });
+
+                        console.log("✅ Licencias válidas:", aValidas.length);
+                        console.log("❌ Licencias no autorizadas:", aNoAutorizadas.length);
+
+                        resolve({
+                            validas: aValidas,
+                            noAutorizadas: aNoAutorizadas
+                        });
+                    },
+                    error: (oError) => {
+                        reject(oError);
+                    }
+                });
+            });
+        },
 
     };
 });

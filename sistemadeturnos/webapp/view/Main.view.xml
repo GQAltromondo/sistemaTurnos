@@ -519,6 +519,7 @@
                                                     valueState="{path: 'LicencesJsonModel>Consola', formatter: '.formatter.turnoColor'}"
                                                     change="onChangeHour"
                                                     class="tpGroupBorder {LicencesJsonModel>ColorGrupoClass}"
+                                                    enabled="{editableModel>/isEditable}"
                                                 />
                                             </HBox>
                                         </t:template>
@@ -767,6 +768,45 @@
                                             </HBox>
                                         </t:template>
                                     </t:Column>
+
+                                    <t:Column
+                                        id="comentariosCrono"
+                                        width="200px"
+                                        hAlign="Left"
+                                    >
+                                        <Label text="Comentarios" />
+                                        <t:template>
+                                            <VBox
+                                                visible="{= ${listCronoTreeModel>_isGroup} === false }"
+                                            >
+                                                <!-- Comentarios adicionales -->
+                                                <Text
+                                                    text="{listCronoTreeModel>Comentarios}"
+                                                    wrapping="true"
+                                                    class="sapUiTinyMarginBottom"
+                                                />
+                                            </VBox>
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column
+                                        id="adjuntoCrono"
+                                        width="100px"
+                                        hAlign="Center"
+                                    >
+                                        <Label text="Visualizar Adjunto" />
+                                        <t:template>
+                                            <Button
+                                                icon="sap-icon://attachment"
+                                                type="Emphasized"
+                                                tooltip="Ver adjuntos"
+                                                press=".onViewAttachmentFromTree"
+                                                visible="{= ${listCronoTreeModel>_isGroup} === false &amp;&amp; ${listCronoTreeModel>_tieneAdjuntos} === true }"
+                                                text="{= ${listCronoTreeModel>_cantidadAdjuntos} || '' }"
+                                                class="whiteIconButton"
+                                            />
+                                        </t:template>
+                                    </t:Column>
                                 </t:columns>
                             </t:TreeTable>
                         </IconTabFilter>
@@ -789,6 +829,7 @@
                                             text="Adjuntar archivo"
                                             icon="sap-icon://attachment"
                                             press="onAttachFileAccion"
+                                            enabled="{editableModel>/isEditable}"
                                         />
 
                                         <!-- Eliminar acción -->
@@ -796,33 +837,12 @@
                                             text="Eliminar acción"
                                             icon="sap-icon://delete"
                                             press="onRemoveAccionEntrega"
+                                            enabled="{editableModel>/isEditable}"
                                         />
                                     </Menu>
                                 </t:contextMenu>
 
                                 <t:columns>
-                                    <!-- Columna Acción -->
-                                    <t:Column width="150px">
-                                        <Label text="Acción" />
-                                        <t:template>
-                                            <Text
-                                                text="{AccionesEntregaModel>accion}"
-                                                wrapping="false"
-                                            />
-                                        </t:template>
-                                    </t:Column>
-
-                                    <!-- Columna Descripción -->
-                                    <t:Column width="400px">
-                                        <Label text="Descripción" />
-                                        <t:template>
-                                            <Text
-                                                text="{AccionesEntregaModel>descripcion}"
-                                                wrapping="true"
-                                            />
-                                        </t:template>
-                                    </t:Column>
-
                                     <!-- Columna Equipo -->
                                     <t:Column width="120px">
                                         <Label text="Equipo" />
@@ -840,6 +860,28 @@
                                         <t:template>
                                             <Text
                                                 text="{AccionesEntregaModel>idLicencia}"
+                                                wrapping="true"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <!-- Columna Acción -->
+                                    <t:Column width="150px">
+                                        <Label text="Acción" />
+                                        <t:template>
+                                            <Text
+                                                text="{AccionesEntregaModel>accion}"
+                                                wrapping="false"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <!-- Columna Descripción -->
+                                    <t:Column width="400px">
+                                        <Label text="Descripción" />
+                                        <t:template>
+                                            <Text
+                                                text="{AccionesEntregaModel>descripcion}"
                                                 wrapping="true"
                                             />
                                         </t:template>
@@ -907,13 +949,13 @@
 
                             <OverflowToolbar class="sapUiSmallMarginTop">
                                 <ToolbarSpacer />
-
                                 <Button
                                     text="Guardar Acciones"
                                     icon="sap-icon://save"
                                     type="Emphasized"
                                     press="onGuardarAccionesBackend"
                                     tooltip="Guardar todas las acciones en el backend"
+                                    enabled="{editableModel>/isEditable}"
                                 />
                             </OverflowToolbar>
                         </IconTabFilter>
@@ -933,108 +975,124 @@
                                 width="auto"
                             >
                                 <content>
-                                    <t:Table
-                                        selectionMode="None"
-                                        alternateRowColors="true"
+                                    <Table
+                                        class="sapUiSmallMarginTop"
                                         width="100%"
                                     >
-                                        <t:columns>
-                                            <!-- Columna: Tipo de intervención -->
-                                            <t:Column width="70%">
-                                                <Label
+                                        <columns>
+                                            <Column width="40%">
+                                                <Text
                                                     text="Tipo de intervención"
                                                     class="sapUiTextBold"
                                                 />
-                                                <t:template>
-                                                    <Text text="" />
-                                                </t:template>
-                                            </t:Column>
-
-                                            <!-- Columna: Cantidad -->
-                                            <t:Column
-                                                width="30%"
+                                            </Column>
+                                            <Column width="40%">
+                                                <Text
+                                                    text="Condición"
+                                                    class="sapUiTextBold"
+                                                />
+                                            </Column>
+                                            <Column
+                                                width="20%"
                                                 hAlign="Center"
                                             >
-                                                <Label
+                                                <Text
                                                     text="Cantidad"
                                                     class="sapUiTextBold"
                                                 />
-                                                <t:template>
-                                                    <Text text="" />
-                                                </t:template>
-                                            </t:Column>
-                                        </t:columns>
+                                            </Column>
+                                        </columns>
 
-                                        <t:rows>
+                                        <items>
                                             <!-- Fila 1: Consignación -->
-                                            <t:Row>
-                                                <t:cells>
+                                            <ColumnListItem>
+                                                <cells>
                                                     <Text text="Consignación" />
-                                                    <Text text="" />
-                                                </t:cells>
-                                            </t:Row>
+                                                    <Text
+                                                        text="Líneas L2/L5 + Otros equipos"
+                                                    />
+                                                    <Text
+                                                        text="{= ${countsModel>/ConsignacionLinea} + ${countsModel>/ConsignacionEquipo} }"
+                                                    />
+                                                </cells>
+                                            </ColumnListItem>
 
                                             <!-- Fila 2: Condiciones especiales C/maniobra -->
-                                            <t:Row>
-                                                <t:cells>
+                                            <ColumnListItem>
+                                                <cells>
                                                     <Text
                                                         text="Condiciones especiales C/maniobra"
                                                     />
                                                     <Text
-                                                        text="{countsModel>/LTWithManouvers}"
+                                                        text="PAT vacío + Interruptores/Seccionadores"
                                                     />
-                                                </t:cells>
-                                            </t:Row>
+                                                    <Text
+                                                        text="{countsModel>/ManiobrasSinConsignacion}"
+                                                    />
+                                                </cells>
+                                            </ColumnListItem>
 
                                             <!-- Fila 3: Condiciones especiales S/maniobra -->
-                                            <t:Row>
-                                                <t:cells>
+                                            <ColumnListItem>
+                                                <cells>
                                                     <Text
                                                         text="Condiciones especiales S/maniobra"
                                                     />
                                                     <Text
-                                                        text="{countsModel>/LTWithoutManouvers}"
+                                                        text="Sin equipos de maniobra"
                                                     />
-                                                </t:cells>
-                                            </t:Row>
+                                                    <Text
+                                                        text="{countsModel>/SinManiobras}"
+                                                    />
+                                                </cells>
+                                            </ColumnListItem>
 
                                             <!-- Fila 4: TcT c/bloqueo de recierre -->
-                                            <t:Row>
-                                                <t:cells>
+                                            <ColumnListItem>
+                                                <cells>
                                                     <Text
                                                         text="TcT c/bloqueo de recierre"
                                                     />
-                                                    <Text text="" />
-                                                </t:cells>
-                                            </t:Row>
+                                                    <Text
+                                                        text="Campo Bloqueo con datos"
+                                                    />
+                                                    <Text
+                                                        text="{countsModel>/TCTConBloqueo}"
+                                                    />
+                                                </cells>
+                                            </ColumnListItem>
 
                                             <!-- Fila 5: TcT s/bloqueo de recierre -->
-                                            <t:Row>
-                                                <t:cells>
+                                            <ColumnListItem>
+                                                <cells>
                                                     <Text
                                                         text="TcT s/bloqueo de recierre"
                                                     />
                                                     <Text
-                                                        text="{countsModel>/TCT}"
+                                                        text="Campo Bloqueo vacío"
                                                     />
-                                                </t:cells>
-                                            </t:Row>
+                                                    <Text
+                                                        text="{countsModel>/TCTSinBloqueo}"
+                                                    />
+                                                </cells>
+                                            </ColumnListItem>
 
                                             <!-- Fila 6: Total (en rojo) -->
-                                            <t:Row>
-                                                <t:cells>
+                                            <ColumnListItem>
+                                                <cells>
                                                     <Text
                                                         text="Total"
                                                         class="sapUiTextBold totalRed"
                                                     />
+                                                    <Text text="" />
                                                     <Text
                                                         text="{countsModel>/Total}"
                                                         class="sapUiTextBold totalRed"
                                                     />
-                                                </t:cells>
-                                            </t:Row>
-                                        </t:rows>
-                                    </t:Table>
+                                                </cells>
+                                            </ColumnListItem>
+                                        </items>
+                                    </Table>
                                 </content>
                             </Panel>
 
@@ -1060,7 +1118,6 @@
                                         />
                                     </HBox>
 
-                                    <!-- ✅ TABLA MOVIDA AQUÍ DENTRO -->
                                     <t:Table
                                         id="reporteTable"
                                         rows="{ReporteModel>/}"
@@ -1068,16 +1125,16 @@
                                         enableColumnReordering="false"
                                     >
                                         <t:columns>
-                                            <t:Column width="120px">
-                                                <Label text="Fecha" />
+                                            <t:Column width="150px">
+                                                <Label text="ID Licencia" />
                                                 <t:template>
                                                     <Text
-                                                        text="{ReporteModel>Fecha}"
+                                                        text="{ReporteModel>IdLicencia}"
                                                     />
                                                 </t:template>
                                             </t:Column>
 
-                                            <t:Column width="150px">
+                                            <t:Column width="120px">
                                                 <Label text="Equipo" />
                                                 <t:template>
                                                     <Text
@@ -1086,11 +1143,33 @@
                                                 </t:template>
                                             </t:Column>
 
-                                            <t:Column width="120px">
+                                            <t:Column width="100px">
                                                 <Label text="Hora" />
                                                 <t:template>
                                                     <Text
                                                         text="{ReporteModel>Hora}"
+                                                    />
+                                                </t:template>
+                                            </t:Column>
+
+                                            <t:Column width="200px">
+                                                <Label
+                                                    text="Tipo de intervención"
+                                                />
+                                                <t:template>
+                                                    <Text
+                                                        text="{ReporteModel>TipoIntervencion}"
+                                                        wrapping="true"
+                                                    />
+                                                </t:template>
+                                            </t:Column>
+
+                                            <t:Column width="250px">
+                                                <Label text="Condición" />
+                                                <t:template>
+                                                    <Text
+                                                        text="{ReporteModel>Condicion}"
+                                                        wrapping="true"
                                                     />
                                                 </t:template>
                                             </t:Column>
@@ -1107,21 +1186,18 @@
                                         </t:columns>
                                     </t:Table>
 
-                                    <Toolbar class="sapUiSmallMarginTop">
+                                    <!-- <Toolbar class="sapUiSmallMarginTop">
                                         <ToolbarSpacer />
                                         <Button
                                             text="Descargar Excel"
                                             icon="sap-icon://excel-attachment"
                                             press=".onDescargarReporteActual"
                                         />
-                                        <Button
-                                            text="Cerrar"
-                                            press=".onCerrarReporte"
-                                        />
-                                    </Toolbar>
+                                    </Toolbar> -->
                                 </VBox>
                             </Panel>
                         </IconTabFilter>
+
                         <IconTabFilter
                             text="Grafico"
                             key="Grafico"
@@ -1184,6 +1260,7 @@
                             icon="sap-icon://save"
                             text="{i18n>saveTurno}"
                             press="onSaveTurnoPress"
+                            enabled="{editableModel>/isEditable}"
                         />
                         <Button
                             icon="sap-icon://create-form"

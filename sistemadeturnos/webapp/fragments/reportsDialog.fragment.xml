@@ -57,13 +57,13 @@
             </f:Form>
         </content>
         <buttons>
-            <Button
+            <!-- <Button
                 id="btnVisualizar"
                 text="Visualizar"
                 icon="sap-icon://show"
                 press=".onVisualizarReporte"
                 type="Emphasized"
-            />
+            /> -->
             <Button
                 icon="sap-icon://excel-attachment"
                 text="Descargar excel"

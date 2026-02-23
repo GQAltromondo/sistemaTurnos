@@ -247,3 +247,15 @@ html.sap-desktop .sapMIBar.sapMFooter-CTX {
 .sapMDP {
     height: 2rem !important;
 }
+
+/* Hacer que los headers de sap.m.Table sean azul oscuro como sap.ui.table.Table */
+.sapMListTblHeaderCell {
+    background-color: #255780 !important;
+    color: white !important;
+}
+
+.sapMListTblHeaderCell .sapMText,
+.sapMListTblHeaderCell .sapMLabel {
+    color: white !important;
+}
+

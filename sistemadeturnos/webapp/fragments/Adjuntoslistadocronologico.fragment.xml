@@ -1,0 +1,123 @@
+<core:FragmentDefinition
+    xmlns="sap.m"
+    xmlns:core="sap.ui.core"
+>
+    <Dialog
+        title="Adjuntos - Licencia {adjuntosModel>/licenciaId}"
+        contentWidth="600px"
+        contentHeight="400px"
+        resizable="true"
+        draggable="true"
+    >
+        <content>
+            <VBox class="sapUiSmallMargin">
+                <!-- Info de la licencia -->
+                <HBox class="sapUiTinyMarginBottom">
+                    <Label
+                        text="Equipo:"
+                        class="sapUiTinyMarginEnd sapUiTextBold"
+                    />
+                    <Text text="{adjuntosModel>/equipo}" />
+                </HBox>
+
+                <HBox class="sapUiSmallMarginBottom">
+                    <Label
+                        text="Total de adjuntos:"
+                        class="sapUiTinyMarginEnd sapUiTextBold"
+                    />
+                    <Text text="{adjuntosModel>/adjuntos/length}" />
+                </HBox>
+
+                <!-- Tabla de adjuntos -->
+                <Table
+                    items="{adjuntosModel>/adjuntos}"
+                    mode="None"
+                    class="sapUiSmallMarginTop"
+                >
+                    <columns>
+                        <Column width="50%">
+                            <Text
+                                text="Nombre"
+                                class="sapUiTextBold"
+                            />
+                        </Column>
+                        <Column width="25%">
+                            <Text
+                                text="Tipo"
+                                class="sapUiTextBold"
+                            />
+                        </Column>
+                        <Column
+                            width="15%"
+                            hAlign="End"
+                        >
+                            <Text
+                                text="Tamaño"
+                                class="sapUiTextBold"
+                            />
+                        </Column>
+                        <Column
+                            width="10%"
+                            hAlign="Center"
+                        >
+                            <Text
+                                text=""
+                                class="sapUiTextBold"
+                            />
+                        </Column>
+                    </columns>
+
+                    <items>
+                        <ColumnListItem>
+                            <cells>
+                                <!-- Nombre del archivo -->
+                                <VBox>
+                                    <Text
+                                        text="{adjuntosModel>Filename}"
+                                        wrapping="true"
+                                        class="sapUiTextBold"
+                                    />
+                                    <Text
+                                        text="{adjuntosModel>Comments}"
+                                        wrapping="true"
+                                        class="sapUiSmallText"
+                                    />
+                                </VBox>
+
+                                <!-- Tipo de archivo -->
+                                <Text
+                                    text="{adjuntosModel>Mimetype}"
+                                    wrapping="true"
+                                />
+
+                                <!-- Tamaño del archivo -->
+                                <Text
+                                    text="{
+                                        path: 'adjuntosModel>FileSize',
+                                        formatter: '.formatFileSize'
+                                    }"
+                                    textAlign="End"
+                                />
+
+                                <!-- Botón descargar -->
+                                <Button
+                                    icon="sap-icon://download"
+                                    type="Transparent"
+                                    tooltip="Descargar"
+                                    press=".onDescargarAdjuntoListadoCrono"
+                                />
+                            </cells>
+                        </ColumnListItem>
+                    </items>
+                </Table>
+            </VBox>
+        </content>
+
+        <beginButton>
+            <Button
+                text="Cerrar"
+                press=".onCerrarAdjuntosListadoCrono"
+            />
+        </beginButton>
+    </Dialog>
+</core:FragmentDefinition>

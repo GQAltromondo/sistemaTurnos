@@ -143,6 +143,8 @@ sap.ui.define([
             switch (sLicstat) {
                 case "01":
                     return "Autorizada";
+                case "06":
+                    return "NO Autorizada";
                 case "07":
                     return "Coordinada";
                 case "08":
