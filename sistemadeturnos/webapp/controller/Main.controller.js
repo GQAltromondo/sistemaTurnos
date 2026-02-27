@@ -40,16 +40,21 @@ sap.ui.define([
         formatter: FormatHelper,
 
         onInit: function () {
+            // Datos mockeados: tiempo real (hs absolutas desde medianoche) por acción.
+            // Previsto = hora planificada de cada acción (referencia celeste).
+            // Promedio  = media real entre todas las licencias (naranja) — se actualiza desde AccionesEntregaModel.
+            // DesvioMin = mínimo real observado (línea punteada).
+            // DesvioMax = máximo real observado (línea punteada).
             var oData = {
                 data: [
-                    { Accion: "Solicitud del equipo al COC", TiempoPrevisto: 1.5, TiempoReal: 2.0 },
-                    { Accion: "Autorización desde el COC", TiempoPrevisto: 2.0, TiempoReal: 2.5 },
-                    { Accion: "Comienzo de maniobras", TiempoPrevisto: 2.5, TiempoReal: 3.0 },
-                    { Accion: "Colocación de PAT", TiempoPrevisto: 3.0, TiempoReal: 4.0 },
-                    { Accion: "Entrega de LT", TiempoPrevisto: 8.0, TiempoReal: 12.0 },
-                    { Accion: "Finalización de LT", TiempoPrevisto: 9.0, TiempoReal: 12.0 },
-                    { Accion: "Retiro de PAT", TiempoPrevisto: 9.5, TiempoReal: 11.5 },
-                    { Accion: "Maniobras para la PES", TiempoPrevisto: 10.0, TiempoReal: 11.0 }
+                    { Accion: "Solicitud del equipo al COC", Previsto: 7.67, Promedio: 8.17,  DesvioMin: 7.5,  DesvioMax: 9.0  },
+                    { Accion: "Autorización desde el COC",   Previsto: 7.83, Promedio: 8.25,  DesvioMin: 7.7,  DesvioMax: 8.8  },
+                    { Accion: "Comienzo de maniobras",       Previsto: 8.0,  Promedio: 8.5,   DesvioMin: 7.9,  DesvioMax: 9.2  },
+                    { Accion: "Colocación de PAT",           Previsto: 8.75, Promedio: 9.5,   DesvioMin: 8.7,  DesvioMax: 11.0 },
+                    { Accion: "Entrega de LT",               Previsto: 9.0,  Promedio: 12.0,  DesvioMin: 9.5,  DesvioMax: 15.5 },
+                    { Accion: "Finalización de LT",          Previsto: 16.0, Promedio: 17.5,  DesvioMin: 16.5, DesvioMax: 19.0 },
+                    { Accion: "Retiro de PAT",               Previsto: 16.75,Promedio: 17.2,  DesvioMin: 16.8, DesvioMax: 18.5 },
+                    { Accion: "Maniobras para la PES",       Previsto: 16.75,Promedio: 17.0,  DesvioMin: 16.8, DesvioMax: 18.0 }
                 ]
             };
 
@@ -262,9 +267,49 @@ sap.ui.define([
         _initAccionesEntregaModel: function () {
             const oView = this.getView();
 
-            // Crear modelo para almacenar las acciones seleccionadas
             const oAccionesModel = new JSONModel([]);
             oView.setModel(oAccionesModel, "AccionesEntregaModel");
+
+            const oAccionesTreeModel = new JSONModel([]);
+            oView.setModel(oAccionesTreeModel, "accionesTreeModel");
+        },
+
+        _buildAccionesTreeModel: function () {
+            const oView = this.getView();
+            const aAcciones = oView.getModel("AccionesEntregaModel").getData() || [];
+
+            const mGrupos = {};
+
+            aAcciones.forEach(function (accion) {
+                const sKey = accion.idLicencia || accion.equipo || "";
+
+                if (!mGrupos[sKey]) {
+                    mGrupos[sKey] = {
+                        _isGroup: true,
+                        idLicencia: accion.idLicencia || "",
+                        equipo: accion.equipo || "",
+                        _childCount: 0,
+                        children: []
+                    };
+                }
+
+                mGrupos[sKey].children.push(Object.assign({}, accion, { _isGroup: false }));
+                mGrupos[sKey]._childCount++;
+            });
+
+            // Calcular flags de adjuntos en nodos padre a partir de sus hijos
+            const aGrupos = Object.values(mGrupos);
+            aGrupos.forEach(function (grupo) {
+                const aHijos = grupo.children || [];
+                grupo._tieneAdjuntosHijos = aHijos.some(function (h) {
+                    return h.Attachments && h.Attachments.length > 0;
+                });
+                grupo._totalAdjuntosHijos = aHijos.reduce(function (acc, h) {
+                    return acc + ((h.Attachments && h.Attachments.length) || 0);
+                }, 0);
+            });
+
+            oView.getModel("accionesTreeModel").setData(aGrupos);
         },
 
         onOpenAccionEntregaPopover: function (oEvent) {
@@ -617,6 +662,7 @@ sap.ui.define([
 
             const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAcciones);
             oAccionesModel.setData(aAccionesOrdenadas);
+            this._buildAccionesTreeModel();
 
             const oLicencesModel = oView.getModel("LicencesJsonModel");
             const sPath = this._currentBindingContextEntrega.getPath();
@@ -772,16 +818,36 @@ sap.ui.define([
         onTurnoEntregaChange: function (oEvent) {
             const oTimePicker = oEvent.getSource();
             const sNewValue = oEvent.getParameter("value");
-            const bValid = oEvent.getParameter("valid");
 
-            if (!bValid) {
+            if (!sNewValue || !/^\d{2}:\d{2}$/.test(sNewValue)) {
                 MessageToast.show("Formato de hora inválido. Use HH:mm");
                 return;
             }
 
             const oContext = oTimePicker.getBindingContext("AccionesEntregaModel");
+            const sAccion = oContext ? oContext.getProperty("accion") : "";
 
-            MessageToast.show(`Turno actualizado a ${sNewValue}`);
+            const aAccionesFinalizacion = ["FIN MAN", "FIN LT", "RET PAT", "MAN PES", "PES"];
+
+            if (aAccionesFinalizacion.includes(sAccion)) {
+                MessageBox.warning(
+                    `Modificaste el horario de la acción "${sAccion}" a las ${sNewValue} hs.\n\nRecordá que:\n• FIN LT siempre debe ser mayor que FIN MAN.\n• RET PAT, MAN PES y PES nunca pueden ser menores que FIN MAN.`,
+                    {
+                        title: "Advertencia - Horario de finalización modificado",
+                        actions: [MessageBox.Action.OK],
+                        emphasizedAction: MessageBox.Action.OK
+                    }
+                );
+            } else {
+                MessageBox.warning(
+                    `Modificaste el horario de la acción "${sAccion}" a las ${sNewValue} hs.\n\nRevisá que el orden cronológico del turno siga siendo coherente antes de guardar.`,
+                    {
+                        title: "Advertencia - Horario modificado",
+                        actions: [MessageBox.Action.OK],
+                        emphasizedAction: MessageBox.Action.OK
+                    }
+                );
+            }
         },
 
         onCerrarPopoverEntrega: function () {
@@ -984,6 +1050,7 @@ sap.ui.define([
                                         aAcciones.splice(iIndex, 1);
                                         const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAcciones);
                                         oAccionesModel.setData(aAccionesOrdenadas);
+                                        this._buildAccionesTreeModel();
 
                                         MessageToast.show("Acción eliminada");
                                     }
@@ -1056,6 +1123,7 @@ sap.ui.define([
                     aAcciones.splice(iIndex, 1);
                     const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAcciones);
                     oAccionesModel.setData(aAccionesOrdenadas);
+                    this._buildAccionesTreeModel();
 
                     // Verificar si quedan más acciones para cualquier licencia del grupo
                     const sIdOriginal = oAccion.idLicenciaOriginal || oAccion._licenciaId;
@@ -1263,6 +1331,9 @@ sap.ui.define([
         onTabSelect: function (oEvent) {
             const key = oEvent.getParameter("key");
             this.getView().getModel("tabsControl").setProperty("/activeTab", key);
+            if (key === "Grafico") {
+                this._computeChartFromAcciones();
+            }
         },
         onSelectTurno: function (oEvent) {
             this.showGlobalBusy("Buscando turnos creados…");
@@ -2120,7 +2191,7 @@ sap.ui.define([
         },
 
 
-        successSelectTurno: function (data) {
+        successSelectTurno: function (data, mComentariosPreservados) {
             const oView = this.getView();
             const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
             const oDataModel = this.getView().getModel();
@@ -2164,14 +2235,18 @@ sap.ui.define([
                                 return;
                             }
 
+                            const sComentariosCargados = turnoLicencia.Comentarios || oData.Comentarios || (mComentariosPreservados && mComentariosPreservados[turnoLicencia.Id]) || "";
                             const licenciaCompleta = {
                                 ...oData,
                                 Timbeg: oData.Timbeg || null,
                                 Timend: oData.Timend || null,
                                 Gdate: oData.Gdate || null,
                                 TurnoAsignado: turnoLicencia.Turno || "",
+                                Dateturno: turnoLicencia.Dateturno || null,
                                 Agrmanual: turnoLicencia.Agrmanual || false,
-                                Comentarios: turnoLicencia.Comentarios || oData.Comentarios || "",
+                                Comentarios: sComentariosCargados,
+                                _originalComentarios: sComentariosCargados,
+                                _originalTurno: turnoLicencia.Turno || "",
                                 Enviado: turnoLicencia.Enviado || false,
                                 tramitacionColor: turnoLicencia.tramitacionColor || null,
                                 tramitacionProblematica: turnoLicencia.tramitacionProblematica || false,
@@ -2198,7 +2273,10 @@ sap.ui.define([
                                     }
 
                                     result.Agrmanual = turnoLicencia.Agrmanual || false;
-                                    result.Comentarios = turnoLicencia.Comentarios || result.Comentarios || "";
+                                    const sComentariosError = turnoLicencia.Comentarios || result.Comentarios || (mComentariosPreservados && mComentariosPreservados[turnoLicencia.Id]) || "";
+                                    result.Comentarios = sComentariosError;
+                                    result._originalComentarios = sComentariosError;
+                                    result._originalTurno = turnoLicencia.Turno || "";
                                     result.Enviado = turnoLicencia.Enviado || false;
                                     result.TurnoAsignado = turnoLicencia.Turno || "";
 
@@ -2315,6 +2393,12 @@ sap.ui.define([
                             // Ordenar por consola y luego por hora dentro de cada consola
                             this._sortLicences(arrayOrdenado);
 
+                            // Sincronizar valores originales con los valores finales mostrados al usuario
+                            arrayOrdenado.forEach(function (item) {
+                                item._originalComentarios = item.Comentarios || "";
+                                item._originalTurno = item.TurnoAsignado || "";
+                            });
+
                             oLicencesModel.setData(arrayOrdenado);
                             Utils.onCountItems(oView, arrayOrdenado);
 
@@ -2386,6 +2470,7 @@ sap.ui.define([
                             const oTreeModel = ModelHelper.getModel("listCronoTreeModel", oView);
                             oTreeModel.setData(aTreeData);
                             oTreeModel.refresh();
+                            this._marcarAdjuntosEnListadoCronologico();
 
                             function sortByTurnoAsignado(a, b) {
                                 const toMinutes = (hora) => {
@@ -3386,42 +3471,64 @@ sap.ui.define([
 
                     const aData = [];
 
-                    aAllLicences.forEach(function (oRowData) {
-                        const row = {
-                            Id: oRowData.Id,
-                            Empresa: oRowData.Empresa,
-                            Tipo: oRowData.Tipo,
-                            Anio: oRowData.Anio,
-                            Fecha: Fecha,
-                            Turno: oRowData.TurnoAsignado,
-                            Comentarios: oRowData.Comentarios,
-                            Enviado: false,
-                            Agrmanual: oRowData.Agrmanual || false
-                        };
+                    aAllLicences
+                        .filter(function (oRowData) {
+                            return oRowData.Comentarios !== oRowData._originalComentarios
+                                || oRowData.TurnoAsignado !== oRowData._originalTurno;
+                        })
+                        .forEach(function (oRowData) {
+                            const row = {
+                                Id: oRowData.Id,
+                                Empresa: oRowData.Empresa,
+                                Tipo: oRowData.Tipo,
+                                Anio: oRowData.Anio,
+                                Fecha: Fecha,
+                                Turno: oRowData.TurnoAsignado,
+                                Comentarios: oRowData.Comentarios,
+                                Enviado: false,
+                                Agrmanual: oRowData.Agrmanual || false
+                            };
 
-                        aData.push(row);
-                    });
+                            aData.push(row);
+                        });
+
+                    if (aData.length === 0) {
+                        MessageToast.show("No hay cambios para guardar");
+                        this.hideGlobalBusy();
+                        return;
+                    }
 
                     this.createTurno(aData, aAllLicences, false);
                 })
                 .catch((error) => {
                     const aData = [];
 
-                    aAllLicences.forEach(function (oRowData) {
-                        const row = {
-                            Id: oRowData.Id,
-                            Empresa: oRowData.Empresa,
-                            Tipo: oRowData.Tipo,
-                            Anio: oRowData.Anio,
-                            Fecha: Fecha,
-                            Turno: oRowData.TurnoAsignado,
-                            Comentarios: oRowData.Comentarios,
-                            Enviado: false,
-                            Agrmanual: oRowData.Agrmanual || false
-                        };
+                    aAllLicences
+                        .filter(function (oRowData) {
+                            return oRowData.Comentarios !== oRowData._originalComentarios
+                                || oRowData.TurnoAsignado !== oRowData._originalTurno;
+                        })
+                        .forEach(function (oRowData) {
+                            const row = {
+                                Id: oRowData.Id,
+                                Empresa: oRowData.Empresa,
+                                Tipo: oRowData.Tipo,
+                                Anio: oRowData.Anio,
+                                Fecha: Fecha,
+                                Turno: oRowData.TurnoAsignado,
+                                Comentarios: oRowData.Comentarios,
+                                Enviado: false,
+                                Agrmanual: oRowData.Agrmanual || false
+                            };
 
-                        aData.push(row);
-                    });
+                            aData.push(row);
+                        });
+
+                    if (aData.length === 0) {
+                        MessageToast.show("No hay cambios para guardar");
+                        this.hideGlobalBusy();
+                        return;
+                    }
 
                     this.createTurno(aData, aAllLicences, false);
                 });
@@ -3494,8 +3601,9 @@ sap.ui.define([
                             Dateturno: license.Dateturno
                         });
 
-                        // Intentar actualizar primero
+                        // Intentar actualizar primero (PUT para no requerir GET_ENTITY)
                         oDataService.update(sKey, license, {
+                            merge: false,
                             success: () => {
                                 resolve();
                             },
@@ -3512,13 +3620,30 @@ sap.ui.define([
                             }
                         });
                     } else {
-                        // Si no es enviado, crear normalmente
-                        oDataService.create(entity, license, {
+                        // Intentar actualizar primero (para preservar todos los campos como Comentarios)
+                        const sKey = oDataService.createKey(entity, {
+                            Id: license.Id,
+                            Empresa: license.Empresa,
+                            Tipo: license.Tipo,
+                            Anio: license.Anio,
+                            Dateturno: license.Dateturno
+                        });
+
+                        oDataService.update(sKey, license, {
+                            merge: false,
                             success: () => {
                                 resolve();
                             },
-                            error: (oError) => {
-                                reject(oError);
+                            error: () => {
+                                // Si el update falla (turno no existe aún), crear nuevo
+                                oDataService.create(entity, license, {
+                                    success: () => {
+                                        resolve();
+                                    },
+                                    error: (oCreateError) => {
+                                        reject(oCreateError);
+                                    }
+                                });
                             }
                         });
                     }
@@ -3560,6 +3685,19 @@ sap.ui.define([
                 return;
             }
 
+            // Preservar los Comentarios actuales antes de recargar desde el backend,
+            // por si el backend no los devuelve (campo no soportado aún en TurnosLicencias)
+            const oCurrentLicencesModel = this.getView().getModel("LicencesJsonModel");
+            const aCurrentLicences = oCurrentLicencesModel ? oCurrentLicencesModel.getData() : [];
+            const mComentariosPreservados = {};
+            if (Array.isArray(aCurrentLicences)) {
+                aCurrentLicences.forEach(function (item) {
+                    if (item.Id && item.Comentarios) {
+                        mComentariosPreservados[item.Id] = item.Comentarios;
+                    }
+                });
+            }
+
             const aFilters = [
                 new Filter("Dateturno", FilterOperator.EQ, oFechaTurno),
                 new Filter("Empresa", FilterOperator.EQ, "100")
@@ -3577,7 +3715,7 @@ sap.ui.define([
                         return;
                     }
 
-                    this.successSelectTurno(oData)
+                    this.successSelectTurno(oData, mComentariosPreservados)
                         .then(() => {
                             setTimeout(() => {
                                 this.hideGlobalBusy();
@@ -4503,6 +4641,7 @@ sap.ui.define([
                     oModel.refresh(true);
                     console.log("✅ Modelo refrescado");
 
+                    this._saveAttachments([oLicencia]);
                     MessageToast.show("Archivo agregado: " + file.name);
                 } else {
                     console.error("❌ No hay contexto de licencia");
@@ -6153,6 +6292,7 @@ sap.ui.define([
                 const oTreeModel = this.getView().getModel("listCronoTreeModel");
                 if (oTreeModel) {
                     oTreeTable.setModel(oTreeModel, "listCronoTreeModel");
+                    this._marcarAdjuntosEnListadoCronologico();
                 }
             }
         },
@@ -7646,7 +7786,9 @@ sap.ui.define([
         },
 
         onViewAttachmentAccion: function (oEvent) {
-            const oContext = oEvent.getSource().getBindingContext("AccionesEntregaModel");
+            const oSource = oEvent.getSource();
+            const oContext = oSource.getBindingContext("AccionesEntregaModel")
+                || oSource.getBindingContext("accionesTreeModel");
 
             if (!oContext) {
                 MessageToast.show("No se pudo obtener la acción");
@@ -8550,6 +8692,7 @@ sap.ui.define([
             const aAccionesOrdenadas = this._ordenarAccionesPorGrupoYHora(aAcciones);
             oAccionesModel.setData(aAccionesOrdenadas);
             oAccionesModel.refresh(true);
+            this._buildAccionesTreeModel();
 
             if (aAcciones.length > 0) {
                 MessageToast.show(`${aAcciones.length} acción(es) cargada(s)`);
@@ -8654,6 +8797,7 @@ sap.ui.define([
 
                 // Cargar el gráfico si aún no está cargado
                 this._loadChartFragment();
+                this._computeChartFromAcciones();
 
                 sap.m.MessageToast.show("📊 Mostrando gráfico");
             } else {
@@ -8671,10 +8815,36 @@ sap.ui.define([
                     this
                 );
                 oView.addDependent(this._oChartFragment);
+                this._configureChartProperties();
             }
 
-            // lo agregás donde quieras
             this.byId("chartContainer").addItem(this._oChartFragment);
+        },
+
+        _configureChartProperties: function () {
+            var oVizFrame = this._oChartFragment;
+            if (!oVizFrame) return;
+
+            oVizFrame.setVizProperties({
+                title: {
+                    visible: true,
+                    text: "Tiempo por Acción — Real vs. Previsto (hs)"
+                },
+                legend: {
+                    visible: true
+                },
+                valueAxis: {
+                    title: { visible: true, text: "Hora (hs)" }
+                },
+                categoryAxis: {
+                    title: { visible: false }
+                },
+                plotArea: {
+                    // Colores en el mismo orden que las medidas en el FeedItem:
+                    // Previsto, Promedio, Mínimo, Máximo
+                    colorPalette: ["#00B4D8", "#FF8C00", "#2ECC71", "#E74C3C"]
+                }
+            });
         },
 
         onChartDataSelect: function (oEvent) {
@@ -8685,8 +8855,7 @@ sap.ui.define([
             }
 
             var oSelectedData = aData[0].data;
-
-            var sAccion = oSelectedData.Accion || oSelectedData.Mes || oSelectedData["Accion"] || "";
+            var sAccion = oSelectedData.Accion || oSelectedData["Accion"] || "";
 
             if (!sAccion) {
                 sap.m.MessageToast.show("Error: No se pudo identificar la acción");
@@ -8697,7 +8866,7 @@ sap.ui.define([
             var aAllData = oChartModel.getProperty("/data");
 
             var oCompleteData = aAllData.find(function (item) {
-                return item.Accion === sAccion || item.Mes === sAccion;
+                return item.Accion === sAccion;
             });
 
             if (!oCompleteData) {
@@ -8705,24 +8874,101 @@ sap.ui.define([
                 return;
             }
 
-            // Usar las propiedades correctas según lo que tenga el modelo
-            var fTiempoPrevisto = oCompleteData.TiempoPrevisto || oCompleteData.Linea1;
-            var fTiempoReal = oCompleteData.TiempoReal || oCompleteData.Linea2;
+            var fPrevisto  = oCompleteData.Previsto  || 0;
+            var fPromedio  = oCompleteData.Promedio  || 0;
+            var fMin       = oCompleteData.DesvioMin || 0;
+            var fMax       = oCompleteData.DesvioMax || 0;
 
-            // Calcular el desvío
-            var fDesvio = fTiempoReal - fTiempoPrevisto;
-            var fDesvioPorc = ((fDesvio / fTiempoPrevisto) * 100).toFixed(1);
+            var fDesvProm  = (fPromedio - fPrevisto).toFixed(2);
+            var fDesvMin   = (fMin      - fPrevisto).toFixed(2);
+            var fDesvMax   = (fMax      - fPrevisto).toFixed(2);
+            var fDesvPorc  = fPrevisto !== 0
+                ? ((fPromedio - fPrevisto) / fPrevisto * 100).toFixed(1)
+                : "—";
 
-            // Mostrar información completa
-            var sDetalles = "Acción: " + sAccion + "\n\n" +
-                "Tiempo Previsto: " + fTiempoPrevisto + " hs\n" +
-                "Tiempo Real: " + fTiempoReal + " hs\n\n" +
-                "Desvío: " + fDesvio.toFixed(1) + " hs (" + fDesvioPorc + "%)\n"
+            var sDetalles =
+                "Acción: " + sAccion + "\n\n" +
+                "Hora prevista:       " + fPrevisto.toFixed(2)  + " hs\n" +
+                "Hora real (promedio): " + fPromedio.toFixed(2) + " hs\n" +
+                "Hora real (mínima):  " + fMin.toFixed(2)      + " hs\n" +
+                "Hora real (máxima):  " + fMax.toFixed(2)      + " hs\n\n" +
+                "Desvío promedio: " + fDesvProm + " hs (" + fDesvPorc + "%)\n" +
+                "Rango de desvíos: [" + fDesvMin + " hs , " + fDesvMax + " hs]";
 
             sap.m.MessageBox.information(sDetalles, {
                 title: "Detalle de la Acción",
                 styleClass: "sapUiSizeCompact"
             });
+        },
+
+        // ─── GRÁFICO: cómputo del Promedio desde AccionesEntregaModel ───────────────
+
+        /**
+         * Lee AccionesEntregaModel, agrupa por código de acción, promedia los
+         * turnoEntrega (HH:MM → hs decimales) y actualiza la serie "Promedio"
+         * del chartModel. Si no hay datos suficientes, mantiene los valores
+         * mockeados.  Min/Max quedan mockeados hasta la integración completa.
+         */
+        _computeChartFromAcciones: function () {
+            var oView       = this.getView();
+            var oAccModel   = oView.getModel("AccionesEntregaModel");
+            var oChartModel = oView.getModel("chartModel");
+
+            if (!oAccModel || !oChartModel) return;
+
+            var aAcciones = oAccModel.getData() || [];
+            if (!aAcciones.length) return;
+
+            // Mapa: código de acción → nombre mostrado en el gráfico
+            var mCodToNombre = {
+                "SOL TEC": "Solicitud del equipo al COC",
+                "AUT COC": "Autorización desde el COC",
+                "INI MAN": "Comienzo de maniobras",
+                "COL PAT": "Colocación de PAT",
+                "ENT LT":  "Entrega de LT",
+                "FIN LT":  "Finalización de LT",
+                "RET PAT": "Retiro de PAT",
+                "MAN PES": "Maniobras para la PES"
+            };
+
+            // Helper: "HH:MM" → horas decimales
+            var fnToDecimal = function (sTime) {
+                if (!sTime) return null;
+                var aParts = sTime.split(":");
+                if (aParts.length < 2) return null;
+                var h = parseInt(aParts[0], 10);
+                var m = parseInt(aParts[1], 10);
+                if (isNaN(h) || isNaN(m)) return null;
+                return h + m / 60;
+            };
+
+            // Agrupar turnoEntrega por código de acción
+            var mHorasPorCodigo = {};
+            aAcciones.forEach(function (oAcc) {
+                var sCode = oAcc.accion;
+                if (!mCodToNombre[sCode]) return;
+                var fHora = fnToDecimal(oAcc.turnoEntrega);
+                if (fHora === null) return;
+                if (!mHorasPorCodigo[sCode]) mHorasPorCodigo[sCode] = [];
+                mHorasPorCodigo[sCode].push(fHora);
+            });
+
+            // Actualizar solo la serie Promedio en el chartModel
+            var aData = oChartModel.getProperty("/data");
+            aData.forEach(function (oItem) {
+                // Buscar el código que corresponde a este nombre de acción
+                var sCode = null;
+                Object.keys(mCodToNombre).forEach(function (k) {
+                    if (mCodToNombre[k] === oItem.Accion) sCode = k;
+                });
+                if (!sCode) return;
+                var aHoras = mHorasPorCodigo[sCode];
+                if (!aHoras || !aHoras.length) return;
+                var fSum = aHoras.reduce(function (a, b) { return a + b; }, 0);
+                oItem.Promedio = Math.round((fSum / aHoras.length) * 100) / 100;
+            });
+
+            oChartModel.setProperty("/data", aData);
         },
 
         // ACCIONES PARA LA ENTREGA - RECALCULO DE HORAS
@@ -8750,13 +8996,9 @@ sap.ui.define([
 
             let horarioCalculadoMinutos = tEqMinutos;
 
-            // Constantes según documentación
-            const T_AVISO = 60;   // 1 hora (de doc anterior)
-            const T_MANCOT = 15;  // 15 minutos (de doc anterior)
-
-            // ⚠️ T_PES: Hora de puesta en servicio efectivo
-            // Por ahora provisional - preguntar al cliente
-            const T_PES_PROVISIONAL = tEqMinutos + tManStd + 480; // +8 horas provisional
+            const T_AVISO = 60;
+            const T_MANCOT = 15;
+            const T_PES = 17 * 60; // Hora de puesta en servicio: 17:00 hs
 
             // 🔧 CALCULAR SEGÚN CÓDIGO DE ACCIÓN
             switch (sCodigoAccion) {
@@ -8798,31 +9040,24 @@ sap.ui.define([
                     break;
 
                 case "FIN LT":
-                    // Fórmula: T FIN LT = T MAN PES - T ManStd
-                    // T MAN PES = T PES - T ManCOT
-                    // Entonces: T FIN LT = (T PES - T ManCOT) - T ManStd = T PES - T ManCOT - T ManStd
-                    horarioCalculadoMinutos = T_PES_PROVISIONAL - T_MANCOT - tManStd;
-                    console.log(`   ⚠️ FIN LT: T PES(${this._minutosAHora(T_PES_PROVISIONAL)}) - T ManCOT(${T_MANCOT}min) - T ManStd(${tManStd}min) [PROVISIONAL]`);
+                    horarioCalculadoMinutos = T_PES - T_MANCOT - tManStd;
+                    console.log(`   ✅ FIN LT: T PES(17:00) - T ManCOT(${T_MANCOT}min) - T ManStd(${tManStd}min)`);
                     break;
 
                 case "RET PAT":
-                    // Fórmula: T RET PAT = T PES - T ManCOT
-                    horarioCalculadoMinutos = T_PES_PROVISIONAL - T_MANCOT;
-                    console.log(`   ⚠️ RET PAT: T PES(${this._minutosAHora(T_PES_PROVISIONAL)}) - T ManCOT(${T_MANCOT}min) [PROVISIONAL]`);
+                    horarioCalculadoMinutos = T_PES - T_MANCOT;
+                    console.log(`   ✅ RET PAT: T PES(17:00) - T ManCOT(${T_MANCOT}min)`);
                     break;
 
                 case "MAN PES":
-                    // Fórmula: T MAN PES = T PES - T ManCOT
-                    horarioCalculadoMinutos = T_PES_PROVISIONAL - T_MANCOT;
-                    console.log(`   ⚠️ MAN PES: T PES(${this._minutosAHora(T_PES_PROVISIONAL)}) - T ManCOT(${T_MANCOT}min) [PROVISIONAL]`);
+                    horarioCalculadoMinutos = T_PES - T_MANCOT;
+                    console.log(`   ✅ MAN PES: T PES(17:00) - T ManCOT(${T_MANCOT}min)`);
                     break;
 
                 case "PES":
                 case "FCS":
-                    // Fórmula: T PES = Hora de puesta en servicio efectivo
-                    // ⚠️ PROVISIONAL - Preguntar al cliente cuál es la hora real
-                    horarioCalculadoMinutos = T_PES_PROVISIONAL;
-                    console.log(`   ⚠️ PES/FCS: ${this._minutosAHora(T_PES_PROVISIONAL)} [PROVISIONAL - preguntar hora de PES al cliente]`);
+                    horarioCalculadoMinutos = T_PES;
+                    console.log(`   ✅ PES/FCS: 17:00`);
                     break;
 
                 default:
@@ -9400,19 +9635,22 @@ sap.ui.define([
 
             let iTotalAdjuntos = 0;
 
-            // Función recursiva para recorrer el árbol
+            // Función recursiva para recorrer el árbol (post-order: hijos primero para que
+            // el padre pueda leer los flags ya calculados de sus hijos)
             const marcarNodos = (aNodes) => {
                 aNodes.forEach(node => {
-                    if (node._isGroup === false) {
-                        // Es una licencia (nodo hijo)
+                    // 1. Primero recursar para que los hijos ya tengan sus flags
+                    if (node.children && node.children.length > 0) {
+                        marcarNodos(node.children);
+                    }
 
-                        // Obtener adjuntos desde AttachmentXLicencia_nav
+                    if (node._isGroup === false) {
+                        // Es una licencia (nodo hijo) — marcar sus propios adjuntos
                         const aAdjuntos = node.AttachmentXLicencia_nav?.results ||
                             node.AttachmentXLicencia_nav ||
                             node.Attachments ||
                             [];
 
-                        // Marcar si tiene adjuntos
                         node._tieneAdjuntos = aAdjuntos.length > 0;
                         node._adjuntos = aAdjuntos;
                         node._cantidadAdjuntos = aAdjuntos.length;
@@ -9421,11 +9659,12 @@ sap.ui.define([
                             console.log(`      ✅ ${node.Id}: ${aAdjuntos.length} adjunto(s)`);
                             iTotalAdjuntos += aAdjuntos.length;
                         }
-                    }
-
-                    // Recursivo para hijos
-                    if (node.children && node.children.length > 0) {
-                        marcarNodos(node.children);
+                    } else if (node._isGroup === true) {
+                        // Es un grupo (nodo padre) — propagar flags desde los hijos
+                        const aHijos = node.children || [];
+                        node._tieneAdjuntosHijos = aHijos.some(h => h._tieneAdjuntos);
+                        node._totalAdjuntosHijos = aHijos.reduce((acc, h) => acc + (h._cantidadAdjuntos || 0), 0);
+                        node._tieneComentariosHijos = aHijos.some(h => h.Comentarios && h.Comentarios.trim() !== "");
                     }
                 });
             };
@@ -9555,6 +9794,99 @@ sap.ui.define([
             const i = Math.floor(Math.log(iBytes) / Math.log(k));
 
             return Math.round(iBytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i];
+        },
+
+        // Handler del indicador de adjuntos en nodo padre — expande el grupo
+        onAdjuntosParentFromTree: function (oEvent) {
+            const oContext = oEvent.getSource().getBindingContext("listCronoTreeModel");
+            if (!oContext) { return; }
+            this._expandTreeRowByContext("cronoTreeTable", "listCronoTreeModel", oContext);
+        },
+
+        // Abre un Popover con el listado de licencias al hacer click en el Link
+        onMostrarLicenciasDetalle: function (oEvent) {
+            const oSource = oEvent.getSource();
+
+            // Intentar obtener idLicencia por binding context (tabla plana)
+            let sIdLicencia = "";
+            const oCtx = oSource.getBindingContext("AccionesEntregaModel")
+                || oSource.getBindingContext("accionesTreeModel");
+            if (oCtx) {
+                sIdLicencia = oCtx.getProperty("idLicencia") || "";
+            }
+
+            // Fallback: customData (TreeTable donde el contexto puede no resolver)
+            if (!sIdLicencia) {
+                const oCD = oSource.getCustomData().find(function (cd) {
+                    return cd.getKey() === "idLicencia";
+                });
+                if (oCD) { sIdLicencia = oCD.getValue() || ""; }
+            }
+
+            if (!sIdLicencia) { return; }
+
+            const aIds = sIdLicencia.split(" / ").filter(Boolean);
+
+            const aItems = aIds.map(function (sId) {
+                return new sap.m.StandardListItem({ title: sId });
+            });
+
+            const oList = new sap.m.List({ items: aItems });
+
+            if (!this._oLicenciasPopover) {
+                this._oLicenciasPopover = new sap.m.Popover({
+                    title: "Licencias",
+                    contentWidth: "200px",
+                    placement: sap.m.PlacementType.Auto
+                });
+                this._oLicenciasPopover.addStyleClass("licenciasPopover");
+            }
+
+            this._oLicenciasPopover.destroyContent();
+            this._oLicenciasPopover.addContent(oList);
+            this._oLicenciasPopover.openBy(oSource);
+        },
+
+        // Formatea el idLicencia (ej: "L01 / L02 / L03") como "3 LLTT"
+        formatLicenciasCount: function (sIdLicencia) {
+            if (!sIdLicencia) { return ""; }
+            const n = sIdLicencia.split(" / ").filter(Boolean).length;
+            return n + " LLTT";
+        },
+
+        // Devuelve el idLicencia como lista separada por saltos de línea para tooltip
+        formatLicenciasTooltip: function (sIdLicencia) {
+            if (!sIdLicencia) { return ""; }
+            return sIdLicencia.split(" / ").filter(Boolean).join("\n");
+        },
+
+        // Handler del indicador de adjuntos en nodo padre del árbol de acciones — expande el grupo
+        onAdjuntosParentFromAccionesTree: function (oEvent) {
+            const oContext = oEvent.getSource().getBindingContext("accionesTreeModel");
+            if (!oContext) { return; }
+            this._expandTreeRowByContext("accionesCronoTreeTable", "accionesTreeModel", oContext);
+        },
+
+        // Handler del indicador de comentarios en nodo padre — expande el grupo
+        onComentariosParentFromTree: function (oEvent) {
+            const oContext = oEvent.getSource().getBindingContext("listCronoTreeModel");
+            if (!oContext) { return; }
+            this._expandTreeRowByContext("cronoTreeTable", "listCronoTreeModel", oContext);
+        },
+
+        // Helper: expande la fila del TreeTable cuyo contexto coincide con oContext
+        _expandTreeRowByContext: function (sTableId, sModelName, oContext) {
+            const oTreeTable = this.byId(sTableId);
+            if (!oTreeTable) { return; }
+            const sPath = oContext.getPath();
+            const aRows = oTreeTable.getRows();
+            for (let i = 0; i < aRows.length; i++) {
+                const oRowCtx = aRows[i].getBindingContext(sModelName);
+                if (oRowCtx && oRowCtx.getPath() === sPath) {
+                    oTreeTable.expand(aRows[i].getIndex());
+                    return;
+                }
+            }
         },
 
         onViewAttachmentFromTree: function (oEvent) {

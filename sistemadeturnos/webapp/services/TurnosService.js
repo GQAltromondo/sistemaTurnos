@@ -214,7 +214,22 @@ sap.ui.define([
                     if (Array.isArray(license.TurnosLicencias_nav?.results) &&
                         license.TurnosLicencias_nav.results.length > 0) {
 
-                        const nav = license.TurnosLicencias_nav.results[0];
+                        // Buscar el registro que corresponde a la fecha del turno actual.
+                        // TurnosLicencias_nav puede traer registros de múltiples fechas,
+                        // por lo que hay que usar el que coincide con license.Dateturno.
+                        let nav = license.TurnosLicencias_nav.results[0];
+                        if (license.Dateturno && license.TurnosLicencias_nav.results.length > 1) {
+                            const targetTime = license.Dateturno instanceof Date
+                                ? license.Dateturno.getTime()
+                                : new Date(license.Dateturno).getTime();
+                            const navFecha = license.TurnosLicencias_nav.results.find(function (r) {
+                                const rTime = r.Dateturno instanceof Date
+                                    ? r.Dateturno.getTime()
+                                    : new Date(r.Dateturno).getTime();
+                                return rTime === targetTime;
+                            });
+                            if (navFecha) { nav = navFecha; }
+                        }
 
                         license.TurnoAsignado = nav.Turno;
                         license.Comentarios = nav.Comentarios;

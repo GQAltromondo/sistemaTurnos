@@ -18,6 +18,18 @@
   font-size: 15px;
 }
 
+/* Link que visualmente se ve igual que .text-bold pero es clickeable */
+.text-bold-link.sapMLnk {
+  color: #3a668b;
+  font-weight: bold;
+  font-size: 15px;
+  text-decoration: none;
+}
+.text-bold-link.sapMLnk:hover {
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .textWhite {
   color: #fff
 }
@@ -107,6 +119,10 @@ html.sap-desktop .sapMIBar.sapMFooter-CTX {
 }
 
 .popoverAccionesEntrega .sapMTitle {
+    color: white !important;
+}
+
+.licenciasPopover .sapMTitle {
     color: white !important;
 }
 

@@ -232,7 +232,7 @@ sap.ui.define([
                         Hora: sHora,
                         TipoIntervencion: sTipoIntervencion,
                         Condicion: info.condition,
-                        Comentarios: item.Comments || item.Patadic || ""
+                        Comentarios: item.Comentarios || ""
                     });
                 }
             });
@@ -301,7 +301,7 @@ sap.ui.define([
                 sFecha = aReporteData[0].Fecha;
             }
 
-            var oDateRangeControl = oView.byId("reporteDateRange");
+            var oDateRangeControl = oView.byId ? oView.byId("reporteDateRange") : null;
             if (oDateRangeControl) {
                 var sTexto = "Horarios de maniobras previstas desde: " + sFecha + " " + sMinHora + " Hasta: " + sFecha + " " + sMaxHora;
                 oDateRangeControl.setText(sTexto);

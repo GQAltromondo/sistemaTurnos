@@ -13,7 +13,7 @@
         uiConfig="{applicationSet:'fiori'}"
         selectData="onChartDataSelect"
     >
-        <!-- Dataset -->
+        <!-- Dataset: Desvíos por acción (real vs. previsto) -->
         <viz:dataset>
             <viz.data:FlattenedDataset data="{chartModel>/data}">
                 <viz.data:dimensions>
@@ -24,13 +24,25 @@
                 </viz.data:dimensions>
 
                 <viz.data:measures>
+                    <!-- Previsto: referencia en 0 (sin desvío) -->
                     <viz.data:MeasureDefinition
-                        name="TiempoPrevisto"
-                        value="{chartModel>TiempoPrevisto}"
+                        name="Previsto"
+                        value="{chartModel>Previsto}"
                     />
+                    <!-- Promedio: tiempo real promedio entre licencias -->
                     <viz.data:MeasureDefinition
-                        name="TiempoReal"
-                        value="{chartModel>TiempoReal}"
+                        name="Promedio"
+                        value="{chartModel>Promedio}"
+                    />
+                    <!-- Mínimo: menor desvío observado -->
+                    <viz.data:MeasureDefinition
+                        name="Mínimo"
+                        value="{chartModel>DesvioMin}"
+                    />
+                    <!-- Máximo: mayor desvío observado -->
+                    <viz.data:MeasureDefinition
+                        name="Máximo"
+                        value="{chartModel>DesvioMax}"
                     />
                 </viz.data:measures>
             </viz.data:FlattenedDataset>
@@ -43,11 +55,10 @@
                 type="Dimension"
                 values="Accion"
             />
-
             <viz.feeds:FeedItem
                 uid="valueAxis"
                 type="Measure"
-                values="TiempoPrevisto,TiempoReal"
+                values="Previsto,Promedio,Mínimo,Máximo"
             />
         </viz:feeds>
     </viz:VizFrame>
