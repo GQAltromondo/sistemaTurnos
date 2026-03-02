@@ -40,25 +40,8 @@ sap.ui.define([
         formatter: FormatHelper,
 
         onInit: function () {
-            // Datos mockeados: tiempo real (hs absolutas desde medianoche) por acción.
-            // Previsto = hora planificada de cada acción (referencia celeste).
-            // Promedio  = media real entre todas las licencias (naranja) — se actualiza desde AccionesEntregaModel.
-            // DesvioMin = mínimo real observado (línea punteada).
-            // DesvioMax = máximo real observado (línea punteada).
-            var oData = {
-                data: [
-                    { Accion: "Solicitud del equipo al COC", Previsto: 7.67, Promedio: 8.17,  DesvioMin: 7.5,  DesvioMax: 9.0  },
-                    { Accion: "Autorización desde el COC",   Previsto: 7.83, Promedio: 8.25,  DesvioMin: 7.7,  DesvioMax: 8.8  },
-                    { Accion: "Comienzo de maniobras",       Previsto: 8.0,  Promedio: 8.5,   DesvioMin: 7.9,  DesvioMax: 9.2  },
-                    { Accion: "Colocación de PAT",           Previsto: 8.75, Promedio: 9.5,   DesvioMin: 8.7,  DesvioMax: 11.0 },
-                    { Accion: "Entrega de LT",               Previsto: 9.0,  Promedio: 12.0,  DesvioMin: 9.5,  DesvioMax: 15.5 },
-                    { Accion: "Finalización de LT",          Previsto: 16.0, Promedio: 17.5,  DesvioMin: 16.5, DesvioMax: 19.0 },
-                    { Accion: "Retiro de PAT",               Previsto: 16.75,Promedio: 17.2,  DesvioMin: 16.8, DesvioMax: 18.5 },
-                    { Accion: "Maniobras para la PES",       Previsto: 16.75,Promedio: 17.0,  DesvioMin: 16.8, DesvioMax: 18.0 }
-                ]
-            };
-
-            var oChartModel = new sap.ui.model.json.JSONModel(oData);
+            // chartModel vacío: se puebla en _computeChartFromAcciones() cuando el usuario busca una fecha.
+            var oChartModel = new sap.ui.model.json.JSONModel({ data: [] });
             this.getView().setModel(oChartModel, "chartModel");
 
             this._loadChartFragment();
@@ -8917,18 +8900,23 @@ sap.ui.define([
             if (!oAccModel || !oChartModel) return;
 
             var aAcciones = oAccModel.getData() || [];
-            if (!aAcciones.length) return;
 
-            // Mapa: código de acción → nombre mostrado en el gráfico
-            var mCodToNombre = {
-                "SOL TEC": "Solicitud del equipo al COC",
-                "AUT COC": "Autorización desde el COC",
-                "INI MAN": "Comienzo de maniobras",
-                "COL PAT": "Colocación de PAT",
-                "ENT LT":  "Entrega de LT",
-                "FIN LT":  "Finalización de LT",
-                "RET PAT": "Retiro de PAT",
-                "MAN PES": "Maniobras para la PES"
+            // Si no hay acciones cargadas, vaciar el gráfico
+            if (!aAcciones.length) {
+                oChartModel.setProperty("/data", []);
+                return;
+            }
+
+            // Mapa: código → nombre en el gráfico y hora prevista (hardcodeada)
+            var mAcciones = {
+                "SOL TEC": { nombre: "Solicitud del equipo al COC", previsto: 7.67 },
+                "AUT COC": { nombre: "Autorización desde el COC",   previsto: 7.83 },
+                "INI MAN": { nombre: "Comienzo de maniobras",       previsto: 8.0  },
+                "COL PAT": { nombre: "Colocación de PAT",           previsto: 8.75 },
+                "ENT LT":  { nombre: "Entrega de LT",               previsto: 9.0  },
+                "FIN LT":  { nombre: "Finalización de LT",          previsto: 16.0 },
+                "RET PAT": { nombre: "Retiro de PAT",               previsto: 16.75},
+                "MAN PES": { nombre: "Maniobras para la PES",       previsto: 16.75}
             };
 
             // Helper: "HH:MM" → horas decimales
@@ -8942,30 +8930,31 @@ sap.ui.define([
                 return h + m / 60;
             };
 
-            // Agrupar turnoEntrega por código de acción
+            // Agrupar turnoEntrega por código de acción (un valor por licencia/grupo)
             var mHorasPorCodigo = {};
             aAcciones.forEach(function (oAcc) {
                 var sCode = oAcc.accion;
-                if (!mCodToNombre[sCode]) return;
+                if (!mAcciones[sCode]) return;
                 var fHora = fnToDecimal(oAcc.turnoEntrega);
                 if (fHora === null) return;
                 if (!mHorasPorCodigo[sCode]) mHorasPorCodigo[sCode] = [];
                 mHorasPorCodigo[sCode].push(fHora);
             });
 
-            // Actualizar solo la serie Promedio en el chartModel
-            var aData = oChartModel.getProperty("/data");
-            aData.forEach(function (oItem) {
-                // Buscar el código que corresponde a este nombre de acción
-                var sCode = null;
-                Object.keys(mCodToNombre).forEach(function (k) {
-                    if (mCodToNombre[k] === oItem.Accion) sCode = k;
-                });
-                if (!sCode) return;
+            // Construir el array completo solo con las acciones que tienen datos reales
+            var aData = [];
+            Object.keys(mAcciones).forEach(function (sCode) {
                 var aHoras = mHorasPorCodigo[sCode];
                 if (!aHoras || !aHoras.length) return;
+
                 var fSum = aHoras.reduce(function (a, b) { return a + b; }, 0);
-                oItem.Promedio = Math.round((fSum / aHoras.length) * 100) / 100;
+                aData.push({
+                    Accion:    mAcciones[sCode].nombre,
+                    Previsto:  mAcciones[sCode].previsto,
+                    Promedio:  Math.round((fSum / aHoras.length) * 100) / 100,
+                    DesvioMin: Math.round(Math.min.apply(null, aHoras) * 100) / 100,
+                    DesvioMax: Math.round(Math.max.apply(null, aHoras) * 100) / 100
+                });
             });
 
             oChartModel.setProperty("/data", aData);

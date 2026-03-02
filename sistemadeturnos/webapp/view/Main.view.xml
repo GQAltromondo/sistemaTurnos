@@ -1331,6 +1331,16 @@
                             text="Grafico"
                             key="Grafico"
                         >
+                            <VBox class="sapUiMediumMarginBegin sapUiMediumMarginTop">
+                                <Title
+                                    text="Acciones para la entrega"
+                                    level="H2"
+                                />
+                                <Text
+                                    text="Turno del {LicencesTurnoJsonModel>/FechaTurno}"
+                                    class="sapUiSmallMarginTop"
+                                />
+                            </VBox>
                             <VBox
                                 id="chartContainer"
                                 width="100%"
