@@ -82,16 +82,9 @@ sap.ui.define([
      
             var oDataService = this.getView().getModel();
 
-            SocietyHelper.loadSociety(
-                this,
-                oDataService,
-                function (sEmpresa) {
-
-                    this.society = sEmpresa;
-
-
-                }
-            );
+            SocietyHelper.loadSociety(this, oDataService, (sEmpresa) => {
+                this.society = sEmpresa;
+            });
         },
         getBaseURL: function () {
             var appId = this.getOwnerComponent().getManifestEntry("/sap.app/id");
@@ -8637,7 +8630,7 @@ sap.ui.define([
         _cargarAccionesDesdeBackend: function (oFecha) {
             return new Promise((resolve) => {
                 const oDataService = this.getView().getModel();
-                var sEmpresa = SocietyHelper.getCurrentSociety(oView, "100");
+                var sEmpresa = SocietyHelper.getCurrentSociety(this.getView(), "100");
                 if (!oFecha) {
                     resolve();
                     return;
@@ -8973,11 +8966,11 @@ sap.ui.define([
                 return;
             }
 
-            var fPrevisto  = oCompleteData._previsto  || 0;
-            var fPromedio  = oCompleteData.Promedio   || 0;
-            var fMin       = oCompleteData.DesvioMin  || 0;
-            var fMax       = oCompleteData.DesvioMax  || 0;
-            var aDesvios   = oCompleteData._desvios   || [];
+            var fPrevisto = oCompleteData._previsto || 0;
+            var fPromedio = oCompleteData.Promedio || 0;
+            var fMin = oCompleteData.DesvioMin || 0;
+            var fMax = oCompleteData.DesvioMax || 0;
+            var aDesvios = oCompleteData._desvios || [];
 
             // Formatear hora prevista como HH:MM
             var hPrev = Math.floor(fPrevisto);
@@ -9026,7 +9019,7 @@ sap.ui.define([
         },
 
         _createExcelReportDesvios: function () {
-            var oView     = this.getView();
+            var oView = this.getView();
             var oAccModel = oView.getModel("AccionesEntregaModel");
             var oLicModel = ModelHelper.getModel("LicencesJsonModel", oView);
             var oFormatter = this.formatter;
@@ -9034,16 +9027,16 @@ sap.ui.define([
             // ── Mapa de hitos: mismo que en _computeChartFromAcciones ──────────────
             // origen: dónde viene el tiempo real ("Módulo Licencias" o "Libro de Guardia")
             var mAcciones = {
-                "SOL COC": { nombre: "Solicitud al COC",       previsto: 6.0,   origen: "Hardcode" },
-                "SOL TEC": { nombre: "Solicitud técnica",      previsto: 6.667, origen: "Hardcode" },
-                "AUT COC": { nombre: "Autorización del COC",   previsto: 6.833, origen: "Hardcode" },
-                "INI MAN": { nombre: "Inicio de maniobras",    previsto: 7.0,   origen: "Hardcode" },
-                "COL PAT": { nombre: "Colocación de PAT",      previsto: 7.75,  origen: "Hardcode" },
-                "FIN MAN": { nombre: "Fin de maniobras",       previsto: 7.75,  origen: "Hardcode" },
-                "FIN LT":  { nombre: "Finalización de LT",     previsto: 16.0,  origen: "Hardcode" },
-                "RET PAT": { nombre: "Retiro de PAT",          previsto: 16.25, origen: "Hardcode" },
-                "MAN PES": { nombre: "Maniobras para la PES",  previsto: 16.25, origen: "Hardcode" },
-                "PES":     { nombre: "Puesta en Servicio",     previsto: 17.0,  origen: "Hardcode" }
+                "SOL COC": { nombre: "Solicitud al COC", previsto: 6.0, origen: "Hardcode" },
+                "SOL TEC": { nombre: "Solicitud técnica", previsto: 6.667, origen: "Hardcode" },
+                "AUT COC": { nombre: "Autorización del COC", previsto: 6.833, origen: "Hardcode" },
+                "INI MAN": { nombre: "Inicio de maniobras", previsto: 7.0, origen: "Hardcode" },
+                "COL PAT": { nombre: "Colocación de PAT", previsto: 7.75, origen: "Hardcode" },
+                "FIN MAN": { nombre: "Fin de maniobras", previsto: 7.75, origen: "Hardcode" },
+                "FIN LT": { nombre: "Finalización de LT", previsto: 16.0, origen: "Hardcode" },
+                "RET PAT": { nombre: "Retiro de PAT", previsto: 16.25, origen: "Hardcode" },
+                "MAN PES": { nombre: "Maniobras para la PES", previsto: 16.25, origen: "Hardcode" },
+                "PES": { nombre: "Puesta en Servicio", previsto: 17.0, origen: "Hardcode" }
             };
 
             // ── Helpers ───────────────────────────────────────────────────────────
@@ -9102,11 +9095,11 @@ sap.ui.define([
                 { codigo: "FIN MAN", equipo: "LG-003", tiempo: "8:00" },
                 { codigo: "FIN MAN", equipo: "LG-004", tiempo: "7:40" },
                 { codigo: "FIN MAN", equipo: "LG-005", tiempo: "7:50" },
-                { codigo: "FIN LT",  equipo: "LG-001", tiempo: "16:08" },
-                { codigo: "FIN LT",  equipo: "LG-002", tiempo: "15:55" },
-                { codigo: "FIN LT",  equipo: "LG-003", tiempo: "16:15" },
-                { codigo: "FIN LT",  equipo: "LG-004", tiempo: "15:52" },
-                { codigo: "FIN LT",  equipo: "LG-005", tiempo: "16:05" },
+                { codigo: "FIN LT", equipo: "LG-001", tiempo: "16:08" },
+                { codigo: "FIN LT", equipo: "LG-002", tiempo: "15:55" },
+                { codigo: "FIN LT", equipo: "LG-003", tiempo: "16:15" },
+                { codigo: "FIN LT", equipo: "LG-004", tiempo: "15:52" },
+                { codigo: "FIN LT", equipo: "LG-005", tiempo: "16:05" },
                 { codigo: "RET PAT", equipo: "LG-001", tiempo: "16:22" },
                 { codigo: "RET PAT", equipo: "LG-002", tiempo: "16:10" },
                 { codigo: "RET PAT", equipo: "LG-003", tiempo: "16:28" },
@@ -9117,11 +9110,11 @@ sap.ui.define([
                 { codigo: "MAN PES", equipo: "LG-003", tiempo: "16:30" },
                 { codigo: "MAN PES", equipo: "LG-004", tiempo: "16:10" },
                 { codigo: "MAN PES", equipo: "LG-005", tiempo: "16:18" },
-                { codigo: "PES",     equipo: "LG-001", tiempo: "17:06" },
-                { codigo: "PES",     equipo: "LG-002", tiempo: "16:55" },
-                { codigo: "PES",     equipo: "LG-003", tiempo: "17:12" },
-                { codigo: "PES",     equipo: "LG-004", tiempo: "16:52" },
-                { codigo: "PES",     equipo: "LG-005", tiempo: "17:05" }
+                { codigo: "PES", equipo: "LG-001", tiempo: "17:06" },
+                { codigo: "PES", equipo: "LG-002", tiempo: "16:55" },
+                { codigo: "PES", equipo: "LG-003", tiempo: "17:12" },
+                { codigo: "PES", equipo: "LG-004", tiempo: "16:52" },
+                { codigo: "PES", equipo: "LG-005", tiempo: "17:05" }
             ];
 
             // ── Acumular desvíos por código ───────────────────────────────────────
@@ -9135,11 +9128,11 @@ sap.ui.define([
                 if (fDev === null) return;
                 if (!mDesvios[sCode]) mDesvios[sCode] = [];
                 mDesvios[sCode].push({
-                    equipo:      oAcc.equipo || "",
-                    idLicencia:  oAcc.idLicencia || "",
-                    horaReal:    oAcc.turnoEntrega || "",
-                    desvio:      fDev,
-                    origenDato:  "Módulo Licencias"
+                    equipo: oAcc.equipo || "",
+                    idLicencia: oAcc.idLicencia || "",
+                    horaReal: oAcc.turnoEntrega || "",
+                    desvio: fDev,
+                    origenDato: "Módulo Licencias"
                 });
             });
 
@@ -9150,26 +9143,26 @@ sap.ui.define([
                 if (fDev === null) return;
                 if (!mDesvios[sCode]) mDesvios[sCode] = [];
                 mDesvios[sCode].push({
-                    equipo:      oLG.equipo || "",
-                    idLicencia:  "LG",
-                    horaReal:    oLG.tiempo,
-                    desvio:      fDev,
-                    origenDato:  "Libro de Guardia (hardcode)"
+                    equipo: oLG.equipo || "",
+                    idLicencia: "LG",
+                    horaReal: oLG.tiempo,
+                    desvio: fDev,
+                    origenDato: "Libro de Guardia (hardcode)"
                 });
             });
 
             // ── Solapa 1: Desvíos por Hito (resumen del gráfico) ─────────────────
             var aResumen = [["Código", "Hito", "Hora Prevista", "Origen datos reales",
-                             "N° Obs.", "Mín (min)", "Máx (min)", "Promedio |abs| (min)"]];
+                "N° Obs.", "Mín (min)", "Máx (min)", "Promedio |abs| (min)"]];
             Object.keys(mAcciones).forEach(function (sCode) {
                 var aD = mDesvios[sCode] || [];
                 var fMin = "Sin datos", fMax = "Sin datos", fProm = "Sin datos";
                 if (aD.length) {
                     var aVals = aD.map(function (d) { return d.desvio; });
-                    fMin  = Math.round(Math.min.apply(null, aVals) * 10) / 10;
-                    fMax  = Math.round(Math.max.apply(null, aVals) * 10) / 10;
+                    fMin = Math.round(Math.min.apply(null, aVals) * 10) / 10;
+                    fMax = Math.round(Math.max.apply(null, aVals) * 10) / 10;
                     fProm = Math.round(aVals.reduce(function (s, v) { return s + Math.abs(v); }, 0)
-                                       / aVals.length * 10) / 10;
+                        / aVals.length * 10) / 10;
                 }
                 aResumen.push([
                     sCode,
@@ -9183,7 +9176,7 @@ sap.ui.define([
 
             // ── Solapa 2: Acciones del Módulo (detalle) ───────────────────────────
             var aModDetalle = [["Equipo", "ID Licencia", "Código", "Hito",
-                                "Hora Prevista", "Hora Real", "Desvío (min)"]];
+                "Hora Prevista", "Hora Real", "Desvío (min)"]];
             (oAccModel ? oAccModel.getData() || [] : []).forEach(function (oAcc) {
                 var sCode = oAcc.accion;
                 if (!mAcciones[sCode] || !oAcc.turnoEntrega) return;
@@ -9205,7 +9198,7 @@ sap.ui.define([
 
             // ── Solapa 3: Libro de Guardia (hardcode provisional) ─────────────────
             var aLGDetalle = [["Equipo", "ID Licencia", "Código", "Hito",
-                               "Hora Prevista", "Hora Real", "Desvío (min)", "Nota"]];
+                "Hora Prevista", "Hora Real", "Desvío (min)", "Nota"]];
             aLGData.forEach(function (oLG) {
                 var sCode = oLG.codigo;
                 if (!mAcciones[sCode]) return;
@@ -9225,16 +9218,16 @@ sap.ui.define([
 
             // ── Solapa 4: Licencias ───────────────────────────────────────────────
             var aLicDetalle = [["Equipo", "ID Licencia", "Estado", "Cond. Trabajo",
-                                "Turno", "Trabajo a Realizar", "Región"]];
+                "Turno", "Trabajo a Realizar", "Región"]];
             (oLicModel ? oLicModel.getData() || [] : []).forEach(function (lic) {
                 aLicDetalle.push([
                     lic.Equnr || "",
                     lic.Id || "",
-                    oFormatter.getEstado    ? oFormatter.getEstado(lic.Equstat)    : (lic.Equstat || ""),
-                    oFormatter.getJobCond   ? oFormatter.getJobCond(lic.Jobcond)   : (lic.Jobcond || ""),
+                    oFormatter.getEstado ? oFormatter.getEstado(lic.Equstat) : (lic.Equstat || ""),
+                    oFormatter.getJobCond ? oFormatter.getJobCond(lic.Jobcond) : (lic.Jobcond || ""),
                     lic.TurnoAsignado || "",
                     lic.Comments || "",
-                    oFormatter.getRegiones  ? oFormatter.getRegiones(lic.Werks)   : (lic.Werks || "")
+                    oFormatter.getRegiones ? oFormatter.getRegiones(lic.Werks) : (lic.Werks || "")
                 ]);
             });
             if (aLicDetalle.length === 1) {
@@ -9244,9 +9237,9 @@ sap.ui.define([
             // ── Generar Excel ─────────────────────────────────────────────────────
             try {
                 var Workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aResumen),    "Desvíos por Hito");
+                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aResumen), "Desvíos por Hito");
                 XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aModDetalle), "Acciones Módulo");
-                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aLGDetalle),  "Libro de Guardia");
+                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aLGDetalle), "Libro de Guardia");
                 XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aLicDetalle), "Licencias");
 
                 var sHoy = new Date().toISOString().slice(0, 10);
@@ -9269,8 +9262,8 @@ sap.ui.define([
          * libro de guardia (actualmente hardcodeados, funcionalidad pendiente).
          */
         _computeChartFromAcciones: function () {
-            var oView       = this.getView();
-            var oAccModel   = oView.getModel("AccionesEntregaModel");
+            var oView = this.getView();
+            var oAccModel = oView.getModel("AccionesEntregaModel");
             var oChartModel = oView.getModel("chartModel");
 
             if (!oAccModel || !oChartModel) return;
@@ -9286,16 +9279,16 @@ sap.ui.define([
             // Mapa: código → nombre en el gráfico y hora prevista en horas decimales (hardcodeada)
             // El previsto se usa SOLO para calcular el desvío; no se grafica (equivale al 0).
             var mAcciones = {
-                "SOL COC": { nombre: "Solicitud al COC",        previsto: 6.0    }, // 6:00
-                "SOL TEC": { nombre: "Solicitud técnica",       previsto: 6.667  }, // 6:40
-                "AUT COC": { nombre: "Autorización del COC",    previsto: 6.833  }, // 6:50
-                "INI MAN": { nombre: "Inicio de maniobras",     previsto: 7.0    }, // 7:00
-                "COL PAT": { nombre: "Colocación de PAT",       previsto: 7.75   }, // 7:45
-                "FIN MAN": { nombre: "Fin de maniobras",        previsto: 7.75   }, // 7:45
-                "FIN LT":  { nombre: "Finalización de LT",      previsto: 16.0   }, // 16:00
-                "RET PAT": { nombre: "Retiro de PAT",           previsto: 16.25  }, // 16:15
-                "MAN PES": { nombre: "Maniobras para la PES",   previsto: 16.25  }, // 16:15
-                "PES":     { nombre: "Puesta en Servicio",      previsto: 17.0   }  // 17:00
+                "SOL COC": { nombre: "Solicitud al COC", previsto: 6.0 }, // 6:00
+                "SOL TEC": { nombre: "Solicitud técnica", previsto: 6.667 }, // 6:40
+                "AUT COC": { nombre: "Autorización del COC", previsto: 6.833 }, // 6:50
+                "INI MAN": { nombre: "Inicio de maniobras", previsto: 7.0 }, // 7:00
+                "COL PAT": { nombre: "Colocación de PAT", previsto: 7.75 }, // 7:45
+                "FIN MAN": { nombre: "Fin de maniobras", previsto: 7.75 }, // 7:45
+                "FIN LT": { nombre: "Finalización de LT", previsto: 16.0 }, // 16:00
+                "RET PAT": { nombre: "Retiro de PAT", previsto: 16.25 }, // 16:15
+                "MAN PES": { nombre: "Maniobras para la PES", previsto: 16.25 }, // 16:15
+                "PES": { nombre: "Puesta en Servicio", previsto: 17.0 }  // 17:00
             };
 
             // Helper: "HH:MM" → horas decimales
@@ -9335,12 +9328,12 @@ sap.ui.define([
                 var fPromedio = Math.round((fSumAbs / aDesvios.length) * 10) / 10;
 
                 aData.push({
-                    Accion:     mAcciones[sCode].nombre,
-                    _previsto:  mAcciones[sCode].previsto, // solo para popup; no se grafica
-                    _desvios:   aDesvios,                  // valores individuales para popup
-                    Promedio:   fPromedio,
-                    DesvioMin:  Math.round(Math.min.apply(null, aDesvios) * 10) / 10,
-                    DesvioMax:  Math.round(Math.max.apply(null, aDesvios) * 10) / 10
+                    Accion: mAcciones[sCode].nombre,
+                    _previsto: mAcciones[sCode].previsto, // solo para popup; no se grafica
+                    _desvios: aDesvios,                  // valores individuales para popup
+                    Promedio: fPromedio,
+                    DesvioMin: Math.round(Math.min.apply(null, aDesvios) * 10) / 10,
+                    DesvioMax: Math.round(Math.max.apply(null, aDesvios) * 10) / 10
                 });
             });
 
