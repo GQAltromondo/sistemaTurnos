@@ -90,11 +90,11 @@ sap.ui.define([
 						value: "" // o dejarlo vacío ""
 					},
 					{
-						key: "X",
+						key: "",
 						value: "Fuera de Servicio (F/S)"
 					},
 					{
-						key: "",
+						key: "X",
 						value: "En Servicio (E/S)"
 					}
 				],
