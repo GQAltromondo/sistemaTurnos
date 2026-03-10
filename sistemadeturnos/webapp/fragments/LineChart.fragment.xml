@@ -24,22 +24,17 @@
                 </viz.data:dimensions>
 
                 <viz.data:measures>
-                    <!-- Previsto: referencia en 0 (sin desvío) -->
-                    <viz.data:MeasureDefinition
-                        name="Previsto"
-                        value="{chartModel>Previsto}"
-                    />
-                    <!-- Promedio: tiempo real promedio entre licencias -->
+                    <!-- Promedio: promedio de |desvíos| por acción -->
                     <viz.data:MeasureDefinition
                         name="Promedio"
                         value="{chartModel>Promedio}"
                     />
-                    <!-- Mínimo: menor desvío observado -->
+                    <!-- Mínimo: menor desvío observado (con signo) -->
                     <viz.data:MeasureDefinition
                         name="Mínimo"
                         value="{chartModel>DesvioMin}"
                     />
-                    <!-- Máximo: mayor desvío observado -->
+                    <!-- Máximo: mayor desvío observado (con signo) -->
                     <viz.data:MeasureDefinition
                         name="Máximo"
                         value="{chartModel>DesvioMax}"
@@ -58,7 +53,7 @@
             <viz.feeds:FeedItem
                 uid="valueAxis"
                 type="Measure"
-                values="Previsto,Promedio,Mínimo,Máximo"
+                values="Promedio,Mínimo,Máximo"
             />
         </viz:feeds>
     </viz:VizFrame>

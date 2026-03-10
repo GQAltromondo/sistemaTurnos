@@ -72,6 +72,10 @@ sap.ui.define([
             return hours + ":" + minutes;
         },
 
+        turnoWarningText: function (turnoWarning) {
+            return turnoWarning || " ";
+        },
+
         turnoColor: function (consola) {
             switch (consola) {
                 case "NOA":

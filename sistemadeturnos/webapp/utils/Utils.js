@@ -277,14 +277,24 @@ sap.ui.define([
             const oModel = new JSONModel(counts);
             oView.setModel(oModel, "countsModel");
 
+            // Deduplicar por equipo: un solo registro por Equnr
+            const oEquiposVistos = {};
+            const aReporteDataUnica = aReporteData.filter(function (item) {
+                if (oEquiposVistos[item.Equipo]) {
+                    return false;
+                }
+                oEquiposVistos[item.Equipo] = true;
+                return true;
+            });
+
             // 🆕 ORDENAR REPORTE POR HORA Y ACTUALIZAR MODELO
-            aReporteData.sort(function (a, b) {
+            aReporteDataUnica.sort(function (a, b) {
                 if (!a.Hora) return 1;
                 if (!b.Hora) return -1;
                 return a.Hora.localeCompare(b.Hora);
             });
 
-            const oReporteModel = new JSONModel(aReporteData);
+            const oReporteModel = new JSONModel(aReporteDataUnica);
             oView.setModel(oReporteModel, "ReporteModel");
 
             // 🆕 ACTUALIZAR RANGO DE FECHAS
@@ -292,13 +302,13 @@ sap.ui.define([
             var sMaxHora = "--";
             var sFecha = "";
 
-            if (aReporteData.length > 0) {
-                var aHoras = aReporteData.filter(d => d.Hora).map(d => d.Hora);
+            if (aReporteDataUnica.length > 0) {
+                var aHoras = aReporteDataUnica.filter(d => d.Hora).map(d => d.Hora);
                 if (aHoras.length > 0) {
                     sMinHora = aHoras[0];
                     sMaxHora = aHoras[aHoras.length - 1];
                 }
-                sFecha = aReporteData[0].Fecha;
+                sFecha = aReporteDataUnica[0].Fecha;
             }
 
             var oDateRangeControl = oView.byId ? oView.byId("reporteDateRange") : null;

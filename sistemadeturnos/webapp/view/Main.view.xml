@@ -198,7 +198,10 @@
                     </HBox>
                 </Panel>
 
-                <HBox justifyContent="End">
+                <HBox
+                    justifyContent="End"
+                    class="sapUiSmallMarginBottom"
+                >
                     <ToolbarSpacer />
 
                     <Input
@@ -216,6 +219,7 @@
                     <Button
                         icon="sap-icon://refresh"
                         press="onRefresh"
+                        class="sapUiSmallMarginEnd"
                     />
                 </HBox>
 
@@ -227,6 +231,7 @@
                         <IconTabFilter
                             text="Turno"
                             key="LIC"
+                            visible="{viewModel>/isProgramacion}"
                         >
                             <t:Table
                                 id="turnosTable"
@@ -234,6 +239,7 @@
                                 selectionBehavior="Row"
                                 ariaLabelledBy="title2"
                                 rows="{LicencesJsonModel>/}"
+                                filter=".onColumnFilter"
                             >
                                 <t:contextMenu>
                                     <Menu>
@@ -517,6 +523,7 @@
                                                     valueFormat="HH:mm"
                                                     displayFormat="HH:mm"
                                                     valueState="{path: 'LicencesJsonModel>Consola', formatter: '.formatter.turnoColor'}"
+                                                    valueStateText="{path: 'LicencesJsonModel>TurnoWarning', formatter: '.formatter.turnoWarningText'}"
                                                     change="onChangeHour"
                                                     class="tpGroupBorder {LicencesJsonModel>ColorGrupoClass}"
                                                     enabled="{editableModel>/isEditable}"
@@ -564,6 +571,7 @@
                         <IconTabFilter
                             text="Acciones para la entrega ({AccionesEntregaModel>/length})"
                             key="ACCIONES"
+                            visible="{viewModel>/isProgramacion}"
                         >
                             <t:Table
                                 id="accionesEntregaTable"
@@ -965,7 +973,7 @@
                                             <VBox alignItems="Center">
                                                 <!-- Nodo hijo: abre el visor de adjuntos -->
                                                 <Button
-                                                     icon="sap-icon://show"
+                                                    icon="sap-icon://show"
                                                     type="Emphasized"
                                                     tooltip="Ver adjuntos"
                                                     press=".onViewAttachmentFromTree"
@@ -1026,7 +1034,11 @@
                                                     visible="{= ${accionesTreeModel>_isGroup} === true }"
                                                 >
                                                     <customData>
-                                                        <core:CustomData key="idLicencia" value="{accionesTreeModel>idLicencia}" writeToDom="false" />
+                                                        <core:CustomData
+                                                            key="idLicencia"
+                                                            value="{accionesTreeModel>idLicencia}"
+                                                            writeToDom="false"
+                                                        />
                                                     </customData>
                                                 </Link>
                                                 <Text
@@ -1135,7 +1147,7 @@
                         <IconTabFilter
                             text="Resumen"
                             key="REPORTE"
-                            visible="true"
+                            visible="{viewModel>/isProgramacion}"
                         >
                             <Panel
                                 headerText="Totales de licencias"
@@ -1330,8 +1342,11 @@
                         <IconTabFilter
                             text="Grafico"
                             key="Grafico"
+                            visible="{viewModel>/isProgramacion}"
                         >
-                            <VBox class="sapUiMediumMarginBegin sapUiMediumMarginTop">
+                            <VBox
+                                class="sapUiMediumMarginBegin sapUiMediumMarginTop"
+                            >
                                 <Title
                                     text="Acciones para la entrega"
                                     level="H2"
@@ -1341,12 +1356,21 @@
                                     class="sapUiSmallMarginTop"
                                 />
                             </VBox>
+                            <HBox
+                                class="sapUiMediumMarginBegin sapUiSmallMarginTop sapUiSmallMarginBottom"
+                            >
+                                <Button
+                                    text="Descargar Reporte de Desvíos"
+                                    icon="sap-icon://download"
+                                    press="onDescargarReporteDesvios"
+                                    type="Emphasized"
+                                />
+                            </HBox>
                             <VBox
                                 id="chartContainer"
                                 width="100%"
                             />
                         </IconTabFilter>
-
                     </items>
                 </IconTabBar>
 
@@ -1355,6 +1379,7 @@
                         <MenuButton
                             text="{i18n>reports}"
                             menuPosition="BeginTop"
+                            visible="{viewModel>/isProgramacion}"
                         >
                             <menu>
                                 <Menu>

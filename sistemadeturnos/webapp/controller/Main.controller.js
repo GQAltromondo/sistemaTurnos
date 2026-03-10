@@ -60,7 +60,8 @@ sap.ui.define([
 
             var oViewModel = new JSONModel({
                 busy: false,
-                delay: 0
+                delay: 0,
+                isProgramacion: false
             });
             this.getView().setModel(oViewModel, "viewModel");
 
@@ -227,6 +228,12 @@ sap.ui.define([
             var chkPAT = this.byId("chkRequierePAT");
             if (chkPAT) {
                 chkPAT.setEnabled(bEsEditor);
+            }
+
+            // Visibilidad de tabs según rol
+            var oViewModel = this.getView().getModel("viewModel");
+            if (oViewModel) {
+                oViewModel.setProperty("/isProgramacion", bEsEditor);
             }
         },
         // ----------------------------------- TURNOS EDITABLES ----------------------------------------
@@ -2018,17 +2025,15 @@ sap.ui.define([
 
             console.log("📊 Licencias con maniobras encontradas:", aLicenciasFecha.length);
 
-            // Eliminar duplicados basados en Equnr + TurnoAsignado (IGUAL QUE EL EXCEL)
+            // Eliminar duplicados: un solo registro por equipo (Equnr)
             var aLicenciasUnicas = [];
             var oMapaDuplicados = {};
 
             aLicenciasFecha.forEach(function (license) {
                 var sEquipo = license.Equnr || "";
-                var sTurno = license.TurnoAsignado || "";
-                var sClave = sEquipo + "|" + sTurno;
 
-                if (!oMapaDuplicados[sClave]) {
-                    oMapaDuplicados[sClave] = true;
+                if (!oMapaDuplicados[sEquipo]) {
+                    oMapaDuplicados[sEquipo] = true;
                     aLicenciasUnicas.push(license);
                 }
             });
@@ -2596,13 +2601,21 @@ sap.ui.define([
                 return lic === oSelectedLicence;
             });
 
-            this._cascadeGroupsDown(aLicences, iNewIndex, oSource);
+            var aWarningItems = this._cascadeGroupsDown(aLicences, iNewIndex, oSource);
 
             this._rebuildFrontendGroupsByEquipoHora(aLicences);
             this._assignGroupColors(aLicences);
 
             oModel.setProperty("/", aLicences);
             oModel.refresh(true);
+
+            // Limpiar el warning del modelo tras 4 segundos (se muestra una sola vez)
+            if (aWarningItems && aWarningItems.length > 0) {
+                setTimeout(function () {
+                    aWarningItems.forEach(function (it) { it.TurnoWarning = ""; });
+                    oModel.refresh(true);
+                }, 4000);
+            }
         },
 
         _recalculateEmptyShift: function (aLicences, oSelectedLicence, iLicenseIndex) {
@@ -4446,6 +4459,11 @@ sap.ui.define([
                 }
             }
 
+            // Limpiar warnings previos de todos los grupos de esta consola
+            groups.forEach(function (g) {
+                g.items.forEach(function (it) { it.TurnoWarning = ""; });
+            });
+
             // CASCADA HACIA ABAJO
             var prevStart = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
             var warnings = [];
@@ -4472,19 +4490,25 @@ sap.ui.define([
                 var newTimeStr = this._formatTime(expectedStart);
                 group.items.forEach(function (it) {
                     it.TurnoAsignado = newTimeStr;
+                    it.TurnoWarning = "";
                 });
 
                 prevGroup = group;
                 prevStart = expectedStart;
             }
 
+            // Marcar inline los grupos que no se ajustaron
+            warnings.forEach(function (g) {
+                g.items.forEach(function (it) {
+                    it.TurnoWarning = "Algunos grupos no se ajustaron para evitar adelantar turnos.";
+                });
+            });
+
             // Mensajes
             if (upperWarning && warnings.length > 0) {
-                MessageToast.show("El turno comienza antes de la separación mínima y algunos grupos no se ajustaron para evitar adelantar turnos.");
+                MessageToast.show("El turno comienza antes de la separación mínima con el grupo anterior.");
             } else if (upperWarning) {
                 MessageToast.show("El turno comienza antes de la separación mínima con el grupo anterior.");
-            } else if (warnings.length > 0) {
-                MessageToast.show("Algunos grupos no se ajustaron para evitar adelantar turnos.");
             }
 
             // VALUE STATE
@@ -4497,6 +4521,13 @@ sap.ui.define([
                     oTimeControl.setValueStateText("");
                 }
             }
+
+            // Retornar items con warning para que el caller pueda limpiarlos tras mostrarlos una vez
+            var aWarningItems = [];
+            warnings.forEach(function (g) {
+                g.items.forEach(function (it) { aWarningItems.push(it); });
+            });
+            return aWarningItems;
         },
 
         // ==================== MÉTODOS PARA ADJUNTAR ARCHIVOS PDF ====================
@@ -5989,6 +6020,52 @@ sap.ui.define([
         },
 
         // ==================== MÉTODOS DE FILTRADO Y BÚSQUEDA ====================
+
+        onColumnFilter: function (oEvent) {
+            var sFilterProp = oEvent.getParameter("column").getFilterProperty();
+            if (sFilterProp !== "Equstat") {
+                return; // dejar que la tabla maneje otros filtros normalmente
+            }
+
+            oEvent.preventDefault();
+
+            var sValue = (oEvent.getParameter("value") || "").trim().toUpperCase();
+            var oBinding = this.byId("turnosTable").getBinding("rows");
+            var Filter = sap.ui.model.Filter;
+            var FilterOperator = sap.ui.model.FilterOperator;
+
+            if (!sValue) {
+                oBinding.filter([], sap.ui.model.FilterType.Control);
+                return;
+            }
+
+            var bMatchES = "E/S".indexOf(sValue) !== -1; // usuario escribió "E", "E/", "E/S"
+            var bMatchFS = "F/S".indexOf(sValue) !== -1; // usuario escribió "F", "F/", "F/S"
+
+            var oFilter;
+            if (bMatchES && bMatchFS) {
+                // ambos coinciden (ej: "/S" o "/") → mostrar todos
+                oBinding.filter([], sap.ui.model.FilterType.Control);
+                return;
+            } else if (bMatchES) {
+                // E/S → Equstat = "X"
+                oFilter = new Filter("Equstat", FilterOperator.EQ, "X");
+            } else if (bMatchFS) {
+                // F/S → Equstat vacío o null
+                oFilter = new Filter({
+                    filters: [
+                        new Filter("Equstat", FilterOperator.EQ, ""),
+                        new Filter("Equstat", FilterOperator.EQ, null)
+                    ],
+                    and: false
+                });
+            } else {
+                // sin coincidencia → tabla vacía
+                oFilter = new Filter("Equstat", FilterOperator.EQ, "__NO_MATCH__");
+            }
+
+            oBinding.filter([oFilter], sap.ui.model.FilterType.Control);
+        },
 
         onFilter: function () {
             const oView = this.getView();
@@ -8427,34 +8504,34 @@ sap.ui.define([
                     });
 
                 } else {
-                    // ========== SIN ADJUNTOS - CREAR UN REGISTRO POR CADA ID DEL GRUPO ==========
+                    // ========== SIN ADJUNTOS ==========
 
                     const sIdLicencia = accion.idLicencia || "";
                     const aIds = sIdLicencia.split(" / ").map(id => id.trim());
 
-                    aIds.forEach(sId => {
-                        aPromises.push(
-                            new Promise((resolve, reject) => {
-                                const payload = {
-                                    Id: sId,
-                                    Empresa: accion.empresa || "100",
-                                    Tipo: accion.tipo || "L",
-                                    Anio: accion.anio || new Date().getFullYear().toString(),
-                                    Dateturno: timestampOData,
-                                    Codigo: (accion.accion || "").substring(0, 10),
-                                    Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
-                                    Descripcion: accion.trabajoRealizar || "Sin descripción",
-                                    Equnr: (accion.equipo || "").substring(0, 18),
-                                    Equstat: accion.equstat || "A",
-                                    Jobcond: (accion.condicion || "01").substring(0, 2),
-                                    Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
-                                    Comments: "Sin adjuntos",
-                                    Licstat: (accion.estado || "01").substring(0, 2),
-                                    Attachment: ""
-                                };
+                    if (bExisteEnBackend) {
+                        // UPDATE: un request por ID (cada registro ya existe con su propia clave)
+                        aIds.forEach(sId => {
+                            aPromises.push(
+                                new Promise((resolve, reject) => {
+                                    const payload = {
+                                        Id: sId,
+                                        Empresa: accion.empresa || "100",
+                                        Tipo: accion.tipo || "L",
+                                        Anio: accion.anio || new Date().getFullYear().toString(),
+                                        Dateturno: timestampOData,
+                                        Codigo: (accion.accion || "").substring(0, 10),
+                                        Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                                        Descripcion: accion.trabajoRealizar || "Sin descripción",
+                                        Equnr: (accion.equipo || "").substring(0, 18),
+                                        Equstat: accion.equstat || "A",
+                                        Jobcond: (accion.condicion || "01").substring(0, 2),
+                                        Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                                        Comments: "Sin adjuntos",
+                                        Licstat: (accion.estado || "01").substring(0, 2),
+                                        Attachment: ""
+                                    };
 
-
-                                if (bExisteEnBackend) {
                                     const sKey = oDataService.createKey(sEntity, {
                                         Id: sId,
                                         Empresa: accion.empresa || "100",
@@ -8479,25 +8556,48 @@ sap.ui.define([
                                             });
                                         }
                                     });
-                                } else {
+                                })
+                            );
+                        });
+                    } else {
+                        // CREATE: bulk request con ToIDs para todo el grupo
+                        aPromises.push(
+                            new Promise((resolve, reject) => {
+                                const payload = {
+                                    Empresa: accion.empresa || "100",
+                                    Tipo: accion.tipo || "L",
+                                    Anio: accion.anio || new Date().getFullYear().toString(),
+                                    Dateturno: timestampOData,
+                                    Codigo: (accion.accion || "").substring(0, 10),
+                                    Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                                    Descripcion: accion.trabajoRealizar || "Sin descripción",
+                                    Equnr: (accion.equipo || "").substring(0, 18),
+                                    Equstat: accion.equstat || "A",
+                                    Jobcond: (accion.condicion || "01").substring(0, 2),
+                                    Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                                    Comments: "Sin adjuntos",
+                                    Licstat: (accion.estado || "01").substring(0, 2),
+                                    Attachment: "",
+                                    EstadoGuardado: true,
+                                    ToIDs: aIds.map(sId => ({ Id: sId }))
+                                };
 
-                                    oDataService.create(sEntity, payload, {
-                                        success: () => {
+                                oDataService.create("/CatalogoEntregaBulkSet", payload, {
+                                    success: () => {
+                                        resolve();
+                                    },
+                                    error: (oError) => {
+                                        const sErrorMsg = oError?.message || "";
+                                        if (sErrorMsg.includes("ya existe")) {
                                             resolve();
-                                        },
-                                        error: (oError) => {
-                                            const sErrorMsg = oError?.message || "";
-                                            if (sErrorMsg.includes("ya existe")) {
-                                                resolve();
-                                            } else {
-                                                reject();
-                                            }
+                                        } else {
+                                            reject();
                                         }
-                                    });
-                                }
+                                    }
+                                });
                             })
                         );
-                    });
+                    }
                 }
             });
             return Promise.all(aPromises).then(() => {
@@ -8811,21 +8911,21 @@ sap.ui.define([
             oVizFrame.setVizProperties({
                 title: {
                     visible: true,
-                    text: "Tiempo por Acción — Real vs. Previsto (hs)"
+                    text: "Desvíos por Hito — Diferencia respecto al Previsto (min)"
                 },
                 legend: {
                     visible: true
                 },
                 valueAxis: {
-                    title: { visible: true, text: "Hora (hs)" }
+                    title: { visible: true, text: "Desvío (min)" }
                 },
                 categoryAxis: {
                     title: { visible: false }
                 },
                 plotArea: {
                     // Colores en el mismo orden que las medidas en el FeedItem:
-                    // Previsto, Promedio, Mínimo, Máximo
-                    colorPalette: ["#00B4D8", "#FF8C00", "#2ECC71", "#E74C3C"]
+                    // Promedio, Mínimo, Máximo
+                    colorPalette: ["#FF8C00", "#2ECC71", "#E74C3C"]
                 }
             });
         },
@@ -8857,26 +8957,37 @@ sap.ui.define([
                 return;
             }
 
-            var fPrevisto  = oCompleteData.Previsto  || 0;
-            var fPromedio  = oCompleteData.Promedio  || 0;
-            var fMin       = oCompleteData.DesvioMin || 0;
-            var fMax       = oCompleteData.DesvioMax || 0;
+            var fPrevisto  = oCompleteData._previsto  || 0;
+            var fPromedio  = oCompleteData.Promedio   || 0;
+            var fMin       = oCompleteData.DesvioMin  || 0;
+            var fMax       = oCompleteData.DesvioMax  || 0;
+            var aDesvios   = oCompleteData._desvios   || [];
 
-            var fDesvProm  = (fPromedio - fPrevisto).toFixed(2);
-            var fDesvMin   = (fMin      - fPrevisto).toFixed(2);
-            var fDesvMax   = (fMax      - fPrevisto).toFixed(2);
-            var fDesvPorc  = fPrevisto !== 0
-                ? ((fPromedio - fPrevisto) / fPrevisto * 100).toFixed(1)
-                : "—";
+            // Formatear hora prevista como HH:MM
+            var hPrev = Math.floor(fPrevisto);
+            var mPrev = Math.round((fPrevisto - hPrev) * 60);
+            if (mPrev >= 60) { hPrev += Math.floor(mPrev / 60); mPrev = mPrev % 60; }
+            var sPrevisto = hPrev + ":" + (mPrev < 10 ? "0" : "") + mPrev;
+
+            // Helper para mostrar desvío con signo explícito
+            var fnFmtDev = function (v) {
+                return (v >= 0 ? "+" : "") + v.toFixed(1) + " min";
+            };
+
+            // Detalle de valores individuales
+            var sIndividuales = aDesvios.length
+                ? aDesvios.map(function (v, i) {
+                    return "   [" + (i + 1) + "] " + fnFmtDev(v);
+                }).join("\n")
+                : "   (sin datos)";
 
             var sDetalles =
-                "Acción: " + sAccion + "\n\n" +
-                "Hora prevista:       " + fPrevisto.toFixed(2)  + " hs\n" +
-                "Hora real (promedio): " + fPromedio.toFixed(2) + " hs\n" +
-                "Hora real (mínima):  " + fMin.toFixed(2)      + " hs\n" +
-                "Hora real (máxima):  " + fMax.toFixed(2)      + " hs\n\n" +
-                "Desvío promedio: " + fDesvProm + " hs (" + fDesvPorc + "%)\n" +
-                "Rango de desvíos: [" + fDesvMin + " hs , " + fDesvMax + " hs]";
+                "Acción: " + sAccion + "\n" +
+                "Hora prevista (referencia): " + sPrevisto + " hs\n\n" +
+                "Desvíos individuales (real − previsto):\n" + sIndividuales + "\n\n" +
+                "Mínimo:              " + fnFmtDev(fMin) + "\n" +
+                "Máximo:              " + fnFmtDev(fMax) + "\n" +
+                "Promedio |abs|:      +" + fPromedio.toFixed(1) + " min";
 
             sap.m.MessageBox.information(sDetalles, {
                 title: "Detalle de la Acción",
@@ -8884,13 +8995,262 @@ sap.ui.define([
             });
         },
 
+        // ─── GRÁFICO: Reporte de Desvíos ────────────────────────────────────────────
+
+        onDescargarReporteDesvios: function () {
+            jQuery.sap.require("transener.sistemadeturnos.libs.xlsx");
+            if (typeof XLSX === "undefined" || !XLSX || !XLSX.utils) {
+                MessageBox.error("No se pudo cargar la librería XLSX.");
+                return;
+            }
+            if (typeof make_xlsx_lib === "function") {
+                make_xlsx_lib(XLSX);
+            }
+            this._createExcelReportDesvios();
+        },
+
+        _createExcelReportDesvios: function () {
+            var oView     = this.getView();
+            var oAccModel = oView.getModel("AccionesEntregaModel");
+            var oLicModel = ModelHelper.getModel("LicencesJsonModel", oView);
+            var oFormatter = this.formatter;
+
+            // ── Mapa de hitos: mismo que en _computeChartFromAcciones ──────────────
+            // origen: dónde viene el tiempo real ("Módulo Licencias" o "Libro de Guardia")
+            var mAcciones = {
+                "SOL COC": { nombre: "Solicitud al COC",       previsto: 6.0,   origen: "Hardcode" },
+                "SOL TEC": { nombre: "Solicitud técnica",      previsto: 6.667, origen: "Hardcode" },
+                "AUT COC": { nombre: "Autorización del COC",   previsto: 6.833, origen: "Hardcode" },
+                "INI MAN": { nombre: "Inicio de maniobras",    previsto: 7.0,   origen: "Hardcode" },
+                "COL PAT": { nombre: "Colocación de PAT",      previsto: 7.75,  origen: "Hardcode" },
+                "FIN MAN": { nombre: "Fin de maniobras",       previsto: 7.75,  origen: "Hardcode" },
+                "FIN LT":  { nombre: "Finalización de LT",     previsto: 16.0,  origen: "Hardcode" },
+                "RET PAT": { nombre: "Retiro de PAT",          previsto: 16.25, origen: "Hardcode" },
+                "MAN PES": { nombre: "Maniobras para la PES",  previsto: 16.25, origen: "Hardcode" },
+                "PES":     { nombre: "Puesta en Servicio",     previsto: 17.0,  origen: "Hardcode" }
+            };
+
+            // ── Helpers ───────────────────────────────────────────────────────────
+            var fnToDecimal = function (sTime) {
+                if (!sTime) return null;
+                var p = sTime.split(":");
+                if (p.length < 2) return null;
+                var h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+                if (isNaN(h) || isNaN(m)) return null;
+                if (m >= 60) { h += Math.floor(m / 60); m = m % 60; }
+                return h + m / 60;
+            };
+            var fnToHHMM = function (fDec) {
+                var h = Math.floor(fDec);
+                var m = Math.round((fDec - h) * 60);
+                if (m >= 60) { h += Math.floor(m / 60); m = m % 60; }
+                return h + ":" + (m < 10 ? "0" : "") + m;
+            };
+            var fnDesvio = function (sHoraReal, fPrevisto) {
+                var fHora = fnToDecimal(sHoraReal);
+                if (fHora === null) return null;
+                return Math.round((fHora - fPrevisto) * 60 * 10) / 10;
+            };
+
+            // ── Datos reales del Libro de Guardia (hardcode provisional) ─────────
+            // Primeros 3 hitos: SOL COC, SOL TEC, AUT COC.
+            // TODO: reemplazar con integración real al LG.
+            var aLGData = [
+                { codigo: "SOL COC", equipo: "LG-001", tiempo: "6:05" },
+                { codigo: "SOL COC", equipo: "LG-002", tiempo: "5:58" },
+                { codigo: "SOL COC", equipo: "LG-003", tiempo: "6:10" },
+                { codigo: "SOL COC", equipo: "LG-004", tiempo: "5:55" },
+                { codigo: "SOL COC", equipo: "LG-005", tiempo: "6:02" },
+                { codigo: "SOL TEC", equipo: "LG-001", tiempo: "6:45" },
+                { codigo: "SOL TEC", equipo: "LG-002", tiempo: "6:38" },
+                { codigo: "SOL TEC", equipo: "LG-003", tiempo: "6:50" },
+                { codigo: "SOL TEC", equipo: "LG-004", tiempo: "6:35" },
+                { codigo: "SOL TEC", equipo: "LG-005", tiempo: "6:42" },
+                { codigo: "AUT COC", equipo: "LG-001", tiempo: "6:55" },
+                { codigo: "AUT COC", equipo: "LG-002", tiempo: "6:48" },
+                { codigo: "AUT COC", equipo: "LG-003", tiempo: "7:02" },
+                { codigo: "AUT COC", equipo: "LG-004", tiempo: "6:45" },
+                { codigo: "AUT COC", equipo: "LG-005", tiempo: "6:52" },
+                { codigo: "INI MAN", equipo: "LG-001", tiempo: "7:05" },
+                { codigo: "INI MAN", equipo: "LG-002", tiempo: "6:58" },
+                { codigo: "INI MAN", equipo: "LG-003", tiempo: "7:12" },
+                { codigo: "INI MAN", equipo: "LG-004", tiempo: "6:55" },
+                { codigo: "INI MAN", equipo: "LG-005", tiempo: "7:08" },
+                { codigo: "COL PAT", equipo: "LG-001", tiempo: "7:50" },
+                { codigo: "COL PAT", equipo: "LG-002", tiempo: "7:40" },
+                { codigo: "COL PAT", equipo: "LG-003", tiempo: "7:55" },
+                { codigo: "COL PAT", equipo: "LG-004", tiempo: "7:38" },
+                { codigo: "COL PAT", equipo: "LG-005", tiempo: "7:48" },
+                { codigo: "FIN MAN", equipo: "LG-001", tiempo: "7:52" },
+                { codigo: "FIN MAN", equipo: "LG-002", tiempo: "7:42" },
+                { codigo: "FIN MAN", equipo: "LG-003", tiempo: "8:00" },
+                { codigo: "FIN MAN", equipo: "LG-004", tiempo: "7:40" },
+                { codigo: "FIN MAN", equipo: "LG-005", tiempo: "7:50" },
+                { codigo: "FIN LT",  equipo: "LG-001", tiempo: "16:08" },
+                { codigo: "FIN LT",  equipo: "LG-002", tiempo: "15:55" },
+                { codigo: "FIN LT",  equipo: "LG-003", tiempo: "16:15" },
+                { codigo: "FIN LT",  equipo: "LG-004", tiempo: "15:52" },
+                { codigo: "FIN LT",  equipo: "LG-005", tiempo: "16:05" },
+                { codigo: "RET PAT", equipo: "LG-001", tiempo: "16:22" },
+                { codigo: "RET PAT", equipo: "LG-002", tiempo: "16:10" },
+                { codigo: "RET PAT", equipo: "LG-003", tiempo: "16:28" },
+                { codigo: "RET PAT", equipo: "LG-004", tiempo: "16:08" },
+                { codigo: "RET PAT", equipo: "LG-005", tiempo: "16:18" },
+                { codigo: "MAN PES", equipo: "LG-001", tiempo: "16:20" },
+                { codigo: "MAN PES", equipo: "LG-002", tiempo: "16:12" },
+                { codigo: "MAN PES", equipo: "LG-003", tiempo: "16:30" },
+                { codigo: "MAN PES", equipo: "LG-004", tiempo: "16:10" },
+                { codigo: "MAN PES", equipo: "LG-005", tiempo: "16:18" },
+                { codigo: "PES",     equipo: "LG-001", tiempo: "17:06" },
+                { codigo: "PES",     equipo: "LG-002", tiempo: "16:55" },
+                { codigo: "PES",     equipo: "LG-003", tiempo: "17:12" },
+                { codigo: "PES",     equipo: "LG-004", tiempo: "16:52" },
+                { codigo: "PES",     equipo: "LG-005", tiempo: "17:05" }
+            ];
+
+            // ── Acumular desvíos por código ───────────────────────────────────────
+            // clave: código → [{ equipo, idLicencia, horaReal, desvio, origenDato }]
+            var mDesvios = {};
+
+            (oAccModel ? oAccModel.getData() || [] : []).forEach(function (oAcc) {
+                var sCode = oAcc.accion;
+                if (!mAcciones[sCode]) return;
+                var fDev = fnDesvio(oAcc.turnoEntrega, mAcciones[sCode].previsto);
+                if (fDev === null) return;
+                if (!mDesvios[sCode]) mDesvios[sCode] = [];
+                mDesvios[sCode].push({
+                    equipo:      oAcc.equipo || "",
+                    idLicencia:  oAcc.idLicencia || "",
+                    horaReal:    oAcc.turnoEntrega || "",
+                    desvio:      fDev,
+                    origenDato:  "Módulo Licencias"
+                });
+            });
+
+            aLGData.forEach(function (oLG) {
+                var sCode = oLG.codigo;
+                if (!mAcciones[sCode]) return;
+                var fDev = fnDesvio(oLG.tiempo, mAcciones[sCode].previsto);
+                if (fDev === null) return;
+                if (!mDesvios[sCode]) mDesvios[sCode] = [];
+                mDesvios[sCode].push({
+                    equipo:      oLG.equipo || "",
+                    idLicencia:  "LG",
+                    horaReal:    oLG.tiempo,
+                    desvio:      fDev,
+                    origenDato:  "Libro de Guardia (hardcode)"
+                });
+            });
+
+            // ── Solapa 1: Desvíos por Hito (resumen del gráfico) ─────────────────
+            var aResumen = [["Código", "Hito", "Hora Prevista", "Origen datos reales",
+                             "N° Obs.", "Mín (min)", "Máx (min)", "Promedio |abs| (min)"]];
+            Object.keys(mAcciones).forEach(function (sCode) {
+                var aD = mDesvios[sCode] || [];
+                var fMin = "Sin datos", fMax = "Sin datos", fProm = "Sin datos";
+                if (aD.length) {
+                    var aVals = aD.map(function (d) { return d.desvio; });
+                    fMin  = Math.round(Math.min.apply(null, aVals) * 10) / 10;
+                    fMax  = Math.round(Math.max.apply(null, aVals) * 10) / 10;
+                    fProm = Math.round(aVals.reduce(function (s, v) { return s + Math.abs(v); }, 0)
+                                       / aVals.length * 10) / 10;
+                }
+                aResumen.push([
+                    sCode,
+                    mAcciones[sCode].nombre,
+                    fnToHHMM(mAcciones[sCode].previsto),
+                    mAcciones[sCode].origen,
+                    aD.length,
+                    fMin, fMax, fProm
+                ]);
+            });
+
+            // ── Solapa 2: Acciones del Módulo (detalle) ───────────────────────────
+            var aModDetalle = [["Equipo", "ID Licencia", "Código", "Hito",
+                                "Hora Prevista", "Hora Real", "Desvío (min)"]];
+            (oAccModel ? oAccModel.getData() || [] : []).forEach(function (oAcc) {
+                var sCode = oAcc.accion;
+                if (!mAcciones[sCode] || !oAcc.turnoEntrega) return;
+                var fDev = fnDesvio(oAcc.turnoEntrega, mAcciones[sCode].previsto);
+                if (fDev === null) return;
+                aModDetalle.push([
+                    oAcc.equipo || "",
+                    oAcc.idLicencia || "",
+                    sCode,
+                    mAcciones[sCode].nombre,
+                    fnToHHMM(mAcciones[sCode].previsto),
+                    oAcc.turnoEntrega || "",
+                    fDev
+                ]);
+            });
+            if (aModDetalle.length === 1) {
+                aModDetalle.push(["Sin datos de módulo cargados"]);
+            }
+
+            // ── Solapa 3: Libro de Guardia (hardcode provisional) ─────────────────
+            var aLGDetalle = [["Equipo", "ID Licencia", "Código", "Hito",
+                               "Hora Prevista", "Hora Real", "Desvío (min)", "Nota"]];
+            aLGData.forEach(function (oLG) {
+                var sCode = oLG.codigo;
+                if (!mAcciones[sCode]) return;
+                var fDev = fnDesvio(oLG.tiempo, mAcciones[sCode].previsto);
+                if (fDev === null) return;
+                aLGDetalle.push([
+                    oLG.equipo || "",
+                    "LG",
+                    sCode,
+                    mAcciones[sCode].nombre,
+                    fnToHHMM(mAcciones[sCode].previsto),
+                    oLG.tiempo,
+                    fDev,
+                    "Dato provisional — pendiente integración con LG"
+                ]);
+            });
+
+            // ── Solapa 4: Licencias ───────────────────────────────────────────────
+            var aLicDetalle = [["Equipo", "ID Licencia", "Estado", "Cond. Trabajo",
+                                "Turno", "Trabajo a Realizar", "Región"]];
+            (oLicModel ? oLicModel.getData() || [] : []).forEach(function (lic) {
+                aLicDetalle.push([
+                    lic.Equnr || "",
+                    lic.Id || "",
+                    oFormatter.getEstado    ? oFormatter.getEstado(lic.Equstat)    : (lic.Equstat || ""),
+                    oFormatter.getJobCond   ? oFormatter.getJobCond(lic.Jobcond)   : (lic.Jobcond || ""),
+                    lic.TurnoAsignado || "",
+                    lic.Comments || "",
+                    oFormatter.getRegiones  ? oFormatter.getRegiones(lic.Werks)   : (lic.Werks || "")
+                ]);
+            });
+            if (aLicDetalle.length === 1) {
+                aLicDetalle.push(["Sin licencias cargadas en pantalla"]);
+            }
+
+            // ── Generar Excel ─────────────────────────────────────────────────────
+            try {
+                var Workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aResumen),    "Desvíos por Hito");
+                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aModDetalle), "Acciones Módulo");
+                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aLGDetalle),  "Libro de Guardia");
+                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aLicDetalle), "Licencias");
+
+                var sHoy = new Date().toISOString().slice(0, 10);
+                XLSX.writeFile(Workbook, "Reporte_Desvios_" + sHoy + ".xlsx", { cellStyles: true });
+                MessageToast.show("Reporte de desvíos descargado correctamente.");
+            } catch (oError) {
+                MessageBox.error("Error al generar el reporte: " + oError.message);
+            }
+        },
+
         // ─── GRÁFICO: cómputo del Promedio desde AccionesEntregaModel ───────────────
 
         /**
-         * Lee AccionesEntregaModel, agrupa por código de acción, promedia los
-         * turnoEntrega (HH:MM → hs decimales) y actualiza la serie "Promedio"
-         * del chartModel. Si no hay datos suficientes, mantiene los valores
-         * mockeados.  Min/Max quedan mockeados hasta la integración completa.
+         * Lee AccionesEntregaModel, agrupa por código de acción y calcula
+         * los desvíos en minutos respecto al horario previsto (hardcodeado).
+         *   - DesvioMin / DesvioMax: con signo (positivo = tarde, negativo = antes)
+         *   - Promedio: promedio de los valores absolutos de los desvíos
+         * El previsto es la referencia (0 en el eje Y) y NO se grafica.
+         * Los primeros 3 hitos (SOL TEC, AUT COC, INI MAN) vienen del
+         * libro de guardia (actualmente hardcodeados, funcionalidad pendiente).
          */
         _computeChartFromAcciones: function () {
             var oView       = this.getView();
@@ -8907,19 +9267,23 @@ sap.ui.define([
                 return;
             }
 
-            // Mapa: código → nombre en el gráfico y hora prevista (hardcodeada)
+            // Mapa: código → nombre en el gráfico y hora prevista en horas decimales (hardcodeada)
+            // El previsto se usa SOLO para calcular el desvío; no se grafica (equivale al 0).
             var mAcciones = {
-                "SOL TEC": { nombre: "Solicitud del equipo al COC", previsto: 7.67 },
-                "AUT COC": { nombre: "Autorización desde el COC",   previsto: 7.83 },
-                "INI MAN": { nombre: "Comienzo de maniobras",       previsto: 8.0  },
-                "COL PAT": { nombre: "Colocación de PAT",           previsto: 8.75 },
-                "ENT LT":  { nombre: "Entrega de LT",               previsto: 9.0  },
-                "FIN LT":  { nombre: "Finalización de LT",          previsto: 16.0 },
-                "RET PAT": { nombre: "Retiro de PAT",               previsto: 16.75},
-                "MAN PES": { nombre: "Maniobras para la PES",       previsto: 16.75}
+                "SOL COC": { nombre: "Solicitud al COC",        previsto: 6.0    }, // 6:00
+                "SOL TEC": { nombre: "Solicitud técnica",       previsto: 6.667  }, // 6:40
+                "AUT COC": { nombre: "Autorización del COC",    previsto: 6.833  }, // 6:50
+                "INI MAN": { nombre: "Inicio de maniobras",     previsto: 7.0    }, // 7:00
+                "COL PAT": { nombre: "Colocación de PAT",       previsto: 7.75   }, // 7:45
+                "FIN MAN": { nombre: "Fin de maniobras",        previsto: 7.75   }, // 7:45
+                "FIN LT":  { nombre: "Finalización de LT",      previsto: 16.0   }, // 16:00
+                "RET PAT": { nombre: "Retiro de PAT",           previsto: 16.25  }, // 16:15
+                "MAN PES": { nombre: "Maniobras para la PES",   previsto: 16.25  }, // 16:15
+                "PES":     { nombre: "Puesta en Servicio",      previsto: 17.0   }  // 17:00
             };
 
             // Helper: "HH:MM" → horas decimales
+            // Los minutos van de 00 a 59; si superan 59 se normalizan a la hora siguiente.
             var fnToDecimal = function (sTime) {
                 if (!sTime) return null;
                 var aParts = sTime.split(":");
@@ -8927,33 +9291,40 @@ sap.ui.define([
                 var h = parseInt(aParts[0], 10);
                 var m = parseInt(aParts[1], 10);
                 if (isNaN(h) || isNaN(m)) return null;
+                if (m >= 60) { h += Math.floor(m / 60); m = m % 60; }
                 return h + m / 60;
             };
 
-            // Agrupar turnoEntrega por código de acción (un valor por licencia/grupo)
-            var mHorasPorCodigo = {};
+            // Agrupar desvíos en minutos por código de acción
+            // desvío = (hora real - hora prevista) * 60  →  positivo = tarde, negativo = antes
+            var mDesviosPorCodigo = {};
             aAcciones.forEach(function (oAcc) {
                 var sCode = oAcc.accion;
                 if (!mAcciones[sCode]) return;
                 var fHora = fnToDecimal(oAcc.turnoEntrega);
                 if (fHora === null) return;
-                if (!mHorasPorCodigo[sCode]) mHorasPorCodigo[sCode] = [];
-                mHorasPorCodigo[sCode].push(fHora);
+                var fDesvioMin = Math.round((fHora - mAcciones[sCode].previsto) * 60 * 10) / 10;
+                if (!mDesviosPorCodigo[sCode]) mDesviosPorCodigo[sCode] = [];
+                mDesviosPorCodigo[sCode].push(fDesvioMin);
             });
 
-            // Construir el array completo solo con las acciones que tienen datos reales
+            // Construir el array solo con las acciones que tienen datos reales
             var aData = [];
             Object.keys(mAcciones).forEach(function (sCode) {
-                var aHoras = mHorasPorCodigo[sCode];
-                if (!aHoras || !aHoras.length) return;
+                var aDesvios = mDesviosPorCodigo[sCode];
+                if (!aDesvios || !aDesvios.length) return;
 
-                var fSum = aHoras.reduce(function (a, b) { return a + b; }, 0);
+                // Promedio con valor absoluto (evita cancelación entre desvíos opuestos)
+                var fSumAbs = aDesvios.reduce(function (acc, v) { return acc + Math.abs(v); }, 0);
+                var fPromedio = Math.round((fSumAbs / aDesvios.length) * 10) / 10;
+
                 aData.push({
-                    Accion:    mAcciones[sCode].nombre,
-                    Previsto:  mAcciones[sCode].previsto,
-                    Promedio:  Math.round((fSum / aHoras.length) * 100) / 100,
-                    DesvioMin: Math.round(Math.min.apply(null, aHoras) * 100) / 100,
-                    DesvioMax: Math.round(Math.max.apply(null, aHoras) * 100) / 100
+                    Accion:     mAcciones[sCode].nombre,
+                    _previsto:  mAcciones[sCode].previsto, // solo para popup; no se grafica
+                    _desvios:   aDesvios,                  // valores individuales para popup
+                    Promedio:   fPromedio,
+                    DesvioMin:  Math.round(Math.min.apply(null, aDesvios) * 10) / 10,
+                    DesvioMax:  Math.round(Math.max.apply(null, aDesvios) * 10) / 10
                 });
             });
 
@@ -9271,27 +9642,27 @@ sap.ui.define([
                         return;
                     }
 
-                    aIds.forEach(sId => {
-                        const payload = {
-                            Id: sId,
-                            Empresa: accion.empresa || "100",
-                            Tipo: accion.tipo || "L",
-                            Anio: accion.anio || new Date().getFullYear().toString(),
-                            Dateturno: oFechaUTC,
-                            Codigo: (accion.accion || "").substring(0, 10),
-                            Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
-                            Descripcion: accion.trabajoRealizar || "Sin descripción",
-                            Equnr: (accion.equipo || "").substring(0, 18),
-                            Equstat: accion.equstat || "A",
-                            Jobcond: (accion.condicion || "01").substring(0, 2),
-                            Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
-                            Comments: "Sin adjuntos",
-                            Licstat: (accion.estado || "01").substring(0, 2),
-                            Attachment: ""
-                        };
+                    if (accion._estadoGuardado) {
+                        // ✅ UPDATE: un request por ID en $batch (cada registro tiene su propia clave)
+                        aIds.forEach(sId => {
+                            const payload = {
+                                Id: sId,
+                                Empresa: accion.empresa || "100",
+                                Tipo: accion.tipo || "L",
+                                Anio: accion.anio || new Date().getFullYear().toString(),
+                                Dateturno: oFechaUTC,
+                                Codigo: (accion.accion || "").substring(0, 10),
+                                Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                                Descripcion: accion.trabajoRealizar || "Sin descripción",
+                                Equnr: (accion.equipo || "").substring(0, 18),
+                                Equstat: accion.equstat || "A",
+                                Jobcond: (accion.condicion || "01").substring(0, 2),
+                                Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                                Comments: "Sin adjuntos",
+                                Licstat: (accion.estado || "01").substring(0, 2),
+                                Attachment: ""
+                            };
 
-                        if (accion._estadoGuardado) {
-                            // ✅ UPDATE: Seguro para $batch
                             const sKey = oDataModel.createKey("/CatalogoEntregaSet", {
                                 Id: sId,
                                 Empresa: accion.empresa || "100",
@@ -9306,15 +9677,48 @@ sap.ui.define([
                             });
                             console.log(`   📝 UPDATE en $batch: ${sId} / ${accion.turnoEntrega}`);
                             iOperacionesBatch++;
-                        } else {
-                            // ✅ CREATE: Seguro para $batch
-                            oDataModel.create("/CatalogoEntregaSet", payload, {
-                                groupId: sGroupId
-                            });
-                            console.log(`   ➕ CREATE en $batch: ${sId} / ${accion.turnoEntrega}`);
-                            iOperacionesBatch++;
-                        }
-                    });
+                        });
+                    } else {
+                        // ⚠️ CREATE bulk: deep insert, NO soportado en $batch → request individual
+                        aFallbackPromises.push(
+                            new Promise((resolve, reject) => {
+                                const payload = {
+                                    Empresa: accion.empresa || "100",
+                                    Tipo: accion.tipo || "L",
+                                    Anio: accion.anio || new Date().getFullYear().toString(),
+                                    Dateturno: oFechaUTC,
+                                    Codigo: (accion.accion || "").substring(0, 10),
+                                    Accion: (accion.descripcion || "Sin descripción").substring(0, 100),
+                                    Descripcion: accion.trabajoRealizar || "Sin descripción",
+                                    Equnr: (accion.equipo || "").substring(0, 18),
+                                    Equstat: accion.equstat || "A",
+                                    Jobcond: (accion.condicion || "01").substring(0, 2),
+                                    Turnoentrega: (accion.turnoEntrega || "").substring(0, 6),
+                                    Comments: "Sin adjuntos",
+                                    Licstat: (accion.estado || "01").substring(0, 2),
+                                    Attachment: "",
+                                    EstadoGuardado: true,
+                                    ToIDs: aIds.map(sId => ({ Id: sId }))
+                                };
+
+                                // setUseBatch(false) sync para que este create salga fuera del $batch
+                                // (OData v2 no soporta deep insert con ToIDs dentro de changeset)
+                                oDataModel.setUseBatch(false);
+                                oDataModel.create("/CatalogoEntregaBulkSet", payload, {
+                                    success: () => {
+                                        console.log(`   ➕ CREATE bulk OK: [${aIds.join(", ")}] / ${accion.turnoEntrega}`);
+                                        resolve();
+                                    },
+                                    error: (oError) => {
+                                        console.error(`   ❌ CREATE bulk error: [${aIds.join(", ")}]`, oError);
+                                        reject(oError);
+                                    }
+                                });
+                                oDataModel.setUseBatch(true); // restaurar sync antes de continuar
+                            })
+                        );
+                        iOperacionesFallback++;
+                    }
                 }
             });
 
