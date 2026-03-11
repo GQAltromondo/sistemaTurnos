@@ -4,8 +4,9 @@ sap.ui.define([
     "sap/ui/model/FilterOperator",
     "transener/sistemadeturnos/utils/ModelHelper",
     "transener/sistemadeturnos/utils/Utils",
-    "transener/sistemadeturnos/utils/FormatHelper"
-], function (MessageBox, Filter, FilterOperator, ModelHelper, Utils, FormatHelper) {
+    "transener/sistemadeturnos/utils/FormatHelper",
+    "transener/sistemadeturnos/utils/SocietyHelper"
+], function (MessageBox, Filter, FilterOperator, ModelHelper, Utils, FormatHelper, SocietyHelper) {
     "use strict";
 
     return {
@@ -14,6 +15,7 @@ sap.ui.define([
             var aFilters = [];
 
             const Fecha = FechaTurno.toISOString().split('T')[0];
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
 
             aFilters.push(new Filter({
                 path: "Solbeg",
@@ -31,7 +33,7 @@ sap.ui.define([
             aFilters.push(new Filter({
                 path: "Empresa",
                 operator: FilterOperator.EQ,
-                value1: 100
+                value1: sEmpresa
             }));
 
             aFilters.push(new Filter({
