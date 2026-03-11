@@ -71,11 +71,13 @@ sap.ui.define([
             const oReporteModel = new JSONModel([]);
             this.getView().setModel(oReporteModel, "ReporteModel");
 
-            // Cargar catálogo después de que el modelo OData esté listo
+            // Cargar empresa y catálogo después de que el modelo OData esté listo
             const oModel = this.getOwnerComponent().getModel();
             if (oModel) {
                 oModel.metadataLoaded().then(() => {
-                    this._cargarCatalogoCodigosDesdeBackend();
+                    SocietyHelper.loadSociety(this, oModel, () => {
+                        this._cargarCatalogoCodigosDesdeBackend();
+                    });
                 });
             }
         },
