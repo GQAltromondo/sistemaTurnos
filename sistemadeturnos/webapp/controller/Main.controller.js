@@ -24,7 +24,8 @@ sap.ui.define([
     "transener/sistemadeturnos/utils/RoleHelper",
     "transener/sistemadeturnos/services/UserService",
     "transener/sistemadeturnos/services/EtMailService",
-    "transener/sistemadeturnos/services/MailService"
+    "transener/sistemadeturnos/services/MailService",
+    "transener/sistemadeturnos/utils/SocietyHelper"
 
 
 ], function (Controller, MessageToast, MessageBox, CoreLibrary, Filter, FilterOperator, JSONModel, Fragment,
@@ -32,7 +33,8 @@ sap.ui.define([
     ModelHelper, FormatHelper, Utils, DateHelper,
     //services
     LicenseService, TurnosService, TipoEquipoService, InterventionTypesService, HardCodeModel,
-    TreeTableHelper, TramitacionService, RoleHelper, UserService, EtMailService, MailService
+    TreeTableHelper, TramitacionService, RoleHelper, UserService, EtMailService, MailService,
+    SocietyHelper
 ) {
     "use strict";
     let oDialog = null
@@ -735,9 +737,10 @@ sap.ui.define([
                 const timestampMs = new Date(Date.UTC(year, month, day, 0, 0, 0, 0)).getTime();
                 const odataTimestamp = `/Date(${timestampMs})/`;
 
+                const sEmpresa = SocietyHelper.getCurrentSociety(this.getView());
                 const aFilters = [
                     new Filter("Dateturno", FilterOperator.EQ, new Date(timestampMs)),
-                    new Filter("Empresa", FilterOperator.EQ, "100")
+                    new Filter("Empresa", FilterOperator.EQ, sEmpresa)
                 ];
 
                 oDataService.read("/CatalogoEntregaSet", {
@@ -1353,9 +1356,10 @@ sap.ui.define([
             ModelHelper.getModel("LicencesTurnoJsonModel", oView)
                 .setProperty("/FechaTurno", sFormattedDate);
 
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
             const aFilters = [];
             aFilters.push(new Filter("Dateturno", FilterOperator.EQ, this.byId("date").getDateValue()));
-            aFilters.push(new Filter("Empresa", FilterOperator.EQ, "100"));
+            aFilters.push(new Filter("Empresa", FilterOperator.EQ, sEmpresa));
 
             const sEntity = "/TurnosLicenciasSet";
 
@@ -1412,8 +1416,9 @@ sap.ui.define([
         _validateSingleLicense: function (oModel, oLicencia, dFecha, current, total) {
             return new Promise((resolve) => {
 
+                const sEmpresa = SocietyHelper.getCurrentSociety(this.getView());
                 const aFilters = [
-                    new Filter("Empresa", FilterOperator.EQ, oLicencia.Empresa || "100"),
+                    new Filter("Empresa", FilterOperator.EQ, oLicencia.Empresa || sEmpresa),
                     new Filter("Id", FilterOperator.EQ, oLicencia.Id),
                     new Filter("Anio", FilterOperator.EQ, String(oLicencia.Anio || "2025"))
                 ];
@@ -1769,9 +1774,10 @@ sap.ui.define([
 
             this.showGlobalBusy("Buscando turnos creados…");
 
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
             const aFilters = [
                 new sap.ui.model.Filter("Dateturno", sap.ui.model.FilterOperator.EQ, oDateValue),
-                new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, "100")
+                new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, sEmpresa)
             ];
 
             oDataService.read("/TurnosLicenciasSet", {
@@ -3694,9 +3700,10 @@ sap.ui.define([
                 });
             }
 
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
             const aFilters = [
                 new Filter("Dateturno", FilterOperator.EQ, oFechaTurno),
-                new Filter("Empresa", FilterOperator.EQ, "100")
+                new Filter("Empresa", FilterOperator.EQ, sEmpresa)
             ];
 
             const sEntity = "/TurnosLicenciasSet";
@@ -3864,8 +3871,9 @@ sap.ui.define([
                 }
             }
 
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
             const aBackendFilters = [
-                new Filter("Empresa", FilterOperator.EQ, "100"),
+                new Filter("Empresa", FilterOperator.EQ, sEmpresa),
                 new Filter("Dateturno", FilterOperator.EQ, oSelectedDate)
             ];
 
@@ -3954,8 +3962,9 @@ sap.ui.define([
                 return;
             }
 
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
             const aFilters = [
-                new sap.ui.model.Filter("Bukrs", sap.ui.model.FilterOperator.EQ, "100")
+                new sap.ui.model.Filter("Bukrs", sap.ui.model.FilterOperator.EQ, sEmpresa)
             ];
 
             oModel.read("/RegionesSet", {
@@ -5545,6 +5554,7 @@ sap.ui.define([
 
             const oView = this.getView();
             const oDataService = this.getView().getModel();
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
 
             // Generar array de fechas del rango (desde fecha inicio hasta fecha fin, día por día)
             // Usar UTC para que OData las serialice como 00:00:00 UTC
@@ -5587,7 +5597,7 @@ sap.ui.define([
                     const aFilters = [];
                     // La fecha ya está en UTC a las 00:00:00
                     aFilters.push(new Filter("Dateturno", FilterOperator.EQ, oFecha));
-                    aFilters.push(new Filter("Empresa", FilterOperator.EQ, "100"));
+                    aFilters.push(new Filter("Empresa", FilterOperator.EQ, sEmpresa));
 
                     oDataService.read(sEntity, {
                         filters: aFilters,
@@ -6241,8 +6251,9 @@ sap.ui.define([
             }
 
             // Filtros fijos
+            const sEmpresa = SocietyHelper.getCurrentSociety(this.getView());
             aFilters.push(new sap.ui.model.Filter("Rol", sap.ui.model.FilterOperator.EQ, "hab_Aprobacion_habilitaciones"));
-            aFilters.push(new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, "100"));
+            aFilters.push(new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, sEmpresa));
 
             // Obtener el modelo OData
             const oModel = this.getView().getModel(); // Tu modelo OData principal
@@ -6422,9 +6433,10 @@ sap.ui.define([
             const oView = this.getView();
             const oDataService = this.getView().getModel();
 
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
             const aFilters = [
                 new sap.ui.model.Filter("Dateturno", sap.ui.model.FilterOperator.EQ, oDateValue),
-                new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, "100")
+                new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, sEmpresa)
             ];
 
             oDataService.read("/TurnosLicenciasSet", {
@@ -6757,6 +6769,7 @@ sap.ui.define([
 
             const oView = this.getView();
             const oDataService = this.getView().getModel();
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
 
             // Generar array de fechas
             const aFechas = [];
@@ -6795,7 +6808,7 @@ sap.ui.define([
                 return new Promise((resolve, reject) => {
                     const aFilters = [
                         new Filter("Dateturno", FilterOperator.EQ, oFecha),
-                        new Filter("Empresa", FilterOperator.EQ, "100")
+                        new Filter("Empresa", FilterOperator.EQ, sEmpresa)
                     ];
 
                     oDataService.read(sEntity, {
@@ -6988,6 +7001,7 @@ sap.ui.define([
         _obtenerDatosReporte: function (oDateInicio, oDateFin, sReportType) {
             return new Promise((resolve, reject) => {
                 const oDataService = this.getView().getModel();
+                const sEmpresa = SocietyHelper.getCurrentSociety(this.getView());
 
                 // Generar array de fechas
                 const aFechas = [];
@@ -7026,7 +7040,7 @@ sap.ui.define([
                     return new Promise((resolveInner, rejectInner) => {
                         const aFilters = [
                             new Filter("Dateturno", FilterOperator.EQ, oFecha),
-                            new Filter("Empresa", FilterOperator.EQ, "100")
+                            new Filter("Empresa", FilterOperator.EQ, sEmpresa)
                         ];
 
                         oDataService.read(sEntity, {
@@ -7100,6 +7114,7 @@ sap.ui.define([
 
                 const oDataModel = this.getView().getModel();
                 const sEntity = "/EquiposRolesSet";
+                const sEmpresa = SocietyHelper.getCurrentSociety(this.getView());
 
                 const estacionesUnicas = [...new Set(aEquipos.map(e => e.Tplnr).filter(Boolean))];
 
@@ -7108,7 +7123,7 @@ sap.ui.define([
                         const aFilters = [
                             new Filter("Estacion", FilterOperator.EQ, sTplnr),
                             new Filter("Rol", FilterOperator.EQ, "hab_Aprobacion_habilitaciones"),
-                            new Filter("Empresa", FilterOperator.EQ, "100")
+                            new Filter("Empresa", FilterOperator.EQ, sEmpresa)
                         ];
 
                         oDataModel.read(sEntity, {
@@ -8168,10 +8183,11 @@ sap.ui.define([
                 const oDataModel = this.getView().getModel();
 
                 // Filtros: Solo fecha y empresa, SIN filtro de estado
+                const sEmpresa = SocietyHelper.getCurrentSociety(this.getView());
                 const aFilters = [
                     new Filter("Solbeg", FilterOperator.LE, oFecha),
                     new Filter("Solend", FilterOperator.GE, oFecha),
-                    new Filter("Empresa", FilterOperator.EQ, "100"),
+                    new Filter("Empresa", FilterOperator.EQ, sEmpresa),
                     new Filter("Tipo", FilterOperator.EQ, "L")
                 ];
 
@@ -8632,9 +8648,10 @@ sap.ui.define([
                 const day = oFecha.getDate();
                 const oFechaUTC = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
 
+                const sEmpresa = SocietyHelper.getCurrentSociety(this.getView());
                 const aFilters = [
                     new Filter("Dateturno", FilterOperator.EQ, oFechaUTC),
-                    new Filter("Empresa", FilterOperator.EQ, "100")
+                    new Filter("Empresa", FilterOperator.EQ, sEmpresa)
                 ];
 
                 oDataService.read("/CatalogoEntregaSet", {

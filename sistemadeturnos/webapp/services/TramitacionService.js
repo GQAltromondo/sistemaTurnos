@@ -15,11 +15,11 @@ sap.ui.define([
          * @param {Date} dFecha - Fecha seleccionada en el filtro
          * @returns {Promise} Promise con los datos de licencias y tramitaciones
          */
-        getLicenciasConTramitacion: function (oModel, dFecha) {
+        getLicenciasConTramitacion: function (oModel, dFecha, sEmpresa) {
             return new Promise((resolve, reject) => {
                 const aFilters = [
                     new Filter("Dateturno", FilterOperator.EQ, dFecha),
-                    new Filter("Empresa", FilterOperator.EQ, "100")
+                    new Filter("Empresa", FilterOperator.EQ, sEmpresa)
                 ];
 
                 const sExpand = "TramitacionesLicencia_nav/LicenciaEstadoDiarioSet";
