@@ -146,6 +146,15 @@ sap.ui.define([
 
         encontrarGrupo: function (licencias, oView) {
 
+            const sEmpresa = SocietyHelper.getCurrentSociety(oView);
+
+            if (sEmpresa === "300") {
+                licencias.forEach((licencia) => {
+                    licencia.Consola = "TRANSBA";
+                });
+                return licencias;
+            }
+
             const consolasModel = ModelHelper.getModel("consolasModel", oView).getData();
 
             if (!consolasModel || typeof consolasModel !== "object") {
