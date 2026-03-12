@@ -6035,48 +6035,136 @@ sap.ui.define([
 
         onColumnFilter: function (oEvent) {
             var sFilterProp = oEvent.getParameter("column").getFilterProperty();
-            if (sFilterProp !== "Equstat") {
-                return; // dejar que la tabla maneje otros filtros normalmente
-            }
-
-            oEvent.preventDefault();
-
-            var sValue = (oEvent.getParameter("value") || "").trim().toUpperCase();
             var oBinding = this.byId("turnosTable").getBinding("rows");
             var Filter = sap.ui.model.Filter;
             var FilterOperator = sap.ui.model.FilterOperator;
 
-            if (!sValue) {
-                oBinding.filter([], sap.ui.model.FilterType.Control);
+            // ── Equstat: E/S → "X", F/S → "" ─────────────────────────────
+            if (sFilterProp === "Equstat") {
+                oEvent.preventDefault();
+
+                var sValue = (oEvent.getParameter("value") || "").trim().toUpperCase();
+
+                if (!sValue) {
+                    oBinding.filter([], sap.ui.model.FilterType.Control);
+                    return;
+                }
+
+                var bMatchES = "E/S".indexOf(sValue) !== -1; // usuario escribió "E", "E/", "E/S"
+                var bMatchFS = "F/S".indexOf(sValue) !== -1; // usuario escribió "F", "F/", "F/S"
+
+                var oFilter;
+                if (bMatchES && bMatchFS) {
+                    // ambos coinciden (ej: "/S" o "/") → mostrar todos
+                    oBinding.filter([], sap.ui.model.FilterType.Control);
+                    return;
+                } else if (bMatchES) {
+                    // E/S → Equstat = "X"
+                    oFilter = new Filter("Equstat", FilterOperator.EQ, "X");
+                } else if (bMatchFS) {
+                    // F/S → Equstat vacío o null
+                    oFilter = new Filter({
+                        filters: [
+                            new Filter("Equstat", FilterOperator.EQ, ""),
+                            new Filter("Equstat", FilterOperator.EQ, null)
+                        ],
+                        and: false
+                    });
+                } else {
+                    // sin coincidencia → tabla vacía
+                    oFilter = new Filter("Equstat", FilterOperator.EQ, "__NO_MATCH__");
+                }
+
+                oBinding.filter([oFilter], sap.ui.model.FilterType.Control);
                 return;
             }
 
-            var bMatchES = "E/S".indexOf(sValue) !== -1; // usuario escribió "E", "E/", "E/S"
-            var bMatchFS = "F/S".indexOf(sValue) !== -1; // usuario escribió "F", "F/", "F/S"
+            // ── Jobcond: texto → código numérico ("01", "04", "05", "06") ─
+            if (sFilterProp === "Jobcond") {
+                oEvent.preventDefault();
 
-            var oFilter;
-            if (bMatchES && bMatchFS) {
-                // ambos coinciden (ej: "/S" o "/") → mostrar todos
-                oBinding.filter([], sap.ui.model.FilterType.Control);
-                return;
-            } else if (bMatchES) {
-                // E/S → Equstat = "X"
-                oFilter = new Filter("Equstat", FilterOperator.EQ, "X");
-            } else if (bMatchFS) {
-                // F/S → Equstat vacío o null
-                oFilter = new Filter({
-                    filters: [
-                        new Filter("Equstat", FilterOperator.EQ, ""),
-                        new Filter("Equstat", FilterOperator.EQ, null)
-                    ],
-                    and: false
+                var sRaw = (oEvent.getParameter("value") || "").trim();
+
+                if (!sRaw) {
+                    oBinding.filter([], sap.ui.model.FilterType.Control);
+                    return;
+                }
+
+                var fnNorm = function (s) {
+                    return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                };
+                var sNorm = fnNorm(sRaw);
+
+                var aMap = [
+                    { code: "01", label: fnNorm("Consignacion") },
+                    { code: "04", label: fnNorm("Trabajo con Tension (Tct)") },
+                    { code: "05", label: fnNorm("Trabajo Especiales (TcT)") },
+                    { code: "06", label: fnNorm("Condiciones Especiales") }
+                ];
+
+                var aMatches = aMap.filter(function (m) {
+                    return m.label.indexOf(sNorm) !== -1;
                 });
-            } else {
-                // sin coincidencia → tabla vacía
-                oFilter = new Filter("Equstat", FilterOperator.EQ, "__NO_MATCH__");
+
+                var oJobcondFilter;
+                if (aMatches.length === 0) {
+                    oJobcondFilter = new Filter("Jobcond", FilterOperator.EQ, "__NO_MATCH__");
+                } else if (aMatches.length === 1) {
+                    oJobcondFilter = new Filter("Jobcond", FilterOperator.EQ, aMatches[0].code);
+                } else {
+                    oJobcondFilter = new Filter({
+                        filters: aMatches.map(function (m) {
+                            return new Filter("Jobcond", FilterOperator.EQ, m.code);
+                        }),
+                        and: false
+                    });
+                }
+
+                oBinding.filter([oJobcondFilter], sap.ui.model.FilterType.Control);
+                return;
             }
 
-            oBinding.filter([oFilter], sap.ui.model.FilterType.Control);
+            // ── Werks: texto → código(s) de región (dinámico desde RegionesJsonModel) ─
+            if (sFilterProp === "Werks") {
+                oEvent.preventDefault();
+
+                var sRawW = (oEvent.getParameter("value") || "").trim();
+
+                if (!sRawW) {
+                    oBinding.filter([], sap.ui.model.FilterType.Control);
+                    return;
+                }
+
+                var fnNormW = function (s) {
+                    return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+                };
+                var sNormW = fnNormW(sRawW);
+
+                var oRegionesModel = this.getView().getModel("RegionesJsonModel");
+                var aRegiones = (oRegionesModel && oRegionesModel.getProperty("/Regiones")) || [];
+
+                var aCodeFiltersW = aRegiones
+                    .filter(function (r) {
+                        return fnNormW(r.Name1 || "").indexOf(sNormW) !== -1;
+                    })
+                    .map(function (r) {
+                        return new Filter("Werks", FilterOperator.EQ, r.Werks);
+                    });
+
+                var oWerksFilter;
+                if (aCodeFiltersW.length === 0) {
+                    oWerksFilter = new Filter("Werks", FilterOperator.EQ, "__NO_MATCH__");
+                } else if (aCodeFiltersW.length === 1) {
+                    oWerksFilter = aCodeFiltersW[0];
+                } else {
+                    oWerksFilter = new Filter({ filters: aCodeFiltersW, and: false });
+                }
+
+                oBinding.filter([oWerksFilter], sap.ui.model.FilterType.Control);
+                return;
+            }
+
+            // Resto de columnas: la tabla las maneja normalmente
         },
 
         onFilter: function () {
