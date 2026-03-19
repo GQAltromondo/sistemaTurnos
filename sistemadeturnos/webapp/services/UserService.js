@@ -16,7 +16,8 @@ sap.ui.define([
                 login_name: "usuario.prueba",
                 groups: [
                     "ope_programacion_cotdt",
-                    "ope_programacion_cot"
+                    "ope_programacion_cot",
+                    "ope_jefe_cot"
                 ]
             };
 
@@ -85,7 +86,8 @@ sap.ui.define([
                                         login_name: userData.name || "",
                                         groups: [
                                             "ope_programacion_cotdt",
-                                            "ope_programacion_cot"
+                                            "ope_programacion_cot",
+                                            "ope_jefe_cot"
                                         ]
                                     };
                                     that._setUserModel(userWithDefaultRoles);
@@ -105,7 +107,8 @@ sap.ui.define([
                                     login_name: userData.name || "",
                                     groups: [
                                         "ope_programacion_cotdt",
-                                        "ope_programacion_cot"
+                                        "ope_programacion_cot",
+                                        "ope_jefe_cot"
                                     ]
                                 };
                                 that._setUserModel(userWithDefaultRoles);

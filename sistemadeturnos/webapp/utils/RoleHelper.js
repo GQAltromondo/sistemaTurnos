@@ -7,7 +7,8 @@ sap.ui.define([
         // Permiso de edición
         ROLES_EDITOR: [
             "ope_programacion_cotdt",
-            "ope_programacion_cot"
+            "ope_programacion_cot",
+            "ope_jefe_cot"
         ],
         
         // Verifica si el actual es editor

@@ -239,6 +239,14 @@ sap.ui.define([
             if (oViewModel) {
                 oViewModel.setProperty("/isProgramacion", bEsEditor);
             }
+
+            // Si tiene acceso a la tab de Turno, seleccionarla por defecto
+            if (bEsEditor) {
+                var oIconTabBar = this.byId("mainTabBar");
+                if (oIconTabBar) {
+                    oIconTabBar.setSelectedKey("LIC");
+                }
+            }
         },
         // ----------------------------------- TURNOS EDITABLES ----------------------------------------
         _updateEditableState: function () {
@@ -648,6 +656,8 @@ sap.ui.define([
                     empresa: oLicencia.Empresa || "100",
                     tipo: oLicencia.Tipo || "L",
                     anio: oLicencia.Anio || new Date().getFullYear().toString(),
+                    period: oLicencia.Period || "",
+                    dateturno: oLicencia.Dateturno || null,
                     _licenciaId: oLicencia.Id,
                     _estadoGuardado: false,  // 🆕 AGREGAR ESTA LÍNEA
                     Attachments: []
@@ -1782,60 +1792,59 @@ sap.ui.define([
                 new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, sEmpresa)
             ];
 
+            // sap-cache-id fuerza al SAP Gateway a no devolver respuesta cacheada.
+            // También cambia la URL del request para que el OData model no lo coalezca
+            // con un request idéntico anterior que tenga datos stale en su entity store.
             oDataService.read("/TurnosLicenciasSet", {
                 filters: aFilters,
+                urlParameters: { "sap-cache-id": Date.now().toString() },
                 success: (oData) => {
                     const aRes = (oData && oData.results) ? oData.results : [];
 
-                    if (aRes.length) {
-                        this.hideGlobalBusy();
-                        this._resetDefaultTurnoModel();
-                        sap.m.MessageBox.warning("Ya existe un turno para esta fecha.", {
-                            actions: ["Editar", "Cancelar"],
-                            emphasizedAction: "Editar",
-                            onClose: (sAction) => {
-                                if (sAction === "Editar") {
-                                    this.showGlobalBusy("Cargando turno…");
-                                    this._resetDefaultTurnoModel();
-
-                                    ModelHelper.getModel("enabledModel", oView).setData({
-                                        btnCrear: true,
-                                        btnGuardar: true,
-                                        btnEnviar: true
-                                    });
-
-                                    const oDatePicker = this.byId("date");
-                                    if (oDatePicker) {
-                                        oDatePicker.setDateValue(oDateValue);
-                                    }
-
-                                    this._validateAndProcessLicenses(aRes, oDateValue)
-                                        .then((aLicenciasProcesadas) => {
-                                            return this.successSelectTurno({ results: aLicenciasProcesadas });
-                                        })
-                                        .catch((err) => {
-                                            return this.successSelectTurno(oData);
-                                        })
-                                        .finally(() => {
-                                            this.hideGlobalBusy();
-                                        });
-                                }
-                            }
-                        });
-
+                    if (!aRes.length) {
+                        this._proceedToCreateTurno(oDateValue);
                         return;
                     }
 
+                    // Hay registros en TurnosLicenciasSet, pero pueden corresponder a
+                    // licencias en estado "prohibido" (no visibles en la vista principal).
+                    // Usamos los mismos filtros de fecha que TurnosService.search (Solbeg/Solend)
+                    // porque el backend SAP ignora el filtro OR por Id en LicenciaTrabajoSet.
+                    // Luego cruzamos client-side contra los IDs de TurnosLicenciasSet.
+                    console.log("🔍 [v2] _checkExistingTurnoAndProceed: verificando estados de", aRes.length, "registros en TurnosLicenciasSet");
+                    const sFecha = oDateValue.toISOString().split("T")[0];
+                    const aUniqueIds = new Set(aRes.map(r => r.Id));
 
-                    this.hideGlobalBusy();
-                    this._resetDefaultTurnoModel();
+                    oDataService.read("/LicenciaTrabajoSet", {
+                        filters: [
+                            new sap.ui.model.Filter("Solbeg", sap.ui.model.FilterOperator.LE, oDateValue),
+                            new sap.ui.model.Filter("Solend", sap.ui.model.FilterOperator.GE, oDateValue),
+                            new sap.ui.model.Filter("Empresa", sap.ui.model.FilterOperator.EQ, sEmpresa),
+                            new sap.ui.model.Filter("Tipo", sap.ui.model.FilterOperator.EQ, "L")
+                        ],
+                        success: (oLicData) => {
+                            // Primero filtrar por estado (misma lógica que la vista)
+                            const aFiltradas = TurnosService.filtrarFechasTipo(oLicData.results || [], sFecha);
+                            // Luego cruzar contra los IDs que están en TurnosLicenciasSet
+                            const aActivas = aFiltradas.filter(l => aUniqueIds.has(l.Id));
 
-                    const oDatePicker = this.byId("date");
-                    if (oDatePicker && oDateValue) {
-                        oDatePicker.setDateValue(oDateValue);
-                    }
+                            console.log("🔍 [v2] activas en TurnosLicenciasSet:", aActivas.length, "de", aFiltradas.length, "licencias válidas totales");
 
-                    this._doSearchTurnos(oDateValue);
+                            if (!aActivas.length) {
+                                // Ninguna licencia del turno guardado está activa → crear nuevo
+                                this._proceedToCreateTurno(oDateValue);
+                                return;
+                            }
+
+                            // Hay licencias activas: el turno existe realmente
+                            this._showTurnoExisteWarning(aRes, oData, oDateValue);
+                        },
+                        error: () => {
+                            // Si la verificación secundaria falla, ser conservador:
+                            // asumir que el turno existe para no crear duplicados.
+                            this._showTurnoExisteWarning(aRes, oData, oDateValue);
+                        }
+                    });
                 },
                 error: (oError) => {
                     const oLicencesModel = ModelHelper.getModel("LicencesJsonModel", oView);
@@ -1843,6 +1852,57 @@ sap.ui.define([
                     oLicencesModel.refresh();
                     Utils.onCountItems(this.getView(), []);
                     this.hideGlobalBusy();
+                }
+            });
+        },
+
+        _proceedToCreateTurno: function (oDateValue) {
+            this.hideGlobalBusy();
+            this._resetDefaultTurnoModel();
+
+            const oDatePicker = this.byId("date");
+            if (oDatePicker && oDateValue) {
+                oDatePicker.setDateValue(oDateValue);
+            }
+
+            this._doSearchTurnos(oDateValue);
+        },
+
+        _showTurnoExisteWarning: function (aRes, oData, oDateValue) {
+            const oView = this.getView();
+
+            this.hideGlobalBusy();
+            this._resetDefaultTurnoModel();
+            sap.m.MessageBox.warning("Ya existe un turno para esta fecha.", {
+                actions: ["Editar", "Cancelar"],
+                emphasizedAction: "Editar",
+                onClose: (sAction) => {
+                    if (sAction === "Editar") {
+                        this.showGlobalBusy("Cargando turno…");
+                        this._resetDefaultTurnoModel();
+
+                        ModelHelper.getModel("enabledModel", oView).setData({
+                            btnCrear: true,
+                            btnGuardar: true,
+                            btnEnviar: true
+                        });
+
+                        const oDatePicker = this.byId("date");
+                        if (oDatePicker) {
+                            oDatePicker.setDateValue(oDateValue);
+                        }
+
+                        this._validateAndProcessLicenses(aRes, oDateValue)
+                            .then((aLicenciasProcesadas) => {
+                                return this.successSelectTurno({ results: aLicenciasProcesadas });
+                            })
+                            .catch(() => {
+                                return this.successSelectTurno(oData);
+                            })
+                            .finally(() => {
+                                this.hideGlobalBusy();
+                            });
+                    }
                 }
             });
         },
@@ -1948,6 +2008,30 @@ sap.ui.define([
                         item.isEditable = bIsEditable;
                     });
 
+                    // Calcular InitHourSort para poder ordenar por hora de inicio
+                    data.forEach(item => {
+                        if (item.Timbeg && typeof item.Timbeg === 'object' && 'ms' in item.Timbeg) {
+                            item.InitHourSort = Math.floor(item.Timbeg.ms / (1000 * 60));
+                        } else if (item.Timbeg && typeof item.Timbeg === 'string' && item.Timbeg !== "PT00H00M00S") {
+                            const hoursMatch = item.Timbeg.match(/(\d+)H/);
+                            const minutesMatch = item.Timbeg.match(/(\d+)M/);
+                            const hours = hoursMatch ? parseInt(hoursMatch[1], 10) : 0;
+                            const minutes = minutesMatch ? parseInt(minutesMatch[1], 10) : 0;
+                            item.InitHourSort = hours * 60 + minutes;
+                        } else if (item.Gdate) {
+                            const d = new Date(item.Gdate);
+                            item.InitHourSort = d.getHours() * 60 + d.getMinutes();
+                        } else {
+                            item.InitHourSort = null;
+                        }
+                    });
+
+                    // Ordenar por consola → hora de inicio → prioridad de maniobras
+                    this._sortLicencesNuevoTurno(data);
+
+                    // Reasignar turnos según el nuevo orden
+                    TurnosService.assignShiftsToLicences(data);
+
                     // OBTENER DESCRIPCIONES DE EQUIPOS
                     const aEquiposUnicos = data
                         .map(item => ({
@@ -1965,7 +2049,7 @@ sap.ui.define([
                         oLicencesModel.setData(data);
                         oLicencesModel.refresh();
                         oTable.setBusy(false);
-                        Utils.onCountItems(this.getView(), aLicencias);
+                        Utils.onCountItems(this.getView(), data);
                         this._updateEditableState();
                         return;
                     }
@@ -1985,7 +2069,7 @@ sap.ui.define([
                             oLicencesModel.setData(data);
                             oLicencesModel.refresh();
                             oTable.setBusy(false);
-                            Utils.onCountItems(this.getView(), aLicencias);
+                            Utils.onCountItems(this.getView(), data);
                             this._updateEditableState();
 
                         })
@@ -1993,7 +2077,7 @@ sap.ui.define([
                             oLicencesModel.setData(data);
                             oLicencesModel.refresh();
                             oTable.setBusy(false);
-                            Utils.onCountItems(this.getView(), aLicencias);
+                            Utils.onCountItems(this.getView(), data);
                             this._updateEditableState();
 
                         });
@@ -2002,8 +2086,7 @@ sap.ui.define([
                     oLicencesModel.setData([]);
                     oLicencesModel.refresh();
                     oTable.setBusy(false);
-                    /* Utils.onCountItems(this.getView(), []); */
-                    Utils.onCountItems(this.getView(), aLicencias)
+                    Utils.onCountItems(this.getView(), []);
                 });
         },
 
@@ -2768,76 +2851,99 @@ sap.ui.define([
             });
         },
         _sortLicences: function (aLicences) {
-
-            // Agrupamos por Consola + Grupo
-            var groupsByConsola = {};
-
+            // Ordena por consola (alfabético) y dentro de cada consola por TurnoAsignado (hora asignada).
+            var mPorConsola = {};
             aLicences.forEach(function (lic, index) {
                 var consola = lic.Consola || "";
-                var grupo = lic.Grupo || lic.Equnr || "";
+                if (!mPorConsola[consola]) {
+                    mPorConsola[consola] = [];
+                }
+                mPorConsola[consola].push({ lic: lic, originalIndex: index });
+            });
 
-                if (!groupsByConsola[consola]) {
-                    groupsByConsola[consola] = {};
-                }
-                if (!groupsByConsola[consola][grupo]) {
-                    groupsByConsola[consola][grupo] = {
-                        consola: consola,
-                        grupo: grupo,
-                        items: [],
-                        firstIndex: index
-                    };
-                }
-
-                groupsByConsola[consola][grupo].items.push(lic);
-                if (index < groupsByConsola[consola][grupo].firstIndex) {
-                    groupsByConsola[consola][grupo].firstIndex = index;
-                }
-            }.bind(this));
+            var toMinutes = function (hora) {
+                if (!hora) return Number.MAX_SAFE_INTEGER;
+                var parts = hora.split(":");
+                return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+            };
 
             var result = [];
 
-            // Ordenamos por Consola y dentro de cada consola por hora de grupo
-            Object.keys(groupsByConsola).sort().forEach(function (consola) {
-                var groupsMap = groupsByConsola[consola];
-                var groups = Object.keys(groupsMap).map(function (k) {
-                    return groupsMap[k];
+            // 1. Ordenar consolas alfabéticamente
+            Object.keys(mPorConsola).sort().forEach(function (consola) {
+                var aItems = mPorConsola[consola];
+
+                // 2. Dentro de cada consola: por TurnoAsignado (hora asignada al turno)
+                aItems.sort(function (a, b) {
+                    var turnoA = toMinutes(a.lic.TurnoAsignado);
+                    var turnoB = toMinutes(b.lic.TurnoAsignado);
+                    if (turnoA !== turnoB) return turnoA - turnoB;
+                    return a.originalIndex - b.originalIndex;
                 });
 
-                // calcular hora de inicio del grupo
-                groups.forEach(function (g) {
-                    var firstWithTurno = g.items.find(function (it) { return !!it.TurnoAsignado; });
-                    if (firstWithTurno) {
-                        g.hasTurno = true;
-                        g.startMinutes = this._convertShiftToMinutes(firstWithTurno.TurnoAsignado);
-                    } else {
-                        g.hasTurno = false;
-                        g.startMinutes = Number.MAX_SAFE_INTEGER;
-                    }
-                }.bind(this));
-
-                // primero grupos con turno, ordenados por hora, luego sin turno por orden original
-                groups.sort(function (a, b) {
-                    if (a.hasTurno && !b.hasTurno) return -1;
-                    if (!a.hasTurno && b.hasTurno) return 1;
-                    if (!a.hasTurno && !b.hasTurno) {
-                        return a.firstIndex - b.firstIndex;
-                    }
-
-                    if (a.startMinutes !== b.startMinutes) {
-                        return a.startMinutes - b.startMinutes;
-                    }
-                    return a.firstIndex - b.firstIndex;
+                aItems.forEach(function (item) {
+                    result.push(item.lic);
                 });
-
-                // aplanar
-                groups.forEach(function (g) {
-                    g.items.forEach(function (lic) {
-                        result.push(lic);
-                    });
-                });
-            }.bind(this));
+            });
 
             // Reemplazamos el contenido del array original
+            aLicences.length = 0;
+            Array.prototype.push.apply(aLicences, result);
+        },
+
+        // Ordenamiento para creación de nuevo turno:
+        // consola → hora de inicio (Timbeg) → prioridad de condición de entrega/maniobras
+        _sortLicencesNuevoTurno: function (aLicences) {
+            // Prioridad por categoría (Condición de Entrega):
+            // 1 Consignación de línea
+            // 2 Consignación de Equipo
+            // 3 Maniobras s/Consignación
+            // 4 TcT (con o sin bloqueo)
+            // 5 Sin Maniobras / resto
+            var mCategoryPriority = {
+                "ConsignacionLinea": 1,
+                "ConsignacionEquipo": 2,
+                "ManiobrasSinConsignacion": 3,
+                "TCTConBloqueo": 4,
+                "TCTSinBloqueo": 4,
+                "SinManiobras": 5
+            };
+
+            var mPorConsola = {};
+            aLicences.forEach(function (lic, index) {
+                var consola = lic.Consola || "";
+                if (!mPorConsola[consola]) {
+                    mPorConsola[consola] = [];
+                }
+                mPorConsola[consola].push({ lic: lic, originalIndex: index });
+            });
+
+            var result = [];
+
+            // 1. Ordenar consolas alfabéticamente
+            Object.keys(mPorConsola).sort().forEach(function (consola) {
+                var aItems = mPorConsola[consola];
+
+                // 2. Dentro de cada consola: hora de inicio → prioridad categoría → orden original
+                aItems.sort(function (a, b) {
+                    var horaA = a.lic.InitHourSort != null ? a.lic.InitHourSort : Number.MAX_SAFE_INTEGER;
+                    var horaB = b.lic.InitHourSort != null ? b.lic.InitHourSort : Number.MAX_SAFE_INTEGER;
+                    if (horaA !== horaB) return horaA - horaB;
+
+                    var catA = Utils.getShiftInfo(a.lic).category;
+                    var catB = Utils.getShiftInfo(b.lic).category;
+                    var prioA = mCategoryPriority[catA] || 5;
+                    var prioB = mCategoryPriority[catB] || 5;
+                    if (prioA !== prioB) return prioA - prioB;
+
+                    return a.originalIndex - b.originalIndex;
+                });
+
+                aItems.forEach(function (item) {
+                    result.push(item.lic);
+                });
+            });
+
             aLicences.length = 0;
             Array.prototype.push.apply(aLicences, result);
         },
@@ -2916,7 +3022,7 @@ sap.ui.define([
                         Empresa: oRowData.Empresa,
                         Tipo: oRowData.Tipo || "L",
                         Anio: oRowData.Anio,
-                        Dateturno: oFechaTurno     // JS Date usado como key
+                        Dateturno: oFechaTurno
                     });
 
                     // Eliminar del array local
@@ -6143,9 +6249,12 @@ sap.ui.define([
                 var oRegionesModel = this.getView().getModel("RegionesJsonModel");
                 var aRegiones = (oRegionesModel && oRegionesModel.getProperty("/Regiones")) || [];
 
+                var oFormatterW = this.formatter;
                 var aCodeFiltersW = aRegiones
                     .filter(function (r) {
-                        return fnNormW(r.Name1 || "").indexOf(sNormW) !== -1;
+                        var sFormattedName = fnNormW((oFormatterW && oFormatterW.getRegiones(r.Werks)) || "");
+                        return fnNormW(r.Name1 || "").indexOf(sNormW) !== -1 ||
+                            sFormattedName.indexOf(sNormW) !== -1;
                     })
                     .map(function (r) {
                         return new Filter("Werks", FilterOperator.EQ, r.Werks);
@@ -6642,11 +6751,17 @@ sap.ui.define([
 
                     if (aLicenciasSinAsignar.length > 0) {
                         const sMessage = oResourceBundle.getText("licensesWithoutShiftMessage", [aLicenciasSinAsignar.length]);
-                        const sDetail = oResourceBundle.getText("licensesWithoutShiftDetail");
 
-                        MessageBox.information(sMessage + "\n\n" + sDetail, {
+                        MessageBox.confirm(sMessage, {
                             title: oResourceBundle.getText("licensesWithoutShift"),
-                            styleClass: "sapUiSizeCompact"
+                            actions: [MessageBox.Action.YES, MessageBox.Action.NO],
+                            emphasizedAction: MessageBox.Action.YES,
+                            styleClass: "sapUiSizeCompact",
+                            onClose: (sAction) => {
+                                if (sAction === MessageBox.Action.YES) {
+                                    this.onAddLicense();
+                                }
+                            }
                         });
                     }
                 })
@@ -6670,22 +6785,22 @@ sap.ui.define([
                 TurnosService.search({ FechaTurno: oFechaTurno, oView: this.getView(), isRefresh: true })
                     .then((aTodasLasLicencias) => {
                         const idsAsignados = new Set(aLicenciasAsignadas.map(l => l.Id));
-
                         const aLicenciasSinAsignar = aTodasLasLicencias.filter(lic => !idsAsignados.has(lic.Id));
 
                         if (aLicenciasSinAsignar.length > 0) {
                             const sMessage = oResourceBundle.getText("newLicensesWithoutShiftMessage", [aLicenciasSinAsignar.length]);
-                            const sDetail = oResourceBundle.getText("confirmSaveWithPendingLicenses");
 
-                            MessageBox.warning(sMessage + "\n\n" + sDetail, {
+                            MessageBox.confirm(sMessage, {
                                 title: oResourceBundle.getText("newLicensesAvailable"),
                                 actions: [MessageBox.Action.YES, MessageBox.Action.NO],
-                                emphasizedAction: MessageBox.Action.NO,
-                                onClose: function (sAction) {
+                                emphasizedAction: MessageBox.Action.YES,
+                                styleClass: "sapUiSizeCompact",
+                                onClose: (sAction) => {
                                     if (sAction === MessageBox.Action.YES) {
-                                        resolve(true);
-                                    } else {
+                                        this.onAgregarLicencia();
                                         resolve(false);
+                                    } else {
+                                        resolve(true);
                                     }
                                 }
                             });
@@ -8769,11 +8884,15 @@ sap.ui.define([
             const oLicencesModel = oView.getModel("LicencesJsonModel");
             const aLicencias = oLicencesModel.getData() || [];
 
-            // PASO 1: Crear mapa Id → Grupo
+            // PASO 1: Crear mapa Id → Grupo y Id → Period
             const mIdToGrupo = {};
+            const mIdToPeriod = {};
             aLicencias.forEach(lic => {
                 if (lic.Grupo) {
                     mIdToGrupo[lic.Id] = lic.Grupo;
+                }
+                if (lic.Period) {
+                    mIdToPeriod[lic.Id] = lic.Period;
                 }
             });
 
@@ -8803,6 +8922,8 @@ sap.ui.define([
                         empresa: item.Empresa || "100",
                         tipo: item.Tipo || "L",
                         anio: item.Anio || "",
+                        period: mIdToPeriod[item.Id] || "",
+                        dateturno: item.Dateturno || null,
                         _licenciaId: item.Id,
                         _idsDelGrupo: [item.Id],
                         _estadoGuardado: true,  // Ya está en backend
@@ -8909,14 +9030,16 @@ sap.ui.define([
                 MessageBox.error("No se pudo cargar el modelo OData");
                 return;
             }
-
+           
             oModel.read("/CatalogoCodigosSet", {
                 success: (oData) => {
                     const aResultados = oData.results || [];
+                    console.log("aResultados", aResultados)
+                    console.log(oData)
 
                     // Crear o actualizar el modelo JSON
                     let oCatalogoModel = this.getView().getModel("CatalogoCodigosModel");
-
+                    
                     if (!oCatalogoModel) {
                         // Si no existe, crear el modelo
                         oCatalogoModel = new JSONModel();
@@ -9064,11 +9187,11 @@ sap.ui.define([
                 return;
             }
 
-            var fPrevisto  = oCompleteData._previsto  || 0;
-            var fPromedio  = oCompleteData.Promedio   || 0;
-            var fMin       = oCompleteData.DesvioMin  || 0;
-            var fMax       = oCompleteData.DesvioMax  || 0;
-            var aDesvios   = oCompleteData._desvios   || [];
+            var fPrevisto = oCompleteData._previsto || 0;
+            var fPromedio = oCompleteData.Promedio || 0;
+            var fMin = oCompleteData.DesvioMin || 0;
+            var fMax = oCompleteData.DesvioMax || 0;
+            var aDesvios = oCompleteData._desvios || [];
 
             // Formatear hora prevista como HH:MM
             var hPrev = Math.floor(fPrevisto);
@@ -9117,7 +9240,7 @@ sap.ui.define([
         },
 
         _createExcelReportDesvios: function () {
-            var oView     = this.getView();
+            var oView = this.getView();
             var oAccModel = oView.getModel("AccionesEntregaModel");
             var oLicModel = ModelHelper.getModel("LicencesJsonModel", oView);
             var oFormatter = this.formatter;
@@ -9125,16 +9248,16 @@ sap.ui.define([
             // ── Mapa de hitos: mismo que en _computeChartFromAcciones ──────────────
             // origen: dónde viene el tiempo real ("Módulo Licencias" o "Libro de Guardia")
             var mAcciones = {
-                "SOL COC": { nombre: "Solicitud al COC",       previsto: 6.0,   origen: "Hardcode" },
-                "SOL TEC": { nombre: "Solicitud técnica",      previsto: 6.667, origen: "Hardcode" },
-                "AUT COC": { nombre: "Autorización del COC",   previsto: 6.833, origen: "Hardcode" },
-                "INI MAN": { nombre: "Inicio de maniobras",    previsto: 7.0,   origen: "Hardcode" },
-                "COL PAT": { nombre: "Colocación de PAT",      previsto: 7.75,  origen: "Hardcode" },
-                "FIN MAN": { nombre: "Fin de maniobras",       previsto: 7.75,  origen: "Hardcode" },
-                "FIN LT":  { nombre: "Finalización de LT",     previsto: 16.0,  origen: "Hardcode" },
-                "RET PAT": { nombre: "Retiro de PAT",          previsto: 16.25, origen: "Hardcode" },
-                "MAN PES": { nombre: "Maniobras para la PES",  previsto: 16.25, origen: "Hardcode" },
-                "PES":     { nombre: "Puesta en Servicio",     previsto: 17.0,  origen: "Hardcode" }
+                "SOL COC": { nombre: "Solicitud al COC", previsto: 6.0, origen: "Hardcode" },
+                "SOL TEC": { nombre: "Solicitud técnica", previsto: 6.667, origen: "Hardcode" },
+                "AUT COC": { nombre: "Autorización del COC", previsto: 6.833, origen: "Hardcode" },
+                "INI MAN": { nombre: "Inicio de maniobras", previsto: 7.0, origen: "Hardcode" },
+                "COL PAT": { nombre: "Colocación de PAT", previsto: 7.75, origen: "Hardcode" },
+                "FIN MAN": { nombre: "Fin de maniobras", previsto: 7.75, origen: "Hardcode" },
+                "FIN LT": { nombre: "Finalización de LT", previsto: 16.0, origen: "Hardcode" },
+                "RET PAT": { nombre: "Retiro de PAT", previsto: 16.25, origen: "Hardcode" },
+                "MAN PES": { nombre: "Maniobras para la PES", previsto: 16.25, origen: "Hardcode" },
+                "PES": { nombre: "Puesta en Servicio", previsto: 17.0, origen: "Hardcode" }
             };
 
             // ── Helpers ───────────────────────────────────────────────────────────
@@ -9193,11 +9316,11 @@ sap.ui.define([
                 { codigo: "FIN MAN", equipo: "LG-003", tiempo: "8:00" },
                 { codigo: "FIN MAN", equipo: "LG-004", tiempo: "7:40" },
                 { codigo: "FIN MAN", equipo: "LG-005", tiempo: "7:50" },
-                { codigo: "FIN LT",  equipo: "LG-001", tiempo: "16:08" },
-                { codigo: "FIN LT",  equipo: "LG-002", tiempo: "15:55" },
-                { codigo: "FIN LT",  equipo: "LG-003", tiempo: "16:15" },
-                { codigo: "FIN LT",  equipo: "LG-004", tiempo: "15:52" },
-                { codigo: "FIN LT",  equipo: "LG-005", tiempo: "16:05" },
+                { codigo: "FIN LT", equipo: "LG-001", tiempo: "16:08" },
+                { codigo: "FIN LT", equipo: "LG-002", tiempo: "15:55" },
+                { codigo: "FIN LT", equipo: "LG-003", tiempo: "16:15" },
+                { codigo: "FIN LT", equipo: "LG-004", tiempo: "15:52" },
+                { codigo: "FIN LT", equipo: "LG-005", tiempo: "16:05" },
                 { codigo: "RET PAT", equipo: "LG-001", tiempo: "16:22" },
                 { codigo: "RET PAT", equipo: "LG-002", tiempo: "16:10" },
                 { codigo: "RET PAT", equipo: "LG-003", tiempo: "16:28" },
@@ -9208,11 +9331,11 @@ sap.ui.define([
                 { codigo: "MAN PES", equipo: "LG-003", tiempo: "16:30" },
                 { codigo: "MAN PES", equipo: "LG-004", tiempo: "16:10" },
                 { codigo: "MAN PES", equipo: "LG-005", tiempo: "16:18" },
-                { codigo: "PES",     equipo: "LG-001", tiempo: "17:06" },
-                { codigo: "PES",     equipo: "LG-002", tiempo: "16:55" },
-                { codigo: "PES",     equipo: "LG-003", tiempo: "17:12" },
-                { codigo: "PES",     equipo: "LG-004", tiempo: "16:52" },
-                { codigo: "PES",     equipo: "LG-005", tiempo: "17:05" }
+                { codigo: "PES", equipo: "LG-001", tiempo: "17:06" },
+                { codigo: "PES", equipo: "LG-002", tiempo: "16:55" },
+                { codigo: "PES", equipo: "LG-003", tiempo: "17:12" },
+                { codigo: "PES", equipo: "LG-004", tiempo: "16:52" },
+                { codigo: "PES", equipo: "LG-005", tiempo: "17:05" }
             ];
 
             // ── Acumular desvíos por código ───────────────────────────────────────
@@ -9226,11 +9349,11 @@ sap.ui.define([
                 if (fDev === null) return;
                 if (!mDesvios[sCode]) mDesvios[sCode] = [];
                 mDesvios[sCode].push({
-                    equipo:      oAcc.equipo || "",
-                    idLicencia:  oAcc.idLicencia || "",
-                    horaReal:    oAcc.turnoEntrega || "",
-                    desvio:      fDev,
-                    origenDato:  "Módulo Licencias"
+                    equipo: oAcc.equipo || "",
+                    idLicencia: oAcc.idLicencia || "",
+                    horaReal: oAcc.turnoEntrega || "",
+                    desvio: fDev,
+                    origenDato: "Módulo Licencias"
                 });
             });
 
@@ -9241,26 +9364,26 @@ sap.ui.define([
                 if (fDev === null) return;
                 if (!mDesvios[sCode]) mDesvios[sCode] = [];
                 mDesvios[sCode].push({
-                    equipo:      oLG.equipo || "",
-                    idLicencia:  "LG",
-                    horaReal:    oLG.tiempo,
-                    desvio:      fDev,
-                    origenDato:  "Libro de Guardia (hardcode)"
+                    equipo: oLG.equipo || "",
+                    idLicencia: "LG",
+                    horaReal: oLG.tiempo,
+                    desvio: fDev,
+                    origenDato: "Libro de Guardia (hardcode)"
                 });
             });
 
             // ── Solapa 1: Desvíos por Hito (resumen del gráfico) ─────────────────
             var aResumen = [["Código", "Hito", "Hora Prevista", "Origen datos reales",
-                             "N° Obs.", "Mín (min)", "Máx (min)", "Promedio |abs| (min)"]];
+                "N° Obs.", "Mín (min)", "Máx (min)", "Promedio |abs| (min)"]];
             Object.keys(mAcciones).forEach(function (sCode) {
                 var aD = mDesvios[sCode] || [];
                 var fMin = "Sin datos", fMax = "Sin datos", fProm = "Sin datos";
                 if (aD.length) {
                     var aVals = aD.map(function (d) { return d.desvio; });
-                    fMin  = Math.round(Math.min.apply(null, aVals) * 10) / 10;
-                    fMax  = Math.round(Math.max.apply(null, aVals) * 10) / 10;
+                    fMin = Math.round(Math.min.apply(null, aVals) * 10) / 10;
+                    fMax = Math.round(Math.max.apply(null, aVals) * 10) / 10;
                     fProm = Math.round(aVals.reduce(function (s, v) { return s + Math.abs(v); }, 0)
-                                       / aVals.length * 10) / 10;
+                        / aVals.length * 10) / 10;
                 }
                 aResumen.push([
                     sCode,
@@ -9274,7 +9397,7 @@ sap.ui.define([
 
             // ── Solapa 2: Acciones del Módulo (detalle) ───────────────────────────
             var aModDetalle = [["Equipo", "ID Licencia", "Código", "Hito",
-                                "Hora Prevista", "Hora Real", "Desvío (min)"]];
+                "Hora Prevista", "Hora Real", "Desvío (min)"]];
             (oAccModel ? oAccModel.getData() || [] : []).forEach(function (oAcc) {
                 var sCode = oAcc.accion;
                 if (!mAcciones[sCode] || !oAcc.turnoEntrega) return;
@@ -9296,7 +9419,7 @@ sap.ui.define([
 
             // ── Solapa 3: Libro de Guardia (hardcode provisional) ─────────────────
             var aLGDetalle = [["Equipo", "ID Licencia", "Código", "Hito",
-                               "Hora Prevista", "Hora Real", "Desvío (min)", "Nota"]];
+                "Hora Prevista", "Hora Real", "Desvío (min)", "Nota"]];
             aLGData.forEach(function (oLG) {
                 var sCode = oLG.codigo;
                 if (!mAcciones[sCode]) return;
@@ -9316,16 +9439,16 @@ sap.ui.define([
 
             // ── Solapa 4: Licencias ───────────────────────────────────────────────
             var aLicDetalle = [["Equipo", "ID Licencia", "Estado", "Cond. Trabajo",
-                                "Turno", "Trabajo a Realizar", "Región"]];
+                "Turno", "Trabajo a Realizar", "Región"]];
             (oLicModel ? oLicModel.getData() || [] : []).forEach(function (lic) {
                 aLicDetalle.push([
                     lic.Equnr || "",
                     lic.Id || "",
-                    oFormatter.getEstado    ? oFormatter.getEstado(lic.Equstat)    : (lic.Equstat || ""),
-                    oFormatter.getJobCond   ? oFormatter.getJobCond(lic.Jobcond)   : (lic.Jobcond || ""),
+                    oFormatter.getEstado ? oFormatter.getEstado(lic.Equstat) : (lic.Equstat || ""),
+                    oFormatter.getJobCond ? oFormatter.getJobCond(lic.Jobcond) : (lic.Jobcond || ""),
                     lic.TurnoAsignado || "",
                     lic.Comments || "",
-                    oFormatter.getRegiones  ? oFormatter.getRegiones(lic.Werks)   : (lic.Werks || "")
+                    oFormatter.getRegiones ? oFormatter.getRegiones(lic.Werks) : (lic.Werks || "")
                 ]);
             });
             if (aLicDetalle.length === 1) {
@@ -9335,9 +9458,9 @@ sap.ui.define([
             // ── Generar Excel ─────────────────────────────────────────────────────
             try {
                 var Workbook = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aResumen),    "Desvíos por Hito");
+                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aResumen), "Desvíos por Hito");
                 XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aModDetalle), "Acciones Módulo");
-                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aLGDetalle),  "Libro de Guardia");
+                XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aLGDetalle), "Libro de Guardia");
                 XLSX.utils.book_append_sheet(Workbook, XLSX.utils.aoa_to_sheet(aLicDetalle), "Licencias");
 
                 var sHoy = new Date().toISOString().slice(0, 10);
@@ -9360,8 +9483,8 @@ sap.ui.define([
          * libro de guardia (actualmente hardcodeados, funcionalidad pendiente).
          */
         _computeChartFromAcciones: function () {
-            var oView       = this.getView();
-            var oAccModel   = oView.getModel("AccionesEntregaModel");
+            var oView = this.getView();
+            var oAccModel = oView.getModel("AccionesEntregaModel");
             var oChartModel = oView.getModel("chartModel");
 
             if (!oAccModel || !oChartModel) return;
@@ -9377,16 +9500,16 @@ sap.ui.define([
             // Mapa: código → nombre en el gráfico y hora prevista en horas decimales (hardcodeada)
             // El previsto se usa SOLO para calcular el desvío; no se grafica (equivale al 0).
             var mAcciones = {
-                "SOL COC": { nombre: "Solicitud al COC",        previsto: 6.0    }, // 6:00
-                "SOL TEC": { nombre: "Solicitud técnica",       previsto: 6.667  }, // 6:40
-                "AUT COC": { nombre: "Autorización del COC",    previsto: 6.833  }, // 6:50
-                "INI MAN": { nombre: "Inicio de maniobras",     previsto: 7.0    }, // 7:00
-                "COL PAT": { nombre: "Colocación de PAT",       previsto: 7.75   }, // 7:45
-                "FIN MAN": { nombre: "Fin de maniobras",        previsto: 7.75   }, // 7:45
-                "FIN LT":  { nombre: "Finalización de LT",      previsto: 16.0   }, // 16:00
-                "RET PAT": { nombre: "Retiro de PAT",           previsto: 16.25  }, // 16:15
-                "MAN PES": { nombre: "Maniobras para la PES",   previsto: 16.25  }, // 16:15
-                "PES":     { nombre: "Puesta en Servicio",      previsto: 17.0   }  // 17:00
+                "SOL COC": { nombre: "Solicitud al COC", previsto: 6.0 }, // 6:00
+                "SOL TEC": { nombre: "Solicitud técnica", previsto: 6.667 }, // 6:40
+                "AUT COC": { nombre: "Autorización del COC", previsto: 6.833 }, // 6:50
+                "INI MAN": { nombre: "Inicio de maniobras", previsto: 7.0 }, // 7:00
+                "COL PAT": { nombre: "Colocación de PAT", previsto: 7.75 }, // 7:45
+                "FIN MAN": { nombre: "Fin de maniobras", previsto: 7.75 }, // 7:45
+                "FIN LT": { nombre: "Finalización de LT", previsto: 16.0 }, // 16:00
+                "RET PAT": { nombre: "Retiro de PAT", previsto: 16.25 }, // 16:15
+                "MAN PES": { nombre: "Maniobras para la PES", previsto: 16.25 }, // 16:15
+                "PES": { nombre: "Puesta en Servicio", previsto: 17.0 }  // 17:00
             };
 
             // Helper: "HH:MM" → horas decimales
@@ -9402,10 +9525,24 @@ sap.ui.define([
                 return h + m / 60;
             };
 
+            // Fecha buscada actualmente (para filtrar continuas)
+            var oDatePicker = this.byId("date");
+            var oFechaBuscada = oDatePicker ? oDatePicker.getDateValue() : null;
+            var fnIsSameDay = function (oDateA, oDateB) {
+                if (!oDateA || !oDateB) return false;
+                var dA = new Date(oDateA), dB = new Date(oDateB);
+                return dA.getFullYear() === dB.getFullYear() &&
+                    dA.getMonth() === dB.getMonth() &&
+                    dA.getDate() === dB.getDate();
+            };
+
             // Agrupar desvíos en minutos por código de acción
             // desvío = (hora real - hora prevista) * 60  →  positivo = tarde, negativo = antes
             var mDesviosPorCodigo = {};
             aAcciones.forEach(function (oAcc) {
+                // Licencias continuas: solo participan si su entrega es de la fecha buscada
+                if (oAcc.period === "C" && !fnIsSameDay(oAcc.dateturno, oFechaBuscada)) return;
+
                 var sCode = oAcc.accion;
                 if (!mAcciones[sCode]) return;
                 var fHora = fnToDecimal(oAcc.turnoEntrega);
@@ -9426,12 +9563,12 @@ sap.ui.define([
                 var fPromedio = Math.round((fSumAbs / aDesvios.length) * 10) / 10;
 
                 aData.push({
-                    Accion:     mAcciones[sCode].nombre,
-                    _previsto:  mAcciones[sCode].previsto, // solo para popup; no se grafica
-                    _desvios:   aDesvios,                  // valores individuales para popup
-                    Promedio:   fPromedio,
-                    DesvioMin:  Math.round(Math.min.apply(null, aDesvios) * 10) / 10,
-                    DesvioMax:  Math.round(Math.max.apply(null, aDesvios) * 10) / 10
+                    Accion: mAcciones[sCode].nombre,
+                    _previsto: mAcciones[sCode].previsto, // solo para popup; no se grafica
+                    _desvios: aDesvios,                  // valores individuales para popup
+                    Promedio: fPromedio,
+                    DesvioMin: Math.round(Math.min.apply(null, aDesvios) * 10) / 10,
+                    DesvioMax: Math.round(Math.max.apply(null, aDesvios) * 10) / 10
                 });
             });
 
