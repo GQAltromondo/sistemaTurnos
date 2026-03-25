@@ -1095,6 +1095,39 @@
                                     </t:Column>
 
                                     <t:Column
+                                        width="100px"
+                                        hAlign="Center"
+                                    >
+                                        <Label text="Periodo" />
+                                        <t:template>
+                                            <Text
+                                                text="{= ${accionesTreeModel>period} === 'D' ? 'Diaria' : (${accionesTreeModel>period} === 'C' ? 'Continua' : ${accionesTreeModel>period}) }"
+                                                textAlign="Center"
+                                                wrapping="false"
+                                                visible="{= ${accionesTreeModel>_isGroup} === false }"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column
+                                        width="120px"
+                                        hAlign="Center"
+                                    >
+                                        <Label text="Fecha de Inicio" />
+                                        <t:template>
+                                            <Text
+                                                text="{
+                                                    path: 'accionesTreeModel>solbeg',
+                                                    formatter: '.formatSolbeg'
+                                                }"
+                                                textAlign="Center"
+                                                wrapping="false"
+                                                visible="{= ${accionesTreeModel>_isGroup} === false }"
+                                            />
+                                        </t:template>
+                                    </t:Column>
+
+                                    <t:Column
                                         width="300px"
                                         hAlign="Left"
                                     >

@@ -8884,15 +8884,19 @@ sap.ui.define([
             const oLicencesModel = oView.getModel("LicencesJsonModel");
             const aLicencias = oLicencesModel.getData() || [];
 
-            // PASO 1: Crear mapa Id → Grupo y Id → Period
+            // PASO 1: Crear mapa Id → Grupo, Id → Period e Id → Solbeg
             const mIdToGrupo = {};
             const mIdToPeriod = {};
+            const mIdToSolbeg = {};
             aLicencias.forEach(lic => {
                 if (lic.Grupo) {
                     mIdToGrupo[lic.Id] = lic.Grupo;
                 }
                 if (lic.Period) {
                     mIdToPeriod[lic.Id] = lic.Period;
+                }
+                if (lic.Solbeg) {
+                    mIdToSolbeg[lic.Id] = lic.Solbeg;
                 }
             });
 
@@ -8923,6 +8927,7 @@ sap.ui.define([
                         tipo: item.Tipo || "L",
                         anio: item.Anio || "",
                         period: mIdToPeriod[item.Id] || "",
+                        solbeg: mIdToSolbeg[item.Id] || null,
                         dateturno: item.Dateturno || null,
                         _licenciaId: item.Id,
                         _idsDelGrupo: [item.Id],
@@ -9397,12 +9402,22 @@ sap.ui.define([
 
             // ── Solapa 2: Acciones del Módulo (detalle) ───────────────────────────
             var aModDetalle = [["Equipo", "ID Licencia", "Código", "Hito",
-                "Hora Prevista", "Hora Real", "Desvío (min)"]];
+                "Hora Prevista", "Hora Real", "Desvío (min)", "Periodo", "Fecha de Inicio"]];
             (oAccModel ? oAccModel.getData() || [] : []).forEach(function (oAcc) {
                 var sCode = oAcc.accion;
                 if (!mAcciones[sCode] || !oAcc.turnoEntrega) return;
                 var fDev = fnDesvio(oAcc.turnoEntrega, mAcciones[sCode].previsto);
                 if (fDev === null) return;
+                var sPeriodo = oAcc.period === "D" ? "Diaria" : (oAcc.period === "C" ? "Continua" : (oAcc.period || ""));
+                var sFechaInicio = "";
+                if (oAcc.solbeg) {
+                    var dSolbeg = oAcc.solbeg instanceof Date ? oAcc.solbeg : new Date(oAcc.solbeg);
+                    if (!isNaN(dSolbeg)) {
+                        sFechaInicio = String(dSolbeg.getDate()).padStart(2, "0") + "/" +
+                            String(dSolbeg.getMonth() + 1).padStart(2, "0") + "/" +
+                            dSolbeg.getFullYear();
+                    }
+                }
                 aModDetalle.push([
                     oAcc.equipo || "",
                     oAcc.idLicencia || "",
@@ -9410,7 +9425,9 @@ sap.ui.define([
                     mAcciones[sCode].nombre,
                     fnToHHMM(mAcciones[sCode].previsto),
                     oAcc.turnoEntrega || "",
-                    fDev
+                    fDev,
+                    sPeriodo,
+                    sFechaInicio
                 ]);
             });
             if (aModDetalle.length === 1) {
@@ -10489,6 +10506,16 @@ sap.ui.define([
             if (!sIdLicencia) { return ""; }
             const n = sIdLicencia.split(" / ").filter(Boolean).length;
             return n + " LLTT";
+        },
+
+        // Formatea la fecha de inicio (Solbeg) como dd/MM/yyyy
+        formatSolbeg: function (oDate) {
+            if (!oDate) return "";
+            var d = oDate instanceof Date ? oDate : new Date(oDate);
+            if (isNaN(d)) return "";
+            var day = String(d.getDate()).padStart(2, "0");
+            var month = String(d.getMonth() + 1).padStart(2, "0");
+            return day + "/" + month + "/" + d.getFullYear();
         },
 
         // Devuelve el idLicencia como lista separada por saltos de línea para tooltip
