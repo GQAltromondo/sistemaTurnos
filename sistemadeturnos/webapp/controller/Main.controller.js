@@ -10619,18 +10619,20 @@ sap.ui.define([
 
             // Destinatarios hardcodeados
             var aDestinatarios = [
-                "guillermo27@gmail.com",
-                "juan.adaro@altromondo.com.ar"
+                "guillermo27@gmail.com"
             ];
 
-            // Armar texto plano formateado (SAP WF escapa HTML en variables)
-            var sResumenTexto = aReporte.map(function (oItem) {
-                var sEquipo = (oItem.Equipo || "").padEnd(15);
-                var sHora = (oItem.Hora || "").padEnd(8);
-                var sTipo = (oItem.TipoIntervencion || "").padEnd(40);
+            // Armar tabla completa como texto plano con formato visual
+            var sSeparador = "─".repeat(90);
+            var sHeader = "Equipo".padEnd(18) + "Hora".padEnd(10) + "Tipo de intervención".padEnd(42) + "Comentarios";
+            var sFilas = aReporte.map(function (oItem) {
+                var sEquipo = (oItem.Equipo || "").padEnd(18);
+                var sHora = (oItem.Hora || "").padEnd(10);
+                var sTipo = (oItem.TipoIntervencion || "").padEnd(42);
                 var sComentarios = oItem.Comentarios || "";
                 return sEquipo + sHora + sTipo + sComentarios;
             }).join("\n");
+            var sResumenTexto = sHeader + "\n" + sSeparador + "\n" + sFilas;
 
             sap.m.MessageBox.confirm("Se enviará el resumen de maniobras a CAMMESA (" + aDestinatarios.length + " destinatarios). ¿Desea continuar?", {
                 title: "Confirmar envío",
