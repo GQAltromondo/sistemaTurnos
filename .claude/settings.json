@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"sendMailCammesa\\\\|CammesaMail\\\\|MailCammesa\\\\|EnviarCammesa\" c:UsersGuilloteDesktopALTROMONDOsistemaTurnossistemadeturnoswebapp --include=*.js --include=*.xml)"
+    ]
+  }
+}

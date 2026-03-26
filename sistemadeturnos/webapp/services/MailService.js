@@ -183,6 +183,94 @@ sap.ui.define([
             return appModulePath + "/bpmworkflowruntime/v1";
         },
 
+        sendMailCammesa: function (oData, oComponent, csrfToken, onTokenExpired) {
+            if (!oData || !oComponent) {
+                return Promise.reject(new Error("Datos o componente faltantes"));
+            }
+
+            const sBaseURL = this._getWorkflowRuntimeBaseURL(oComponent);
+
+            const tokenPromise = csrfToken
+                ? Promise.resolve(csrfToken)
+                : this._fetchCSRFToken(sBaseURL);
+
+            return tokenPromise.then((token) => {
+                const sPostURL = sBaseURL + "/workflow-instances";
+                const context = {
+                    isCammesa: true,
+                    Asunto: "Resumen de Maniobras CAMMESA | " + oData.Fecha,
+                    Destinatario: oData.Destinatario || "",
+                    Fecha: oData.Fecha || "",
+                    ResumenManiobras: oData.ResumenManiobras || [],
+                    Totales: oData.Totales || {},
+                    RangoHorario: oData.RangoHorario || ""
+                };
+
+                const data = {
+                    definitionId: "transener.wfturnos",
+                    context: context
+                };
+
+                return new Promise((resolve, reject) => {
+                    jQuery.ajax({
+                        url: sPostURL,
+                        method: "POST",
+                        contentType: "application/json",
+                        timeout: 60000,
+                        headers: {
+                            "X-CSRF-Token": token
+                        },
+                        data: JSON.stringify(data),
+                        success: function (result) {
+                            resolve(result);
+                        },
+                        error: function (jqXHR, textStatus, errorThrown) {
+                            let errorMessage = "Error al enviar mail Cammesa";
+                            let isTokenExpired = false;
+
+                            if (jqXHR) {
+                                if (jqXHR.status === 403) {
+                                    isTokenExpired = true;
+                                }
+                                if (jqXHR.responseText) {
+                                    try {
+                                        const errorResponse = JSON.parse(jqXHR.responseText);
+                                        errorMessage = errorResponse.error?.message ||
+                                            errorResponse.message ||
+                                            errorMessage;
+                                        const errorText = errorMessage.toLowerCase();
+                                        if (errorText.includes("csrf") ||
+                                            errorText.includes("token") ||
+                                            errorText.includes("expired") ||
+                                            errorText.includes("invalid")) {
+                                            isTokenExpired = true;
+                                        }
+                                    } catch (e) {
+                                        errorMessage = errorThrown || textStatus || errorMessage;
+                                    }
+                                }
+                            }
+
+                            const error = new Error(errorMessage);
+                            error.isTokenExpired = isTokenExpired;
+                            error.statusCode = jqXHR ? jqXHR.status : null;
+
+                            if (isTokenExpired && onTokenExpired && typeof onTokenExpired === 'function') {
+                                onTokenExpired()
+                                    .then((newToken) => {
+                                        return this.sendMailCammesa(oData, oComponent, newToken);
+                                    })
+                                    .then(resolve)
+                                    .catch(reject);
+                            } else {
+                                reject(error);
+                            }
+                        }
+                    });
+                });
+            });
+        },
+
         _fetchCSRFToken: function (sBaseURL) {
             const sURL = sBaseURL + "/xsrf-token";
 

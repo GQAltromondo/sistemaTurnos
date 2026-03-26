@@ -10588,7 +10588,82 @@ sap.ui.define([
             this.onViewAttachment(oFakeEvent);
         },
         sendMailCammesa: function () {
-            console.log("Enviando mail cammesa")
+            var oView = this.getView();
+            var oComponent = this.getOwnerComponent();
+
+            // Obtener datos del ReporteModel
+            var oReporteModel = oView.getModel("ReporteModel");
+            var aReporte = oReporteModel ? oReporteModel.getData() : [];
+
+            if (!aReporte || aReporte.length === 0) {
+                sap.m.MessageBox.warning("No hay datos de reporte para enviar.");
+                return;
+            }
+
+            // Obtener fecha del turno
+            var oDatePicker = this.byId("date");
+            var oFecha = oDatePicker ? oDatePicker.getDateValue() : null;
+            var sFecha = "";
+            if (oFecha) {
+                var oFormatter = sap.ui.core.format.DateFormat.getDateInstance({ pattern: "dd/MM/yyyy" });
+                sFecha = oFormatter.format(oFecha);
+            }
+
+            // Obtener rango horario del reporte
+            var oDateRangeControl = this.byId("reporteDateRange");
+            var sRangoHorario = oDateRangeControl ? oDateRangeControl.getText() : "";
+
+            // Obtener totales desde la vista
+            var oCountsModel = oView.getModel("countsModel");
+            var oTotales = oCountsModel ? oCountsModel.getData() : {};
+
+            // Destinatarios hardcodeados
+            var aDestinatarios = [
+                "destinatario1@cammesa.com",
+                "destinatario2@cammesa.com"
+            ];
+
+            // Preparar resumen de maniobras
+            var aResumen = aReporte.map(function (oItem) {
+                return {
+                    Equipo: oItem.Equipo || "",
+                    Hora: oItem.Hora || "",
+                    TipoIntervencion: oItem.TipoIntervencion || "",
+                    Comentarios: oItem.Comentarios || ""
+                };
+            });
+
+            sap.m.MessageBox.confirm("Se enviará el resumen de maniobras a CAMMESA (" + aDestinatarios.length + " destinatarios). ¿Desea continuar?", {
+                title: "Confirmar envío",
+                onClose: function (oAction) {
+                    if (oAction !== sap.m.MessageBox.Action.OK) {
+                        return;
+                    }
+
+                    sap.ui.core.BusyIndicator.show(0);
+
+                    MailService.getCSRFToken(oComponent).then(function (csrfToken) {
+                        var aPromises = aDestinatarios.map(function (sDestinatario) {
+                            var oData = {
+                                Destinatario: sDestinatario,
+                                Fecha: sFecha,
+                                ResumenManiobras: aResumen,
+                                Totales: oTotales,
+                                RangoHorario: sRangoHorario
+                            };
+                            return MailService.sendMailCammesa(oData, oComponent, csrfToken);
+                        });
+
+                        return Promise.all(aPromises);
+                    }).then(function () {
+                        sap.ui.core.BusyIndicator.hide();
+                        sap.m.MessageToast.show("Mail enviado a CAMMESA correctamente");
+                    }).catch(function (oError) {
+                        sap.ui.core.BusyIndicator.hide();
+                        sap.m.MessageBox.error("Error al enviar mail a CAMMESA: " + oError.message);
+                    });
+                }.bind(this)
+            });
         }
 
     });
