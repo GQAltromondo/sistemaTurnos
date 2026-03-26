@@ -10619,8 +10619,8 @@ sap.ui.define([
 
             // Destinatarios hardcodeados
             var aDestinatarios = [
-                "destinatario1@cammesa.com",
-                "destinatario2@cammesa.com"
+                "guillermo27@gmail.com",
+                "juan.adaro@altromondo.com.ar"
             ];
 
             // Preparar resumen de maniobras
