@@ -201,7 +201,7 @@ sap.ui.define([
                     Asunto: "Resumen de Maniobras CAMMESA | " + oData.Fecha,
                     Destinatario: oData.Destinatario || "",
                     Fecha: oData.Fecha || "",
-                    ResumenManiobras: oData.ResumenManiobras || [],
+                    TablaManiobraHtml: oData.TablaManiobraHtml || "",
                     Totales: oData.Totales || {},
                     RangoHorario: oData.RangoHorario || ""
                 };

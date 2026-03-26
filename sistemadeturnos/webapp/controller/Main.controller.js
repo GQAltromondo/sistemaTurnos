@@ -10623,15 +10623,16 @@ sap.ui.define([
                 "destinatario2@cammesa.com"
             ];
 
-            // Preparar resumen de maniobras
-            var aResumen = aReporte.map(function (oItem) {
-                return {
-                    Equipo: oItem.Equipo || "",
-                    Hora: oItem.Hora || "",
-                    TipoIntervencion: oItem.TipoIntervencion || "",
-                    Comentarios: oItem.Comentarios || ""
-                };
-            });
+            // Armar HTML de la tabla de maniobras como string (SAP WF no soporta loops en templates)
+            var sTablaHtml = aReporte.map(function (oItem, iIndex) {
+                var sBg = iIndex % 2 === 1 ? "#F6F6F6" : "#FFFFFF";
+                return '<tr style="background-color:' + sBg + ';">' +
+                    '<td style="padding:6px 12px;">' + (oItem.Equipo || "") + '</td>' +
+                    '<td style="padding:6px 12px;">' + (oItem.Hora || "") + '</td>' +
+                    '<td style="padding:6px 12px;">' + (oItem.TipoIntervencion || "") + '</td>' +
+                    '<td style="padding:6px 12px;">' + (oItem.Comentarios || "") + '</td>' +
+                    '</tr>';
+            }).join("");
 
             sap.m.MessageBox.confirm("Se enviará el resumen de maniobras a CAMMESA (" + aDestinatarios.length + " destinatarios). ¿Desea continuar?", {
                 title: "Confirmar envío",
@@ -10647,7 +10648,7 @@ sap.ui.define([
                             var oData = {
                                 Destinatario: sDestinatario,
                                 Fecha: sFecha,
-                                ResumenManiobras: aResumen,
+                                TablaManiobraHtml: sTablaHtml,
                                 Totales: oTotales,
                                 RangoHorario: sRangoHorario
                             };
