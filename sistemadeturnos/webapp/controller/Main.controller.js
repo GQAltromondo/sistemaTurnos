@@ -10623,16 +10623,14 @@ sap.ui.define([
                 "juan.adaro@altromondo.com.ar"
             ];
 
-            // Armar HTML de la tabla de maniobras como string (SAP WF no soporta loops en templates)
-            var sTablaHtml = aReporte.map(function (oItem, iIndex) {
-                var sBg = iIndex % 2 === 1 ? "#F6F6F6" : "#FFFFFF";
-                return '<tr style="background-color:' + sBg + ';">' +
-                    '<td style="padding:6px 12px;">' + (oItem.Equipo || "") + '</td>' +
-                    '<td style="padding:6px 12px;">' + (oItem.Hora || "") + '</td>' +
-                    '<td style="padding:6px 12px;">' + (oItem.TipoIntervencion || "") + '</td>' +
-                    '<td style="padding:6px 12px;">' + (oItem.Comentarios || "") + '</td>' +
-                    '</tr>';
-            }).join("");
+            // Armar texto plano formateado (SAP WF escapa HTML en variables)
+            var sResumenTexto = aReporte.map(function (oItem) {
+                var sEquipo = (oItem.Equipo || "").padEnd(15);
+                var sHora = (oItem.Hora || "").padEnd(8);
+                var sTipo = (oItem.TipoIntervencion || "").padEnd(40);
+                var sComentarios = oItem.Comentarios || "";
+                return sEquipo + sHora + sTipo + sComentarios;
+            }).join("\n");
 
             sap.m.MessageBox.confirm("Se enviará el resumen de maniobras a CAMMESA (" + aDestinatarios.length + " destinatarios). ¿Desea continuar?", {
                 title: "Confirmar envío",
@@ -10648,7 +10646,7 @@ sap.ui.define([
                             var oData = {
                                 Destinatario: sDestinatario,
                                 Fecha: sFecha,
-                                TablaManiobraHtml: sTablaHtml,
+                                ResumenTextoPlano: sResumenTexto,
                                 Totales: oTotales,
                                 RangoHorario: sRangoHorario
                             };
