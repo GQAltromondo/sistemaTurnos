@@ -10622,17 +10622,21 @@ sap.ui.define([
                 "guillermo27@gmail.com"
             ];
 
-            // Armar tabla completa como texto plano con formato visual
-            var sSeparador = "─".repeat(90);
-            var sHeader = "Equipo".padEnd(18) + "Hora".padEnd(10) + "Tipo de intervención".padEnd(42) + "Comentarios";
-            var sFilas = aReporte.map(function (oItem) {
-                var sEquipo = (oItem.Equipo || "").padEnd(18);
-                var sHora = (oItem.Hora || "").padEnd(10);
-                var sTipo = (oItem.TipoIntervencion || "").padEnd(42);
-                var sComentarios = oItem.Comentarios || "";
-                return sEquipo + sHora + sTipo + sComentarios;
-            }).join("\n");
-            var sResumenTexto = sHeader + "\n" + sSeparador + "\n" + sFilas;
+            // Aplanar filas del reporte como campos individuales (SAP WF no soporta arrays en templates)
+            var oFilas = {};
+            var iMaxFilas = 30;
+            for (var i = 1; i <= iMaxFilas; i++) {
+                if (i <= aReporte.length) {
+                    var oItem = aReporte[i - 1];
+                    oFilas["R" + i + "S"] = "";
+                    oFilas["R" + i + "E"] = oItem.Equipo || "";
+                    oFilas["R" + i + "H"] = oItem.Hora || "";
+                    oFilas["R" + i + "T"] = oItem.TipoIntervencion || "";
+                    oFilas["R" + i + "C"] = oItem.Comentarios || "";
+                } else {
+                    oFilas["R" + i + "S"] = "display:none";
+                }
+            }
 
             sap.m.MessageBox.confirm("Se enviará el resumen de maniobras a CAMMESA (" + aDestinatarios.length + " destinatarios). ¿Desea continuar?", {
                 title: "Confirmar envío",
@@ -10648,7 +10652,7 @@ sap.ui.define([
                             var oData = {
                                 Destinatario: sDestinatario,
                                 Fecha: sFecha,
-                                ResumenTextoPlano: sResumenTexto,
+                                Filas: oFilas,
                                 Totales: oTotales,
                                 RangoHorario: sRangoHorario
                             };

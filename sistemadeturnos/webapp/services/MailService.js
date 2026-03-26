@@ -196,15 +196,14 @@ sap.ui.define([
 
             return tokenPromise.then((token) => {
                 const sPostURL = sBaseURL + "/workflow-instances";
-                const context = {
+                const context = Object.assign({
                     isCammesa: true,
                     Asunto: "Resumen de Maniobras CAMMESA | " + oData.Fecha,
                     Destinatario: oData.Destinatario || "",
                     Fecha: oData.Fecha || "",
-                    ResumenTextoPlano: oData.ResumenTextoPlano || "",
                     Totales: oData.Totales || {},
                     RangoHorario: oData.RangoHorario || ""
-                };
+                }, oData.Filas || {});
 
                 const data = {
                     definitionId: "transener.wfturnos",
