@@ -9035,7 +9035,7 @@ sap.ui.define([
                 MessageBox.error("No se pudo cargar el modelo OData");
                 return;
             }
-           
+
             oModel.read("/CatalogoCodigosSet", {
                 success: (oData) => {
                     const aResultados = oData.results || [];
@@ -9044,7 +9044,7 @@ sap.ui.define([
 
                     // Crear o actualizar el modelo JSON
                     let oCatalogoModel = this.getView().getModel("CatalogoCodigosModel");
-                    
+
                     if (!oCatalogoModel) {
                         // Si no existe, crear el modelo
                         oCatalogoModel = new JSONModel();
@@ -10582,10 +10582,13 @@ sap.ui.define([
                 getSource: () => ({
                     getBindingContext: () => oLicenciaContext
                 })
-            };
+            }
 
             // Reutilizar función existente
             this.onViewAttachment(oFakeEvent);
+        },
+        sendMailCammesa: function () {
+            console.log("Enviando mail cammesa")
         }
 
     });

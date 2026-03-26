@@ -1,313 +1,128 @@
-<mvc:View
-    controllerName="transener.sistemadeturnos.controller.Main"
+<mvc:View controllerName="transener.sistemadeturnos.controller.Main"
     xmlns:mvc="sap.ui.core.mvc"
     xmlns="sap.m"
     xmlns:core="sap.ui.core"
     xmlns:t="sap.ui.table"
     xmlns:dnd="sap.ui.core.dnd"
     xmlns:form="sap.ui.layout.form"
-    xmlns:l="sap.ui.layout"
-    displayBlock="true"
->
+    xmlns:l="sap.ui.layout" displayBlock="true">
     <App>
         <pages>
-            <Page
-                id="page"
-                title="{i18n>title}"
-            >
-                <Panel
-                    expandable="true"
-                    expanded="true"
-                    headerText="Filtros"
-                >
-                    <HBox
-                        class="sapUiSmallMarginTop"
-                        justifyContent="End"
-                    >
+            <Page id="page" title="{i18n>title}">
+                <Panel expandable="true" expanded="true" headerText="Filtros">
+                    <HBox class="sapUiSmallMarginTop" justifyContent="End">
                         <!-- Fecha -->
-                        <HBox
-                            alignItems="Center"
-                            class="sapUiSmallMarginEnd"
-                        >
-                            <Text
-                                text="{i18n>date}:"
-                                class="sapUiSmallMarginEnd"
-                            />
-                            <DatePicker
-                                id="date"
-                                width="10rem"
-                                valueFormat="dd.MM.yyyy"
-                                displayFormat="dd.MM.yyyy"
-                                change="onSelectTurno"
-                            />
+                        <HBox alignItems="Center" class="sapUiSmallMarginEnd">
+                            <Text text="{i18n>date}:" class="sapUiSmallMarginEnd" />
+                            <DatePicker id="date" width="10rem" valueFormat="dd.MM.yyyy" displayFormat="dd.MM.yyyy" change="onSelectTurno" />
                         </HBox>
 
                         <!-- Región -->
-                        <HBox
-                            alignItems="Center"
-                            class="sapUiSmallMarginEnd"
-                        >
-                            <Text
-                                text="{i18n>region}:"
-                                class="sapUiSmallMarginEnd"
-                            />
-                            <ComboBox
-                                width="16rem"
-                                id="Region"
-                                selectedKey="{FiltersJsonModel>/Werks/value}"
-                                items="{ path: 'RegionesJsonModel>/Regiones', templateShareable: true }"
-                            >
-                                <core:Item
-                                    key="{RegionesJsonModel>Werks}"
-                                    text="{RegionesJsonModel>Name1}"
-                                />
+                        <HBox alignItems="Center" class="sapUiSmallMarginEnd">
+                            <Text text="{i18n>region}:" class="sapUiSmallMarginEnd" />
+                            <ComboBox width="16rem" id="Region" selectedKey="{FiltersJsonModel>/Werks/value}" items="{ path: 'RegionesJsonModel>/Regiones', templateShareable: true }">
+                                <core:Item key="{RegionesJsonModel>Werks}" text="{RegionesJsonModel>Name1}" />
                             </ComboBox>
                         </HBox>
 
                         <!-- Equipo Solicitado CAMMESA -->
-                        <HBox
-                            alignItems="Center"
-                            class="sapUiSmallMarginEnd"
-                        >
-                            <Text
-                                text="{i18n>equipmentCAM}:"
-                                class="sapUiSmallMarginEnd"
-                            />
-                            <ComboBox
-                                width="16rem"
-                                id="EquipCammesa"
-                                enabled="false"
-                                selectedKey="{FiltersJsonModel>/Equnr/value}"
-                                items="{ path: 'EquiposJsonModel>/Equipos', templateShareable: true }"
-                            >
-                                <core:Item
-                                    key="{EquiposJsonModel>CodigoEquipo}"
-                                    text="{EquiposJsonModel>CodigoEquipo} - {EquiposJsonModel>DescEquipo}"
-                                />
+                        <HBox alignItems="Center" class="sapUiSmallMarginEnd">
+                            <Text text="{i18n>equipmentCAM}:" class="sapUiSmallMarginEnd" />
+                            <ComboBox width="16rem" id="EquipCammesa" enabled="false" selectedKey="{FiltersJsonModel>/Equnr/value}" items="{ path: 'EquiposJsonModel>/Equipos', templateShareable: true }">
+                                <core:Item key="{EquiposJsonModel>CodigoEquipo}" text="{EquiposJsonModel>CodigoEquipo} - {EquiposJsonModel>DescEquipo}" />
                             </ComboBox>
                         </HBox>
 
                         <!-- Bloqueo de Recierre -->
                         <HBox alignItems="Center">
-                            <Text
-                                text="{i18n>equipRecierre}:"
-                                class="sapUiSmallMarginEnd"
-                            />
-                            <ComboBox
-                                width="16rem"
-                                id="ERecierre"
-                                selectedKey="{FiltersJsonModel>/Bloqueo/value}"
-                                items="{ path: 'HardCodeModel>/Bloqueo', templateShareable: true }"
-                            >
-                                <core:Item
-                                    key="{HardCodeModel>key}"
-                                    text="{HardCodeModel>value}"
-                                />
+                            <Text text="{i18n>equipRecierre}:" class="sapUiSmallMarginEnd" />
+                            <ComboBox width="16rem" id="ERecierre" selectedKey="{FiltersJsonModel>/Bloqueo/value}" items="{ path: 'HardCodeModel>/Bloqueo', templateShareable: true }">
+                                <core:Item key="{HardCodeModel>key}" text="{HardCodeModel>value}" />
                             </ComboBox>
                         </HBox>
                     </HBox>
 
                     <!-- LÍNEA 2: E.T. | Estado Equipo | Riesgo | BOTONES -->
-                    <HBox
-                        alignItems="Center"
-                        justifyContent="End"
-                    >
+                    <HBox alignItems="Center" justifyContent="End">
                         <!-- Contenedor de filtros a la izquierda -->
                         <HBox alignItems="Center">
                             <!-- ET -->
-                            <HBox
-                                alignItems="Center"
-                                class="sapUiMediumMarginEnd"
-                            >
-                                <Text
-                                    text="{i18n>ET}:"
-                                    class="sapUiSmallMarginEnd"
-                                />
-                                <MultiComboBox
-                                    width="16rem"
-                                    id="Estaciones"
-                                    selectionChange=".changeUbicacion"
-                                    items="{ path: 'EstacionesJsonModel>/Estaciones', templateShareable: true }"
-                                >
-                                    <core:Item
-                                        key="{EstacionesJsonModel>Codigo}"
-                                        text="{EstacionesJsonModel>Codigo} - {EstacionesJsonModel>Descripcion}"
-                                    />
+                            <HBox alignItems="Center" class="sapUiMediumMarginEnd">
+                                <Text text="{i18n>ET}:" class="sapUiSmallMarginEnd" />
+                                <MultiComboBox width="16rem" id="Estaciones" selectionChange=".changeUbicacion" items="{ path: 'EstacionesJsonModel>/Estaciones', templateShareable: true }">
+                                    <core:Item key="{EstacionesJsonModel>Codigo}" text="{EstacionesJsonModel>Codigo} - {EstacionesJsonModel>Descripcion}" />
                                 </MultiComboBox>
                             </HBox>
 
                             <!-- Estado Equipo CAMMESA -->
-                            <HBox
-                                alignItems="Center"
-                                class="sapUiMediumMarginEnd"
-                            >
-                                <Text
-                                    text="{i18n>statusCAM}:"
-                                    class="sapUiSmallMarginEnd"
-                                />
-                                <ComboBox
-                                    width="16rem"
-                                    id="StatusECammesa"
-                                    selectedKey="{FiltersJsonModel>/Equstat/value}"
-                                    items="{ path: 'HardCodeModel>/Equstat', templateShareable: true }"
-                                >
-                                    <core:Item
-                                        key="{HardCodeModel>key}"
-                                        text="{HardCodeModel>value}"
-                                    />
+                            <HBox alignItems="Center" class="sapUiMediumMarginEnd">
+                                <Text text="{i18n>statusCAM}:" class="sapUiSmallMarginEnd" />
+                                <ComboBox width="16rem" id="StatusECammesa" selectedKey="{FiltersJsonModel>/Equstat/value}" items="{ path: 'HardCodeModel>/Equstat', templateShareable: true }">
+                                    <core:Item key="{HardCodeModel>key}" text="{HardCodeModel>value}" />
                                 </ComboBox>
                             </HBox>
 
                             <!-- Riesgo de Disparo -->
                             <HBox alignItems="Center">
-                                <Text
-                                    text="{i18n>equipDisparo}:"
-                                    class="sapUiSmallMarginEnd"
-                                />
-                                <ComboBox
-                                    width="16rem"
-                                    id="EDisparo"
-                                    selectedKey="{FiltersJsonModel>/Rdisparo/value}"
-                                    items="{ path: 'HardCodeModel>/Rdisparo', templateShareable: true }"
-                                >
-                                    <core:Item
-                                        key="{HardCodeModel>key}"
-                                        text="{HardCodeModel>value}"
-                                    />
+                                <Text text="{i18n>equipDisparo}:" class="sapUiSmallMarginEnd" />
+                                <ComboBox width="16rem" id="EDisparo" selectedKey="{FiltersJsonModel>/Rdisparo/value}" items="{ path: 'HardCodeModel>/Rdisparo', templateShareable: true }">
+                                    <core:Item key="{HardCodeModel>key}" text="{HardCodeModel>value}" />
                                 </ComboBox>
                             </HBox>
                         </HBox>
                     </HBox>
 
-                    <HBox
-                        justifyContent="End"
-                        class="sapUiSmallMarginBottom"
-                    >
-                        <Button
-                            icon="sap-icon://add-filter"
-                            text="Filtros Avanzados"
-                            press="openAdvancedFilters"
-                            class="sapUiTinyMarginEnd"
-                        />
+                    <HBox justifyContent="End" class="sapUiSmallMarginBottom">
+                        <Button icon="sap-icon://add-filter" text="Filtros Avanzados" press="openAdvancedFilters" class="sapUiTinyMarginEnd" />
 
-                        <Button
-                            icon="sap-icon://clear-filter"
-                            text="{i18n>clearFilters}"
-                            press="onClearFilter"
-                        />
+                        <Button icon="sap-icon://clear-filter" text="{i18n>clearFilters}" press="onClearFilter" />
                     </HBox>
                 </Panel>
 
-                <HBox
-                    justifyContent="End"
-                    class="sapUiSmallMarginBottom"
-                >
+                <HBox justifyContent="End" class="sapUiSmallMarginBottom">
                     <ToolbarSpacer />
 
-                    <Input
-                        id="fastSearchInput"
-                        placeholder="{i18n>quickSearch}"
-                        class="sapUiSmallMarginEnd"
-                        width="15rem"
-                    />
-                    <Button
-                        icon="sap-icon://search"
-                        press="onFilter"
-                        type="Emphasized"
-                        class="sapUiSmallMarginEnd"
-                    />
-                    <Button
-                        icon="sap-icon://refresh"
-                        press="onRefresh"
-                        class="sapUiSmallMarginEnd"
-                    />
+                    <Input id="fastSearchInput" placeholder="{i18n>quickSearch}" class="sapUiSmallMarginEnd" width="15rem" />
+                    <Button icon="sap-icon://search" press="onFilter" type="Emphasized" class="sapUiSmallMarginEnd" />
+                    <Button icon="sap-icon://refresh" press="onRefresh" class="sapUiSmallMarginEnd" />
                 </HBox>
 
-                <IconTabBar
-                    id="mainTabBar"
-                    select=".onTabSelect"
-                >
+                <IconTabBar id="mainTabBar" select=".onTabSelect">
                     <items>
-                        <IconTabFilter
-                            text="Turno"
-                            key="LIC"
-                            visible="{viewModel>/isProgramacion}"
-                        >
-                            <t:Table
-                                id="turnosTable"
-                                selectionMode="None"
-                                selectionBehavior="Row"
-                                ariaLabelledBy="title2"
-                                rows="{LicencesJsonModel>/}"
-                                filter=".onColumnFilter"
-                            >
+                        <IconTabFilter text="Turno" key="LIC" visible="{viewModel>/isProgramacion}">
+                            <t:Table id="turnosTable" selectionMode="None" selectionBehavior="Row" ariaLabelledBy="title2" rows="{LicencesJsonModel>/}" filter=".onColumnFilter">
                                 <t:contextMenu>
                                     <Menu>
                                         <!-- Adjuntar archivo -->
-                                        <MenuItem
-                                            text="Adjuntar archivo"
-                                            icon="sap-icon://attachment"
-                                            press="onAttachFile"
-                                            enabled="{editableModel>/isEditable}"
-                                        />
+                                        <MenuItem text="Adjuntar archivo" icon="sap-icon://attachment" press="onAttachFile" enabled="{editableModel>/isEditable}" />
 
                                         <!-- Agregar Licencia -->
-                                        <MenuItem
-                                            text="Agregar Licencia"
-                                            icon="sap-icon://add"
-                                            press="onAgregarLicencia"
-                                            enabled="{editableModel>/isEditable}"
-                                        />
+                                        <MenuItem text="Agregar Licencia" icon="sap-icon://add" press="onAgregarLicencia" enabled="{editableModel>/isEditable}" />
 
                                         <!-- Eliminar Licencia -->
-                                        <MenuItem
-                                            text="Eliminar Licencia"
-                                            icon="sap-icon://delete"
-                                            press="onDeletePress"
-                                            enabled="{editableModel>/isEditable}"
-                                        />
+                                        <MenuItem text="Eliminar Licencia" icon="sap-icon://delete" press="onDeletePress" enabled="{editableModel>/isEditable}" />
 
                                         <!-- Desacoplar -->
-                                        <MenuItem
-                                            text="Desacoplar"
-                                            icon="sap-icon://broken-link"
-                                            press="onDetachLicense"
-                                            enabled="{editableModel>/isEditable}"
-                                        />
+                                        <MenuItem text="Desacoplar" icon="sap-icon://broken-link" press="onDetachLicense" enabled="{editableModel>/isEditable}" />
 
                                         <!-- Acciones para la entrega -->
-                                        <MenuItem
-                                            text="Acciones para la entrega"
-                                            icon="sap-icon://add-activity-2"
-                                            press="onOpenAccionEntregaPopover"
-                                        />
+                                        <MenuItem text="Acciones para la entrega" icon="sap-icon://add-activity-2" press="onOpenAccionEntregaPopover" />
 
                                         <!-- Gráfico -->
-                                        <MenuItem
-                                            text="Ver Gráfico"
-                                            icon="sap-icon://line-chart"
-                                            press="onNavigateToGrafico"
-                                        />
+                                        <MenuItem text="Ver Gráfico" icon="sap-icon://line-chart" press="onNavigateToGrafico" />
                                     </Menu>
                                 </t:contextMenu>
 
                                 <t:rowSettingsTemplate>
-                                    <t:RowSettings
-                                        highlight="{path:'LicencesJsonModel>tramitacionColorFecha', formatter:'.getTramitacionHighlight'}"
-                                    />
+                                    <t:RowSettings highlight="{path:'LicencesJsonModel>tramitacionColorFecha', formatter:'.getTramitacionHighlight'}" />
                                 </t:rowSettingsTemplate>
 
                                 <t:columns>
                                     <!-- <t:Column width="60px">
                                         <Label text="Tramitación" />
                                         <t:template>
-                                            <Button
-                                                icon="sap-icon://calendar"
-                                                type="{= ${LicencesJsonModel>tramitacionColorFecha} === 'red' ? 'Reject' : 
-             ${LicencesJsonModel>tramitacionColorFecha} === 'yellow' ? 'Attention' : 'Default' }"
-                                                press="onOpenCalendarioTramitacion"
-                                                tooltip="Ver calendario de tramitación"
-                                            />
+                                            <Button icon="sap-icon://calendar" type="{= ${LicencesJsonModel>tramitacionColorFecha} === 'red' ? 'Reject' : 
+             ${LicencesJsonModel>tramitacionColorFecha} === 'yellow' ? 'Attention' : 'Default' }" press="onOpenCalendarioTramitacion" tooltip="Ver calendario de tramitación" />
                                         </t:template>
                                     </t:Column> -->
 
@@ -315,288 +130,124 @@
                                         <Label text="{i18n>acciones}" />
                                         <t:template>
                                             <HBox justifyContent="Center">
-                                                <Button
-                                                    icon="sap-icon://add-activity-2"
-                                                    type="{= ${LicencesJsonModel>accionSeleccionada} ? 'Emphasized' : 'Default' }"
-                                                    press="onOpenAccionEntregaPopover"
-                                                    tooltip="Agregar acción para entrega"
-                                                />
+                                                <Button icon="sap-icon://add-activity-2" type="{= ${LicencesJsonModel>accionSeleccionada} ? 'Emphasized' : 'Default' }" press="onOpenAccionEntregaPopover" tooltip="Agregar acción para entrega" />
                                             </HBox>
                                         </t:template>
                                     </t:Column> -->
 
-                                    <t:Column
-                                        width="130px"
-                                        class="customColumnBackground"
-                                        hAlign="Left"
-                                        sortProperty="Equnr"
-                                        filterProperty="Equnr"
-                                    >
+                                    <t:Column width="130px" class="customColumnBackground" hAlign="Left" sortProperty="Equnr" filterProperty="Equnr">
                                         <Label text="{i18n>equipment}" />
                                         <t:template>
-                                            <HBox
-                                                alignItems="Center"
-                                                justifyContent="Start"
-                                                width="100%"
-                                            >
-                                                <core:HTML
-                                                    content="&lt;div class='groupColorBar' style='background-color:{LicencesJsonModel>ColorGrupo}'&gt;&lt;/div&gt;"
-                                                />
-                                                <Text
-                                                    text="{LicencesJsonModel>Equnr}"
-                                                    wrapping="false"
-                                                    class="{= ${firstItem} ? 'text-bold' : '' }"
-                                                />
+                                            <HBox alignItems="Center" justifyContent="Start" width="100%">
+                                                <core:HTML content="&lt;div class='groupColorBar' style='background-color:{LicencesJsonModel>ColorGrupo}'&gt;&lt;/div&gt;" />
+                                                <Text text="{LicencesJsonModel>Equnr}" wrapping="false" class="{= ${firstItem} ? 'text-bold' : '' }" />
                                             </HBox>
                                         </t:template>
                                     </t:Column>
 
                                     <!-- Nueva columna: Descripción del Equipo -->
-                                    <t:Column
-                                        width="350px"
-                                        hAlign="Left"
-                                        sortProperty="DescEquipo"
-                                        filterProperty="DescEquipo"
-                                    >
+                                    <t:Column width="350px" hAlign="Left" sortProperty="DescEquipo" filterProperty="DescEquipo">
                                         <Label text="Descripción Equipo" />
                                         <t:template>
-                                            <Text
-                                                text="{LicencesJsonModel>DescEquipo}"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{LicencesJsonModel>DescEquipo}" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        hAlign="Center"
-                                        width="140px"
-                                        sortProperty="Id"
-                                        filterProperty="Id"
-                                    >
+                                    <t:Column hAlign="Center" width="140px" sortProperty="Id" filterProperty="Id">
                                         <Label text="IdLicencia" />
                                         <t:template>
-                                            <Text
-                                                text="{path: 'LicencesJsonModel>Id', formatter: '.formatter.getJobCond'}"
-                                                textAlign="Center"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{path: 'LicencesJsonModel>Id', formatter: '.formatter.getJobCond'}" textAlign="Center" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="status"
-                                        width="60px"
-                                        hAlign="Center"
-                                        sortProperty="Equstat"
-                                        filterProperty="Equstat"
-                                    >
-                                        <Label
-                                            text="{i18n>status}"
-                                            class="back"
-                                        />
+                                    <t:Column id="status" width="60px" hAlign="Center" sortProperty="Equstat" filterProperty="Equstat">
+                                        <Label text="{i18n>status}" class="back" />
                                         <t:template>
-                                            <Text
-                                                text="{ path: 'LicencesJsonModel>Equstat' ,formatter: '.formatter.getEstado' }"
-                                                wrapping="false"
-                                            />
+                                            <Text text="{ path: 'LicencesJsonModel>Equstat' ,formatter: '.formatter.getEstado' }" wrapping="false" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        hAlign="Center"
-                                        width="200px"
-                                        sortProperty="Jobcond"
-                                        filterProperty="Jobcond"
-                                    >
+                                    <t:Column hAlign="Center" width="200px" sortProperty="Jobcond" filterProperty="Jobcond">
                                         <Label text="{i18n>conditionWork}" />
                                         <t:template>
-                                            <Text
-                                                text="{path: 'LicencesJsonModel>Jobcond', formatter: '.formatter.getJobCond'}"
-                                                textAlign="Center"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{path: 'LicencesJsonModel>Jobcond', formatter: '.formatter.getJobCond'}" textAlign="Center" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="initHour"
-                                        hAlign="Center"
-                                        sortProperty="InitHourSort"
-                                        filterProperty="InitHourSort"
-                                    >
-                                        <Label
-                                            text="{i18n>initHour}"
-                                            textAlign="Center"
-                                        />
+                                    <t:Column id="initHour" hAlign="Center" sortProperty="InitHourSort" filterProperty="InitHourSort">
+                                        <Label text="{i18n>initHour}" textAlign="Center" />
                                         <t:template>
-                                            <Text
-                                                text="{parts: [
+                                            <Text text="{parts: [
 													{path: 'LicencesJsonModel>Timbeg'}, 
 													{path: 'LicencesJsonModel>Gdate'}
-												], formatter: '.formatter.formatInitHour'}"
-                                                class="text-bold"
-                                                wrapping="false"
-                                            />
+												], formatter: '.formatter.formatInitHour'}" class="text-bold" wrapping="false" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="toDoWork"
-                                        width="450px"
-                                        sortProperty="Comments"
-                                        filterProperty="Comments"
-                                    >
+                                    <t:Column id="toDoWork" width="450px" sortProperty="Comments" filterProperty="Comments">
                                         <Label text="{i18n>toDoWork}" />
                                         <t:template>
-                                            <Text
-                                                text="{LicencesJsonModel>Comments}"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{LicencesJsonModel>Comments}" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
-                                    <!-- <t:Column
-                                        id="state"
-                                        width="250px"
-                                        sortProperty="Licstat"
-                                        filterProperty="Licstat"
-                                    >
+                                    <!-- <t:Column id="state" width="250px" sortProperty="Licstat" filterProperty="Licstat">
                                         <Label text="{i18n>state}" />
                                         <t:template>
-                                            <Text
-                                                text="{path: 'LicencesJsonModel>Licstat', formatter: '.formatter.formatLicState'}"
-                                                textAlign="Center"
-                                                wrapping="false"
-                                            />
+                                            <Text text="{path: 'LicencesJsonModel>Licstat', formatter: '.formatter.formatLicState'}" textAlign="Center" wrapping="false" />
                                         </t:template>
                                     </t:Column> -->
 
-                                    <t:Column
-                                        id="region"
-                                        width="150px"
-                                        hAlign="Center"
-                                        sortProperty="Werks"
-                                        filterProperty="Werks"
-                                    >
+                                    <t:Column id="region" width="150px" hAlign="Center" sortProperty="Werks" filterProperty="Werks">
                                         <Label text="{i18n>region}" />
                                         <t:template>
-                                            <Text
-                                                text="{path: 'LicencesJsonModel>Werks', formatter: '.formatter.getRegiones'}"
-                                                textAlign="Center"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{path: 'LicencesJsonModel>Werks', formatter: '.formatter.getRegiones'}" textAlign="Center" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="console"
-                                        hAlign="Center"
-                                        sortProperty="Consola"
-                                        filterProperty="Consola"
-                                    >
+                                    <t:Column id="console" hAlign="Center" sortProperty="Consola" filterProperty="Consola">
                                         <Label text="{i18n>console}" />
                                         <t:template>
-                                            <Text
-                                                text="{LicencesJsonModel>Consola}"
-                                                wrapping="false"
-                                            />
+                                            <Text text="{LicencesJsonModel>Consola}" wrapping="false" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        hAlign="Center"
-                                        width="140px"
-                                        filterProperty="TurnoAsignado"
-                                        sortProperty="TurnoAsignado"
-                                    >
-                                        <Label
-                                            text="{i18n>shift}"
-                                            textAlign="Center"
-                                        />
+                                    <t:Column hAlign="Center" width="140px" filterProperty="TurnoAsignado" sortProperty="TurnoAsignado">
+                                        <Label text="{i18n>shift}" textAlign="Center" />
                                         <t:template>
-                                            <HBox
-                                                alignItems="Center"
-                                                justifyContent="SpaceBetween"
-                                            >
-                                                <TimePicker
-                                                    value="{LicencesJsonModel>TurnoAsignado}"
-                                                    valueFormat="HH:mm"
-                                                    displayFormat="HH:mm"
-                                                    valueState="{path: 'LicencesJsonModel>Consola', formatter: '.formatter.turnoColor'}"
-                                                    valueStateText="{path: 'LicencesJsonModel>TurnoWarning', formatter: '.formatter.turnoWarningText'}"
-                                                    change="onChangeHour"
-                                                    class="tpGroupBorder {LicencesJsonModel>ColorGrupoClass}"
-                                                    enabled="{editableModel>/isEditable}"
-                                                />
+                                            <HBox alignItems="Center" justifyContent="SpaceBetween">
+                                                <TimePicker value="{LicencesJsonModel>TurnoAsignado}" valueFormat="HH:mm" displayFormat="HH:mm" valueState="{path: 'LicencesJsonModel>Consola', formatter: '.formatter.turnoColor'}" valueStateText="{path: 'LicencesJsonModel>TurnoWarning', formatter: '.formatter.turnoWarningText'}" change="onChangeHour" class="tpGroupBorder {LicencesJsonModel>ColorGrupoClass}" enabled="{editableModel>/isEditable}" />
                                             </HBox>
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="comment"
-                                        hAlign="Center"
-                                        sortProperty="Comentarios"
-                                        filterProperty="Comentarios"
-                                    >
+                                    <t:Column id="comment" hAlign="Center" sortProperty="Comentarios" filterProperty="Comentarios">
                                         <Label text="{i18n>comment}" />
                                         <t:template>
-                                            <Input
-                                                value="{LicencesJsonModel>Comentarios}"
-                                                enabled="{editableModel>/isEditable}"
-                                            />
+                                            <Input value="{LicencesJsonModel>Comentarios}" enabled="{editableModel>/isEditable}" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="attachment"
-                                        hAlign="Center"
-                                        width="75px"
-                                    >
+                                    <t:Column id="attachment" hAlign="Center" width="75px">
                                         <Label text="{i18n>attachment}" />
                                         <t:template>
-                                            <Button
-                                                icon="sap-icon://show"
-                                                type="Emphasized"
-                                                tooltip="{i18n>viewFile}"
-                                                press="onViewAttachment"
-                                                visible="{= !!${LicencesJsonModel>AttachmentXLicencia_nav/results/length} || !!${LicencesJsonModel>Attachments/length} }"
-                                                class="sapUiTinyMarginEnd whiteIconButton"
-                                            />
+                                            <Button icon="sap-icon://show" type="Emphasized" tooltip="{i18n>viewFile}" press="onViewAttachment" visible="{= !!${LicencesJsonModel>AttachmentXLicencia_nav/results/length} || !!${LicencesJsonModel>Attachments/length} }" class="sapUiTinyMarginEnd whiteIconButton" />
                                         </t:template>
                                     </t:Column>
                                 </t:columns>
                             </t:Table>
                         </IconTabFilter>
 
-                        <IconTabFilter
-                            text="Acciones para la entrega ({AccionesEntregaModel>/length})"
-                            key="ACCIONES"
-                            visible="{viewModel>/isProgramacion}"
-                        >
-                            <t:Table
-                                id="accionesEntregaTable"
-                                rows="{AccionesEntregaModel>/}"
-                                selectionMode="None"
-                                alternateRowColors="true"
-                            >
+                        <IconTabFilter text="Acciones para la entrega ({AccionesEntregaModel>/length})" key="ACCIONES" visible="{viewModel>/isProgramacion}">
+                            <t:Table id="accionesEntregaTable" rows="{AccionesEntregaModel>/}" selectionMode="None" alternateRowColors="true">
                                 <!-- MENÚ CONTEXTUAL -->
                                 <t:contextMenu>
                                     <Menu>
                                         <!-- Adjuntar archivo -->
-                                        <MenuItem
-                                            text="Adjuntar archivo"
-                                            icon="sap-icon://attachment"
-                                            press="onAttachFileAccion"
-                                            enabled="{editableModel>/isEditable}"
-                                        />
+                                        <MenuItem text="Adjuntar archivo" icon="sap-icon://attachment" press="onAttachFileAccion" enabled="{editableModel>/isEditable}" />
 
                                         <!-- Eliminar acción -->
-                                        <MenuItem
-                                            text="Eliminar acción"
-                                            icon="sap-icon://delete"
-                                            press="onRemoveAccionEntrega"
-                                            enabled="{editableModel>/isEditable}"
-                                        />
+                                        <MenuItem text="Eliminar acción" icon="sap-icon://delete" press="onRemoveAccionEntrega" enabled="{editableModel>/isEditable}" />
                                     </Menu>
                                 </t:contextMenu>
 
@@ -605,10 +256,7 @@
                                     <t:Column width="120px">
                                         <Label text="Equipo" />
                                         <t:template>
-                                            <Text
-                                                text="{AccionesEntregaModel>equipo}"
-                                                wrapping="false"
-                                            />
+                                            <Text text="{AccionesEntregaModel>equipo}" wrapping="false" />
                                         </t:template>
                                     </t:Column>
 
@@ -616,15 +264,10 @@
                                     <t:Column width="150px">
                                         <Label text="IdLicencia" />
                                         <t:template>
-                                            <Link
-                                                text="{
+                                            <Link text="{
                                                     path: 'AccionesEntregaModel>idLicencia',
                                                     formatter: '.formatLicenciasCount'
-                                                }"
-                                                press=".onMostrarLicenciasDetalle"
-                                                wrapping="false"
-                                                class="text-bold-link"
-                                            />
+                                                }" press=".onMostrarLicenciasDetalle" wrapping="false" class="text-bold-link" />
                                         </t:template>
                                     </t:Column>
 
@@ -632,10 +275,7 @@
                                     <t:Column width="150px">
                                         <Label text="Acción" />
                                         <t:template>
-                                            <Text
-                                                text="{AccionesEntregaModel>accion}"
-                                                wrapping="false"
-                                            />
+                                            <Text text="{AccionesEntregaModel>accion}" wrapping="false" />
                                         </t:template>
                                     </t:Column>
 
@@ -643,10 +283,7 @@
                                     <t:Column width="400px">
                                         <Label text="Descripción" />
                                         <t:template>
-                                            <Text
-                                                text="{AccionesEntregaModel>descripcion}"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{AccionesEntregaModel>descripcion}" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
@@ -654,11 +291,7 @@
                                     <t:Column width="300px">
                                         <Label text="{i18n>toDoWork}" />
                                         <t:template>
-                                            <Text
-                                                text="{AccionesEntregaModel>trabajoRealizar}"
-                                                textAlign="Center"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{AccionesEntregaModel>trabajoRealizar}" textAlign="Center" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
@@ -666,14 +299,7 @@
                                     <t:Column width="120px">
                                         <Label text="Turno" />
                                         <t:template>
-                                            <TimePicker
-                                                value="{AccionesEntregaModel>turnoEntrega}"
-                                                valueFormat="HH:mm"
-                                                displayFormat="HH:mm"
-                                                change="onTurnoEntregaChange"
-                                                width="100%"
-                                                enabled="{editableModel>/isEditable}"
-                                            />
+                                            <TimePicker value="{AccionesEntregaModel>turnoEntrega}" valueFormat="HH:mm" displayFormat="HH:mm" change="onTurnoEntregaChange" width="100%" enabled="{editableModel>/isEditable}" />
                                         </t:template>
                                     </t:Column>
 
@@ -681,28 +307,13 @@
                                     <t:Column width="100px">
                                         <Label text="Adjuntos" />
                                         <t:template>
-                                            <HBox
-                                                justifyContent="Center"
-                                                alignItems="Center"
-                                            >
-                                                <Button
-                                                    icon="sap-icon://show"
-                                                    type="Emphasized"
-                                                    press="onViewAttachmentAccion"
-                                                    tooltip="Ver adjuntos"
-                                                    class="whiteIconButton"
-                                                    visible="{= ${AccionesEntregaModel>Attachments} &amp;&amp; ${AccionesEntregaModel>Attachments}.length > 0 }"
-                                                >
+                                            <HBox justifyContent="Center" alignItems="Center">
+                                                <Button icon="sap-icon://show" type="Emphasized" press="onViewAttachmentAccion" tooltip="Ver adjuntos" class="whiteIconButton" visible="{= ${AccionesEntregaModel>Attachments} &amp;&amp; ${AccionesEntregaModel>Attachments}.length > 0 }">
                                                     <layoutData>
-                                                        <FlexItemData
-                                                            growFactor="0"
-                                                        />
+                                                        <FlexItemData growFactor="0" />
                                                     </layoutData>
                                                     <customData>
-                                                        <core:CustomData
-                                                            key="badge"
-                                                            value="{= ${AccionesEntregaModel>Attachments} ? ${AccionesEntregaModel>Attachments}.length : 0 }"
-                                                        />
+                                                        <core:CustomData key="badge" value="{= ${AccionesEntregaModel>Attachments} ? ${AccionesEntregaModel>Attachments}.length : 0 }" />
                                                     </customData>
                                                 </Button>
                                             </HBox>
@@ -713,284 +324,131 @@
 
                             <OverflowToolbar class="sapUiSmallMarginTop">
                                 <ToolbarSpacer />
-                                <Button
-                                    text="Guardar Acciones"
-                                    icon="sap-icon://save"
-                                    type="Emphasized"
-                                    press="onGuardarAccionesBackend"
-                                    tooltip="Guardar todas las acciones en el backend"
-                                    enabled="{editableModel>/isEditable}"
-                                />
+                                <Button text="Guardar Acciones" icon="sap-icon://save" type="Emphasized" press="onGuardarAccionesBackend" tooltip="Guardar todas las acciones en el backend" enabled="{editableModel>/isEditable}" />
                             </OverflowToolbar>
                         </IconTabFilter>
 
-                        <IconTabFilter
-                            text="Listado Cronologico"
-                            key="CRONO"
-                        >
-                            <t:TreeTable
-                                id="cronoTreeTable"
-                                rows="{
+                        <IconTabFilter text="Listado Cronologico" key="CRONO">
+                            <t:TreeTable id="cronoTreeTable" rows="{
             path: 'listCronoTreeModel>/',
             parameters: {
                 arrayNames: ['children']
             }
-        }"
-                                selectionMode="None"
-                                enableColumnReordering="false"
-                                enableSelectAll="false"
-                                ariaLabelledBy="title"
-                                toggleOpenState=".onToggleOpenState"
-                            >
+        }" selectionMode="None" enableColumnReordering="false" enableSelectAll="false" ariaLabelledBy="title" toggleOpenState=".onToggleOpenState">
                                 <t:rowSettingsTemplate>
-                                    <t:RowSettings
-                                        highlight="{path: 'listCronoTreeModel>tramitacionColorFecha', formatter: '.getTramitacionHighlight'}"
-                                    />
+                                    <t:RowSettings highlight="{path: 'listCronoTreeModel>tramitacionColorFecha', formatter: '.getTramitacionHighlight'}" />
                                 </t:rowSettingsTemplate>
 
                                 <t:columns>
                                     <!-- Columna de Equipo con icono de expansión -->
-                                    <t:Column
-                                        id="equipmentCrono"
-                                        width="200px"
-                                        class="customColumnBackground"
-                                        hAlign="Left"
-                                    >
+                                    <t:Column id="equipmentCrono" width="200px" class="customColumnBackground" hAlign="Left">
                                         <Label text="{i18n>equipment}" />
                                         <t:template>
-                                            <HBox
-                                                alignItems="Center"
-                                                justifyContent="Start"
-                                                width="100%"
-                                            >
+                                            <HBox alignItems="Center" justifyContent="Start" width="100%">
                                                 <!-- Mostrar solo código de equipo si es nodo padre -->
-                                                <Text
-                                                    text="{= ${listCronoTreeModel>_isGroup} ? ${listCronoTreeModel>Equnr} : '' }"
-                                                    wrapping="false"
-                                                    class="text-bold"
-                                                    visible="{= ${listCronoTreeModel>_isGroup} === true }"
-                                                />
+                                                <Text text="{= ${listCronoTreeModel>_isGroup} ? ${listCronoTreeModel>Equnr} : '' }" wrapping="false" class="text-bold" visible="{= ${listCronoTreeModel>_isGroup} === true }" />
                                                 <!-- Mostrar guión para hijos (más estético) -->
-                                                <Text
-                                                    text="└─"
-                                                    wrapping="false"
-                                                    class="sapUiTinyMarginEnd"
-                                                    visible="{= ${listCronoTreeModel>_isGroup} === false }"
-                                                />
+                                                <Text text="└─" wrapping="false" class="sapUiTinyMarginEnd" visible="{= ${listCronoTreeModel>_isGroup} === false }" />
                                             </HBox>
                                         </t:template>
                                     </t:Column>
 
                                     <!-- IdLicencia -->
-                                    <t:Column
-                                        hAlign="Center"
-                                        width="150px"
-                                    >
+                                    <t:Column hAlign="Center" width="150px">
                                         <Label text="IdLicencia" />
                                         <t:template>
-                                            <HBox
-                                                alignItems="Center"
-                                                justifyContent="Center"
-                                            >
+                                            <HBox alignItems="Center" justifyContent="Center">
                                                 <!-- Si es grupo, mostrar contador -->
-                                                <Text
-                                                    text="{= ${listCronoTreeModel>_isGroup} ? ${listCronoTreeModel>_childCount} + ' LLTT' : '' }"
-                                                    wrapping="false"
-                                                    class="text-bold"
-                                                    visible="{= ${listCronoTreeModel>_isGroup} === true }"
-                                                />
+                                                <Text text="{= ${listCronoTreeModel>_isGroup} ? ${listCronoTreeModel>_childCount} + ' LLTT' : '' }" wrapping="false" class="text-bold" visible="{= ${listCronoTreeModel>_isGroup} === true }" />
                                                 <!-- Si es hijo, mostrar IdLicencia -->
-                                                <Text
-                                                    text="{path: 'listCronoTreeModel>Id', formatter: '.formatter.getJobCond'}"
-                                                    textAlign="Center"
-                                                    wrapping="true"
-                                                    visible="{= ${listCronoTreeModel>_isGroup} === false }"
-                                                />
+                                                <Text text="{path: 'listCronoTreeModel>Id', formatter: '.formatter.getJobCond'}" textAlign="Center" wrapping="true" visible="{= ${listCronoTreeModel>_isGroup} === false }" />
                                             </HBox>
                                         </t:template>
                                     </t:Column>
 
                                     <!-- Estado -->
-                                    <t:Column
-                                        id="statusCrono"
-                                        width="88px"
-                                        hAlign="Center"
-                                    >
-                                        <Label
-                                            text="{i18n>status}"
-                                            class="back"
-                                        />
+                                    <t:Column id="statusCrono" width="88px" hAlign="Center">
+                                        <Label text="{i18n>status}" class="back" />
                                         <t:template>
-                                            <Text
-                                                text="{ path: 'listCronoTreeModel>Equstat' ,formatter: '.formatter.getEstado' }"
-                                                wrapping="false"
-                                            />
+                                            <Text text="{ path: 'listCronoTreeModel>Equstat' ,formatter: '.formatter.getEstado' }" wrapping="false" />
                                         </t:template>
                                     </t:Column>
 
                                     <!-- Condición de Trabajo -->
-                                    <t:Column
-                                        hAlign="Center"
-                                        width="200px"
-                                    >
+                                    <t:Column hAlign="Center" width="200px">
                                         <Label text="{i18n>conditionWork}" />
                                         <t:template>
-                                            <Text
-                                                text="{path: 'listCronoTreeModel>Jobcond', formatter: '.formatter.getJobCond'}"
-                                                textAlign="Center"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{path: 'listCronoTreeModel>Jobcond', formatter: '.formatter.getJobCond'}" textAlign="Center" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
                                     <!-- Hora Inicio -->
-                                    <t:Column
-                                        id="initHourCrono"
-                                        hAlign="Center"
-                                        width="50px"
-                                    >
-                                        <Label
-                                            text="{i18n>initHour}"
-                                            textAlign="Center"
-                                        />
+                                    <t:Column id="initHourCrono" hAlign="Center" width="50px">
+                                        <Label text="{i18n>initHour}" textAlign="Center" />
                                         <t:template>
-                                            <Text
-                                                text="{parts: [
+                                            <Text text="{parts: [
                             {path: 'listCronoTreeModel>Timbeg'}, 
                             {path: 'listCronoTreeModel>Gdate'}
-                        ], formatter: '.formatter.formatInitHour'}"
-                                                class="text-bold"
-                                                wrapping="false"
-                                            />
+                        ], formatter: '.formatter.formatInitHour'}" class="text-bold" wrapping="false" />
                                         </t:template>
                                     </t:Column>
 
                                     <!-- Trabajo a Realizar -->
-                                    <t:Column
-                                        id="toDoWorkCrono"
-                                        width="450px"
-                                    >
+                                    <t:Column id="toDoWorkCrono" width="450px">
                                         <Label text="{i18n>toDoWork}" />
                                         <t:template>
-                                            <Text
-                                                text="{listCronoTreeModel>Comments}"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{listCronoTreeModel>Comments}" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
                                     <!-- Región -->
-                                    <t:Column
-                                        id="regionCrono"
-                                        width="130px"
-                                        hAlign="Center"
-                                    >
+                                    <t:Column id="regionCrono" width="130px" hAlign="Center">
                                         <Label text="{i18n>region}" />
                                         <t:template>
-                                            <Text
-                                                text="{path: 'listCronoTreeModel>Werks', formatter: '.formatter.getRegiones'}"
-                                                textAlign="Center"
-                                                wrapping="true"
-                                            />
+                                            <Text text="{path: 'listCronoTreeModel>Werks', formatter: '.formatter.getRegiones'}" textAlign="Center" wrapping="true" />
                                         </t:template>
                                     </t:Column>
 
                                     <!-- Consola -->
-                                    <t:Column
-                                        id="consoleCrono"
-                                        width="130px"
-                                        hAlign="Center"
-                                    >
+                                    <t:Column id="consoleCrono" width="130px" hAlign="Center">
                                         <Label text="{i18n>console}" />
                                         <t:template>
-                                            <Text
-                                                text="{listCronoTreeModel>Consola}"
-                                                wrapping="false"
-                                            />
+                                            <Text text="{listCronoTreeModel>Consola}" wrapping="false" />
                                         </t:template>
                                     </t:Column>
 
                                     <!-- Turno Asignado -->
-                                    <t:Column
-                                        hAlign="Center"
-                                        width="120px"
-                                    >
-                                        <Label
-                                            text="{i18n>shift}"
-                                            textAlign="Center"
-                                        />
+                                    <t:Column hAlign="Center" width="120px">
+                                        <Label text="{i18n>shift}" textAlign="Center" />
                                         <t:template>
-                                            <HBox
-                                                justifyContent="Center"
-                                                alignItems="Center"
-                                            >
-                                                <Text
-                                                    text="{listCronoTreeModel>TurnoAsignado}"
-                                                    textAlign="Center"
-                                                />
+                                            <HBox justifyContent="Center" alignItems="Center">
+                                                <Text text="{listCronoTreeModel>TurnoAsignado}" textAlign="Center" />
                                             </HBox>
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="comentariosCrono"
-                                        width="100px"
-                                        hAlign="Center"
-                                    >
+                                    <t:Column id="comentariosCrono" width="100px" hAlign="Center">
                                         <Label text="Comentarios" />
                                         <t:template>
                                             <VBox>
                                                 <!-- Nodo hijo: texto de comentarios -->
-                                                <VBox
-                                                    visible="{= ${listCronoTreeModel>_isGroup} === false }"
-                                                >
-                                                    <Text
-                                                        text="{listCronoTreeModel>Comentarios}"
-                                                        wrapping="true"
-                                                        class="sapUiTinyMarginBottom"
-                                                    />
+                                                <VBox visible="{= ${listCronoTreeModel>_isGroup} === false }">
+                                                    <Text text="{listCronoTreeModel>Comentarios}" wrapping="true" class="sapUiTinyMarginBottom" />
                                                 </VBox>
                                                 <!-- Nodo padre: indicador si algún hijo tiene comentarios -->
-                                                <Button
-                                                    icon="sap-icon://comment"
-                                                    type="Transparent"
-                                                    class="whiteIconButton"
-                                                    tooltip="Hay comentarios – expandir para ver"
-                                                    press=".onComentariosParentFromTree"
-                                                    visible="{= ${listCronoTreeModel>_isGroup} === true &amp;&amp; ${listCronoTreeModel>_tieneComentariosHijos} === true }"
-                                                />
+                                                <Button icon="sap-icon://comment" type="Transparent" class="whiteIconButton" tooltip="Hay comentarios – expandir para ver" press=".onComentariosParentFromTree" visible="{= ${listCronoTreeModel>_isGroup} === true &amp;&amp; ${listCronoTreeModel>_tieneComentariosHijos} === true }" />
                                             </VBox>
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        id="adjuntoCrono"
-                                        width="100px"
-                                        hAlign="Center"
-                                    >
+                                    <t:Column id="adjuntoCrono" width="100px" hAlign="Center">
                                         <Label text="Visualizar Adjunto" />
                                         <t:template>
                                             <VBox alignItems="Center">
                                                 <!-- Nodo hijo: abre el visor de adjuntos -->
-                                                <Button
-                                                    icon="sap-icon://show"
-                                                    type="Emphasized"
-                                                    tooltip="Ver adjuntos"
-                                                    press=".onViewAttachmentFromTree"
-                                                    visible="{= ${listCronoTreeModel>_isGroup} === false &amp;&amp; ${listCronoTreeModel>_tieneAdjuntos} === true }"
-                                                    text="{= ${listCronoTreeModel>_cantidadAdjuntos} || '' }"
-                                                    class="whiteIconButton"
-                                                />
+                                                <Button icon="sap-icon://show" type="Emphasized" tooltip="Ver adjuntos" press=".onViewAttachmentFromTree" visible="{= ${listCronoTreeModel>_isGroup} === false &amp;&amp; ${listCronoTreeModel>_tieneAdjuntos} === true }" text="{= ${listCronoTreeModel>_cantidadAdjuntos} || '' }" class="whiteIconButton" />
                                                 <!-- Nodo padre: indicador – expande el grupo al hacer clic -->
-                                                <Button
-                                                    icon="sap-icon://attachment"
-                                                    type="Transparent"
-                                                    class="whiteIconButton"
-                                                    tooltip="Expandir para ver adjuntos de los hijos"
-                                                    press=".onAdjuntosParentFromTree"
-                                                    visible="{= ${listCronoTreeModel>_isGroup} === true &amp;&amp; ${listCronoTreeModel>_tieneAdjuntosHijos} === true }"
-                                                    text="{= ${listCronoTreeModel>_totalAdjuntosHijos} || '' }"
-                                                />
+                                                <Button icon="sap-icon://attachment" type="Transparent" class="whiteIconButton" tooltip="Expandir para ver adjuntos de los hijos" press=".onAdjuntosParentFromTree" visible="{= ${listCronoTreeModel>_isGroup} === true &amp;&amp; ${listCronoTreeModel>_tieneAdjuntosHijos} === true }" text="{= ${listCronoTreeModel>_totalAdjuntosHijos} || '' }" />
                                             </VBox>
                                         </t:template>
                                     </t:Column>
@@ -998,176 +456,84 @@
                             </t:TreeTable>
                         </IconTabFilter>
 
-                        <IconTabFilter
-                            text="Listado Cronológico de Acciones para la entrega"
-                            key="ACCIONES_CRONO"
-                        >
-                            <t:TreeTable
-                                id="accionesCronoTreeTable"
-                                rows="{
+                        <IconTabFilter text="Listado Cronológico de Acciones para la entrega" key="ACCIONES_CRONO">
+                            <t:TreeTable id="accionesCronoTreeTable" rows="{
                                     path: 'accionesTreeModel>/',
                                     parameters: {
                                         arrayNames: ['children']
                                     }
-                                }"
-                                selectionMode="None"
-                                enableColumnReordering="false"
-                                enableSelectAll="false"
-                                ariaLabelledBy="title"
-                            >
+                                }" selectionMode="None" enableColumnReordering="false" enableSelectAll="false" ariaLabelledBy="title">
                                 <t:columns>
-                                    <t:Column
-                                        width="220px"
-                                        hAlign="Left"
-                                    >
+                                    <t:Column width="220px" hAlign="Left">
                                         <Label text="Grupo / Acción" />
                                         <t:template>
                                             <HBox alignItems="Center">
-                                                <Link
-                                                    text="{
+                                                <Link text="{
                                                         path: 'accionesTreeModel>idLicencia',
                                                         formatter: '.formatLicenciasCount'
-                                                    }"
-                                                    press=".onMostrarLicenciasDetalle"
-                                                    wrapping="false"
-                                                    class="text-bold-link"
-                                                    visible="{= ${accionesTreeModel>_isGroup} === true }"
-                                                >
+                                                    }" press=".onMostrarLicenciasDetalle" wrapping="false" class="text-bold-link" visible="{= ${accionesTreeModel>_isGroup} === true }">
                                                     <customData>
-                                                        <core:CustomData
-                                                            key="idLicencia"
-                                                            value="{accionesTreeModel>idLicencia}"
-                                                            writeToDom="false"
-                                                        />
+                                                        <core:CustomData key="idLicencia" value="{accionesTreeModel>idLicencia}" writeToDom="false" />
                                                     </customData>
                                                 </Link>
-                                                <Text
-                                                    text="{accionesTreeModel>accion}"
-                                                    wrapping="true"
-                                                    visible="{= ${accionesTreeModel>_isGroup} === false }"
-                                                />
+                                                <Text text="{accionesTreeModel>accion}" wrapping="true" visible="{= ${accionesTreeModel>_isGroup} === false }" />
                                             </HBox>
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        width="120px"
-                                        hAlign="Left"
-                                    >
+                                    <t:Column width="120px" hAlign="Left">
                                         <Label text="Equipo" />
                                         <t:template>
-                                            <Text
-                                                text="{= ${accionesTreeModel>_isGroup} ? ${accionesTreeModel>equipo} : '' }"
-                                                wrapping="false"
-                                                class="text-bold"
-                                                visible="{= ${accionesTreeModel>_isGroup} === true }"
-                                            />
+                                            <Text text="{= ${accionesTreeModel>_isGroup} ? ${accionesTreeModel>equipo} : '' }" wrapping="false" class="text-bold" visible="{= ${accionesTreeModel>_isGroup} === true }" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        width="400px"
-                                        hAlign="Left"
-                                    >
+                                    <t:Column width="400px" hAlign="Left">
                                         <Label text="Descripción" />
                                         <t:template>
-                                            <Text
-                                                text="{= ${accionesTreeModel>_isGroup} ? '' : ${accionesTreeModel>descripcion} }"
-                                                wrapping="true"
-                                                visible="{= ${accionesTreeModel>_isGroup} === false }"
-                                            />
+                                            <Text text="{= ${accionesTreeModel>_isGroup} ? '' : ${accionesTreeModel>descripcion} }" wrapping="true" visible="{= ${accionesTreeModel>_isGroup} === false }" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        width="120px"
-                                        hAlign="Center"
-                                    >
+                                    <t:Column width="120px" hAlign="Center">
                                         <Label text="Turno de Entrega" />
                                         <t:template>
-                                            <Text
-                                                text="{accionesTreeModel>turnoEntrega}"
-                                                textAlign="Center"
-                                                wrapping="false"
-                                                visible="{= ${accionesTreeModel>_isGroup} === false }"
-                                            />
+                                            <Text text="{accionesTreeModel>turnoEntrega}" textAlign="Center" wrapping="false" visible="{= ${accionesTreeModel>_isGroup} === false }" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        width="100px"
-                                        hAlign="Center"
-                                    >
+                                    <t:Column width="100px" hAlign="Center">
                                         <Label text="Periodo" />
                                         <t:template>
-                                            <Text
-                                                text="{= ${accionesTreeModel>period} === 'D' ? 'Diaria' : (${accionesTreeModel>period} === 'C' ? 'Continua' : ${accionesTreeModel>period}) }"
-                                                textAlign="Center"
-                                                wrapping="false"
-                                                visible="{= ${accionesTreeModel>_isGroup} === false }"
-                                            />
+                                            <Text text="{= ${accionesTreeModel>period} === 'D' ? 'Diaria' : (${accionesTreeModel>period} === 'C' ? 'Continua' : ${accionesTreeModel>period}) }" textAlign="Center" wrapping="false" visible="{= ${accionesTreeModel>_isGroup} === false }" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        width="120px"
-                                        hAlign="Center"
-                                    >
+                                    <t:Column width="120px" hAlign="Center">
                                         <Label text="Fecha de Inicio" />
                                         <t:template>
-                                            <Text
-                                                text="{
+                                            <Text text="{
                                                     path: 'accionesTreeModel>solbeg',
                                                     formatter: '.formatSolbeg'
-                                                }"
-                                                textAlign="Center"
-                                                wrapping="false"
-                                                visible="{= ${accionesTreeModel>_isGroup} === false }"
-                                            />
+                                                }" textAlign="Center" wrapping="false" visible="{= ${accionesTreeModel>_isGroup} === false }" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        width="300px"
-                                        hAlign="Left"
-                                    >
+                                    <t:Column width="300px" hAlign="Left">
                                         <Label text="{i18n>toDoWork}" />
                                         <t:template>
-                                            <Text
-                                                text="{accionesTreeModel>trabajoRealizar}"
-                                                wrapping="true"
-                                                visible="{= ${accionesTreeModel>_isGroup} === false }"
-                                            />
+                                            <Text text="{accionesTreeModel>trabajoRealizar}" wrapping="true" visible="{= ${accionesTreeModel>_isGroup} === false }" />
                                         </t:template>
                                     </t:Column>
 
-                                    <t:Column
-                                        width="100px"
-                                        hAlign="Center"
-                                    >
+                                    <t:Column width="100px" hAlign="Center">
                                         <Label text="Adjuntos" />
                                         <t:template>
                                             <VBox alignItems="Center">
                                                 <!-- Nodo hijo: abre el visor de adjuntos -->
-                                                <Button
-                                                    icon="sap-icon://show"
-                                                    type="Emphasized"
-                                                    tooltip="Ver adjuntos"
-                                                    press=".onViewAttachmentAccion"
-                                                    visible="{= ${accionesTreeModel>_isGroup} === false &amp;&amp; ${accionesTreeModel>Attachments} &amp;&amp; ${accionesTreeModel>Attachments}.length > 0 }"
-                                                    text="{= ${accionesTreeModel>Attachments} ? ${accionesTreeModel>Attachments}.length : '' }"
-                                                    class="whiteIconButton"
-                                                />
+                                                <Button icon="sap-icon://show" type="Emphasized" tooltip="Ver adjuntos" press=".onViewAttachmentAccion" visible="{= ${accionesTreeModel>_isGroup} === false &amp;&amp; ${accionesTreeModel>Attachments} &amp;&amp; ${accionesTreeModel>Attachments}.length > 0 }" text="{= ${accionesTreeModel>Attachments} ? ${accionesTreeModel>Attachments}.length : '' }" class="whiteIconButton" />
                                                 <!-- Nodo padre: indicador – expande el grupo al hacer clic -->
-                                                <Button
-                                                    icon="sap-icon://attachment"
-                                                    type="Transparent"
-                                                    tooltip="Expandir para ver adjuntos"
-                                                    class="whiteIconButton"
-                                                    press=".onAdjuntosParentFromAccionesTree"
-                                                    visible="{= ${accionesTreeModel>_isGroup} === true &amp;&amp; ${accionesTreeModel>_tieneAdjuntosHijos} === true }"
-                                                    text="{= ${accionesTreeModel>_totalAdjuntosHijos} || '' }"
-                                                />
+                                                <Button icon="sap-icon://attachment" type="Transparent" tooltip="Expandir para ver adjuntos" class="whiteIconButton" press=".onAdjuntosParentFromAccionesTree" visible="{= ${accionesTreeModel>_isGroup} === true &amp;&amp; ${accionesTreeModel>_tieneAdjuntosHijos} === true }" text="{= ${accionesTreeModel>_totalAdjuntosHijos} || '' }" />
                                             </VBox>
                                         </t:template>
                                     </t:Column>
@@ -1177,38 +543,19 @@
 
                         <!-- TAB REPORTES MANIOBRAS -->
 
-                        <IconTabFilter
-                            text="Resumen"
-                            key="REPORTE"
-                            visible="{viewModel>/isProgramacion}"
-                        >
-                            <Panel
-                                headerText="Totales de licencias"
-                                expandable="true"
-                                expanded="true"
-                                class="sapUiResponsiveMargin"
-                                width="auto"
-                            >
+                        <IconTabFilter text="Resumen" key="REPORTE" visible="{viewModel>/isProgramacion}">
+                            <HBox justifyContent="End">
+                                <Button icon="sap-icon://email" text="Enviar Mail Cammesa" press="sendMailCammesa" />
+                            </HBox>
+                            <Panel headerText="Totales de licencias" expandable="true" expanded="true" class="sapUiResponsiveMargin" width="auto">
                                 <content>
-                                    <Table
-                                        class="sapUiSmallMarginTop"
-                                        width="50%"
-                                    >
+                                    <Table class="sapUiSmallMarginTop" width="50%">
                                         <columns>
                                             <Column width="30%">
-                                                <Text
-                                                    text="Tipo de intervención"
-                                                    class="sapUiTextBold"
-                                                />
+                                                <Text text="Tipo de intervención" class="sapUiTextBold" />
                                             </Column>
-                                            <Column
-                                                width="20%"
-                                                hAlign="Center"
-                                            >
-                                                <Text
-                                                    text="Cantidad"
-                                                    class="sapUiTextBold"
-                                                />
+                                            <Column width="20%" hAlign="Center">
+                                                <Text text="Cantidad" class="sapUiTextBold" />
                                             </Column>
                                         </columns>
 
@@ -1217,71 +564,47 @@
                                             <ColumnListItem>
                                                 <cells>
                                                     <Text text="Consignación" />
-                                                    <Text
-                                                        text="{= ${countsModel>/ConsignacionLinea} + ${countsModel>/ConsignacionEquipo} }"
-                                                    />
+                                                    <Text text="{= ${countsModel>/ConsignacionLinea} + ${countsModel>/ConsignacionEquipo} }" />
                                                 </cells>
                                             </ColumnListItem>
 
                                             <!-- Fila 2: Condiciones especiales C/maniobra -->
                                             <ColumnListItem>
                                                 <cells>
-                                                    <Text
-                                                        text="Condiciones especiales C/maniobra"
-                                                    />
-                                                    <Text
-                                                        text="{countsModel>/ManiobrasSinConsignacion}"
-                                                    />
+                                                    <Text text="Condiciones especiales C/maniobra" />
+                                                    <Text text="{countsModel>/ManiobrasSinConsignacion}" />
                                                 </cells>
                                             </ColumnListItem>
 
                                             <!-- Fila 3: Condiciones especiales S/maniobra -->
                                             <ColumnListItem>
                                                 <cells>
-                                                    <Text
-                                                        text="Condiciones especiales S/maniobra"
-                                                    />
-                                                    <Text
-                                                        text="{countsModel>/SinManiobras}"
-                                                    />
+                                                    <Text text="Condiciones especiales S/maniobra" />
+                                                    <Text text="{countsModel>/SinManiobras}" />
                                                 </cells>
                                             </ColumnListItem>
 
                                             <!-- Fila 4: TcT c/bloqueo de recierre -->
                                             <ColumnListItem>
                                                 <cells>
-                                                    <Text
-                                                        text="TcT c/bloqueo de recierre"
-                                                    />
-                                                    <Text
-                                                        text="{countsModel>/TCTConBloqueo}"
-                                                    />
+                                                    <Text text="TcT c/bloqueo de recierre" />
+                                                    <Text text="{countsModel>/TCTConBloqueo}" />
                                                 </cells>
                                             </ColumnListItem>
 
                                             <!-- Fila 5: TcT s/bloqueo de recierre -->
                                             <ColumnListItem>
                                                 <cells>
-                                                    <Text
-                                                        text="TcT s/bloqueo de recierre"
-                                                    />
-                                                    <Text
-                                                        text="{countsModel>/TCTSinBloqueo}"
-                                                    />
+                                                    <Text text="TcT s/bloqueo de recierre" />
+                                                    <Text text="{countsModel>/TCTSinBloqueo}" />
                                                 </cells>
                                             </ColumnListItem>
 
                                             <!-- Fila 6: Total (en rojo) -->
                                             <ColumnListItem>
                                                 <cells>
-                                                    <Text
-                                                        text="Total"
-                                                        class="sapUiTextBold totalRed"
-                                                    />
-                                                    <Text
-                                                        text="{countsModel>/Total}"
-                                                        class="sapUiTextBold totalRed"
-                                                    />
+                                                    <Text text="Total" class="sapUiTextBold totalRed" />
+                                                    <Text text="{countsModel>/Total}" class="sapUiTextBold totalRed" />
                                                 </cells>
                                             </ColumnListItem>
                                         </items>
@@ -1289,72 +612,41 @@
                                 </content>
                             </Panel>
 
-                            <Panel
-                                headerText="Resumen de maniobras"
-                                expandable="true"
-                                expanded="true"
-                                class="sapUiResponsiveMargin"
-                                width="auto"
-                            >
+                            <Panel headerText="Resumen de maniobras" expandable="true" expanded="true" class="sapUiResponsiveMargin" width="auto">
                                 <VBox class="sapUiSmallMargin">
-                                    <Title
-                                        id="reporteTitle"
-                                        text="Resumen Maniobras"
-                                        level="H2"
-                                        class="sapUiSmallMarginBottom"
-                                    />
+                                    <Title id="reporteTitle" text="Resumen Maniobras" level="H2" class="sapUiSmallMarginBottom" />
 
                                     <HBox class="sapUiTinyMarginBottom">
-                                        <Text
-                                            id="reporteDateRange"
-                                            text="Horarios de maniobras previstas desde: -- Hasta: --"
-                                        />
+                                        <Text id="reporteDateRange" text="Horarios de maniobras previstas desde: -- Hasta: --" />
                                     </HBox>
 
-                                    <t:Table
-                                        id="reporteTable"
-                                        rows="{ReporteModel>/}"
-                                        selectionMode="None"
-                                        enableColumnReordering="false"
-                                    >
+                                    <t:Table id="reporteTable" rows="{ReporteModel>/}" selectionMode="None" enableColumnReordering="false">
                                         <t:columns>
                                             <t:Column width="120px">
                                                 <Label text="Equipo" />
                                                 <t:template>
-                                                    <Text
-                                                        text="{ReporteModel>Equipo}"
-                                                    />
+                                                    <Text text="{ReporteModel>Equipo}" />
                                                 </t:template>
                                             </t:Column>
 
                                             <t:Column width="100px">
                                                 <Label text="Hora" />
                                                 <t:template>
-                                                    <Text
-                                                        text="{ReporteModel>Hora}"
-                                                    />
+                                                    <Text text="{ReporteModel>Hora}" />
                                                 </t:template>
                                             </t:Column>
 
                                             <t:Column width="200px">
-                                                <Label
-                                                    text="Tipo de intervención"
-                                                />
+                                                <Label text="Tipo de intervención" />
                                                 <t:template>
-                                                    <Text
-                                                        text="{ReporteModel>TipoIntervencion}"
-                                                        wrapping="true"
-                                                    />
+                                                    <Text text="{ReporteModel>TipoIntervencion}" wrapping="true" />
                                                 </t:template>
                                             </t:Column>
 
                                             <t:Column width="300px">
                                                 <Label text="Comentarios" />
                                                 <t:template>
-                                                    <Text
-                                                        text="{ReporteModel>Comentarios}"
-                                                        wrapping="true"
-                                                    />
+                                                    <Text text="{ReporteModel>Comentarios}" wrapping="true" />
                                                 </t:template>
                                             </t:Column>
                                         </t:columns>
@@ -1362,116 +654,50 @@
 
                                     <!-- <Toolbar class="sapUiSmallMarginTop">
                                         <ToolbarSpacer />
-                                        <Button
-                                            text="Descargar Excel"
-                                            icon="sap-icon://excel-attachment"
-                                            press=".onDescargarReporteActual"
-                                        />
+                                        <Button text="Descargar Excel" icon="sap-icon://excel-attachment" press=".onDescargarReporteActual" />
                                     </Toolbar> -->
                                 </VBox>
                             </Panel>
                         </IconTabFilter>
 
-                        <IconTabFilter
-                            text="Grafico"
-                            key="Grafico"
-                            visible="{viewModel>/isProgramacion}"
-                        >
-                            <VBox
-                                class="sapUiMediumMarginBegin sapUiMediumMarginTop"
-                            >
-                                <Title
-                                    text="Acciones para la entrega"
-                                    level="H2"
-                                />
-                                <Text
-                                    text="Turno del {LicencesTurnoJsonModel>/FechaTurno}"
-                                    class="sapUiSmallMarginTop"
-                                />
+                        <IconTabFilter text="Grafico" key="Grafico" visible="{viewModel>/isProgramacion}">
+                            <VBox class="sapUiMediumMarginBegin sapUiMediumMarginTop">
+                                <Title text="Acciones para la entrega" level="H2" />
+                                <Text text="Turno del {LicencesTurnoJsonModel>/FechaTurno}" class="sapUiSmallMarginTop" />
                             </VBox>
-                            <HBox
-                                class="sapUiMediumMarginBegin sapUiSmallMarginTop sapUiSmallMarginBottom"
-                            >
-                                <Button
-                                    text="Descargar Reporte de Desvíos"
-                                    icon="sap-icon://download"
-                                    press="onDescargarReporteDesvios"
-                                    type="Emphasized"
-                                />
+                            <HBox class="sapUiMediumMarginBegin sapUiSmallMarginTop sapUiSmallMarginBottom">
+                                <Button text="Descargar Reporte de Desvíos" icon="sap-icon://download" press="onDescargarReporteDesvios" type="Emphasized" />
                             </HBox>
-                            <VBox
-                                id="chartContainer"
-                                width="100%"
-                            />
+                            <VBox id="chartContainer" width="100%" />
                         </IconTabFilter>
                     </items>
                 </IconTabBar>
 
                 <footer>
                     <OverflowToolbar>
-                        <MenuButton
-                            text="{i18n>reports}"
-                            menuPosition="BeginTop"
-                            visible="{viewModel>/isProgramacion}"
-                        >
+                        <MenuButton text="{i18n>reports}" menuPosition="BeginTop" visible="{viewModel>/isProgramacion}">
                             <menu>
                                 <Menu>
-                                    <MenuItem
-                                        text="Reporte Amplio"
-                                        press="onReportsPress"
-                                    >
+                                    <MenuItem text="Reporte Amplio" press="onReportsPress">
                                         <customData>
-                                            <core:CustomData
-                                                key="reportType"
-                                                value="amplio"
-                                            />
+                                            <core:CustomData key="reportType" value="amplio" />
                                         </customData>
                                     </MenuItem>
-                                    <MenuItem
-                                        text="Resumen Maniobras"
-                                        press="onReportsPress"
-                                    >
+                                    <MenuItem text="Resumen Maniobras" press="onReportsPress">
                                         <customData>
-                                            <core:CustomData
-                                                key="reportType"
-                                                value="maniobras"
-                                            />
+                                            <core:CustomData key="reportType" value="maniobras" />
                                         </customData>
                                     </MenuItem>
                                 </Menu>
                             </menu>
                         </MenuButton>
-                        <Button
-                            icon="sap-icon://add"
-                            press="onAddLicense"
-                            text="{i18n>altaTurno}"
-                            class="sapUiSmallMarginEnd"
-                            enabled="{editableModel>/isEditable}"
-                        />
+                        <Button icon="sap-icon://add" press="onAddLicense" text="{i18n>altaTurno}" class="sapUiSmallMarginEnd" enabled="{editableModel>/isEditable}" />
                         <ToolbarSpacer />
-                        <Text
-                            text="V{appVersion>/version}"
-                            class="textWhite"
-                        />
+                        <Text text="V{appVersion>/version}" class="textWhite" />
                         <ToolbarSpacer />
-                        <Button
-                            icon="sap-icon://save"
-                            text="{i18n>saveTurno}"
-                            press="onSaveTurnoPress"
-                            enabled="{editableModel>/isEditable}"
-                        />
-                        <Button
-                            icon="sap-icon://create-form"
-                            text="{i18n>createTurno}"
-                            press="onSearch"
-                            enabled="{editableModel>/isEditable}"
-                        />
-                        <Button
-                            icon="sap-icon://email"
-                            text="{i18n>sendEmail}"
-                            press="onSendEmailPress"
-                            enabled="{editableModel>/isEditable}"
-                        />
+                        <Button icon="sap-icon://save" text="{i18n>saveTurno}" press="onSaveTurnoPress" enabled="{editableModel>/isEditable}" />
+                        <Button icon="sap-icon://create-form" text="{i18n>createTurno}" press="onSearch" enabled="{editableModel>/isEditable}" />
+                        <Button icon="sap-icon://email" text="{i18n>sendEmail}" press="onSendEmailPress" enabled="{editableModel>/isEditable}" />
                     </OverflowToolbar>
                 </footer>
             </Page>
