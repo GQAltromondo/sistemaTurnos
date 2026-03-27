@@ -10619,7 +10619,9 @@ sap.ui.define([
 
             // Destinatarios hardcodeados
             var aDestinatarios = [
-                "guillermo27@gmail.com"
+                "guillermo27@gmail.com",
+                "juan.adaro@altromondo.com.ar",
+                "chiara.signori@altromondo.com.ar"
             ];
 
             // Aplanar filas del reporte como campos individuales (SAP WF no soporta arrays en templates)
